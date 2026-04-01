@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "brainstorm-ideas-new": {
+      "source": "phuryn/pm-skills",
+      "sourceType": "github",
+      "computedHash": "9cac3d00cb4414cdc2e02802af8c153c49cdfc2e925a22c5020c24587a31bce0"
+    }
+  }
+}
