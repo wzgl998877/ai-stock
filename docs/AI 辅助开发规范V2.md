@@ -332,6 +332,9 @@ cp -r ai-first/00-JL-Skills/jl-skills       ./jl-skills
 /speckit.specify
 ```
 
+开始 Speckit 流程前，先将项目级 `constitution.md` 复制到 `.specify/memory/constitution.md`，再进入人工审核。
+重要性：`/speckit.plan` 的 Constitution Check 直接读取 `.specify/memory/constitution.md`，若不同步会导致方案校验标准与项目真实宪章不一致，进而让后续 `tasks.md` 与实现阶段产生方向偏差。
+
 人工审核 `spec.md` 后进入下一步，审核要点：
 
 ```plain

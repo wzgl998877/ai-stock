@@ -78,8 +78,8 @@ ARCHIVED = "archived"    # 已归档（过期）
 ### IndustryTag (行业标签)
 
 - 基于申万31个一级行业分类
-- 作为静态数据维护在 `domain/constants.py`
-- 包含行业名称和可选的行业代码
+- 作为静态数据维护在 `data/industries.json`
+- 包含行业名称
 
 ### StockReference (股票引用)
 
@@ -111,8 +111,74 @@ ARCHIVED = "archived"    # 已归档（过期）
 
 ## Indexes
 
-- `analysis_articles`: created_at (倒序), event_type, user_id
-- `analysis_articles`: GIN 索引 on content (全文搜索), industry_tags, mentioned_stocks
-- `article_industries`: industry_name (用于按行业筛选)
-- `event_reminders`: event_date, status, user_id
-- `event_reminders`: (status, event_date) 复合索引（用于调度查询）
+### analysis_articles 表
+
+| Index | Columns | Type | Purpose |
+|-------|---------|------|---------|
+| idx_created_at | created_at DESC | B-Tree | 时间线视图倒序 |
+| idx_event_type | event_type | B-Tree | 按类型筛选 |
+| idx_user_id | user_id | B-Tree | 多用户隔离 |
+| ft_search | title, summary, content | FULLTEXT (ngram) | 全文搜索 |
+
+### article_industries 表
+
+| Index | Columns | Type | Purpose |
+|-------|---------|------|---------|
+| PK | article_id, industry_name | PRIMARY | 复合主键 |
+| idx_industry | industry_name | B-Tree | 按行业筛选文章 |
+
+### event_reminders 表
+
+| Index | Columns | Type | Purpose |
+|-------|---------|------|---------|
+| idx_event_date | event_date | B-Tree | 按日期查询 |
+| idx_status_date | status, event_date | B-Tree | 调度查询优化 |
+| idx_user_id | user_id | B-Tree | 多用户隔离 |
+
+## DDL (参考)
+
+```sql
+CREATE TABLE analysis_articles (
+    id CHAR(36) PRIMARY KEY,
+    title VARCHAR(50) NOT NULL,
+    summary VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    event_type ENUM('geopolitical','policy','earnings','supply_chain','other') NOT NULL,
+    raw_input VARCHAR(500) NOT NULL,
+    industry_tags JSON,
+    mentioned_stocks JSON,
+    chain_table JSON,
+    user_id VARCHAR(50) NOT NULL DEFAULT 'default',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FULLTEXT INDEX ft_search (title, summary, content) WITH PARSER ngram,
+    INDEX idx_created_at (created_at DESC),
+    INDEX idx_event_type (event_type),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE article_industries (
+    article_id CHAR(36) NOT NULL,
+    industry_name VARCHAR(30) NOT NULL,
+    chain_level INT,
+    PRIMARY KEY (article_id, industry_name),
+    INDEX idx_industry (industry_name),
+    FOREIGN KEY (article_id) REFERENCES analysis_articles(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE event_reminders (
+    id CHAR(36) PRIMARY KEY,
+    title VARCHAR(100) NOT NULL,
+    event_date DATE NOT NULL,
+    industry_tags JSON,
+    status ENUM('pending','reminded','archived') NOT NULL DEFAULT 'pending',
+    remind_3day_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    remind_today_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    user_id VARCHAR(50) NOT NULL DEFAULT 'default',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_event_date (event_date),
+    INDEX idx_status_date (status, event_date),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```

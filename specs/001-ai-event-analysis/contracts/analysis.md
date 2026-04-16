@@ -25,25 +25,31 @@
 
 ### Response (SSE Stream)
 
+SSE 格式统一为 `data: {json}\n\n`，前端通过 `fetch` + `ReadableStream` 接收（非 EventSource，因需 POST）。
+
 ```
-event: chunk
-data: {"type": "content", "text": "## 事件背景\n"}
+data: {"type": "content", "data": "## 事件背景\n"}
 
-event: chunk
-data: {"type": "content", "text": "美国对伊朗实施新一轮制裁..."}
+data: {"type": "content", "data": "美国对伊朗实施新一轮制裁..."}
 
-event: chunk
-data: {"type": "meta", "title": "美伊冲突对能源军工影响", "summary": "能源和军工板块短期受益...最大风险是..."}
+data: {"type": "title", "data": "美伊冲突对能源军工影响"}
 
-event: done
-data: {"type": "complete", "article_id": null}
+data: {"type": "summary", "data": "能源和军工板块短期受益，油价上涨传导至化工成本。最大风险是..."}
+
+data: {"type": "industries", "data": ["石油石化", "国防军工", "基础化工"]}
+
+data: {"type": "done", "data": ""}
 ```
 
 **Event Types**:
-- `chunk (type=content)`: 分析正文内容片段
-- `chunk (type=meta)`: 标题和摘要元数据
-- `done (type=complete)`: 分析完成
+- `content`: 分析正文内容片段（流式推送）
+- `title`: AI 生成的标题（≤15字）
+- `summary`: AI 生成的摘要（≤80字）
+- `industries`: AI 提取的行业标签列表
 - `error`: 错误信息
+- `done`: 分析完成
+
+**TITLE/SUMMARY 提取逻辑**: 后端在流式转发 LLM 输出时，实时监控 `TITLE:` 和 `SUMMARY:` 标记行，提取后通过独立事件类型推送。
 
 ### Error Responses
 
@@ -52,6 +58,8 @@ data: {"type": "complete", "article_id": null}
 | 400 | INVALID_INPUT | "请输入事件描述" / "描述太简短，请详细说明" |
 | 429 | RATE_LIMITED | "分析正在进行中，请稍候" |
 | 503 | AI_SERVICE_ERROR | "AI服务暂时不可用，请稍后重试" |
+
+**重试机制**: 后端自动重试最多2次（间隔5秒）。全部失败后返回 `error` 事件，前端保留用户输入内容。
 
 ---
 
@@ -77,6 +85,17 @@ data: {"type": "complete", "article_id": null}
 }
 ```
 
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| title | string | yes | 文章标题（≤15字） |
+| summary | string | yes | 文章摘要（≤80字） |
+| content | string | yes | 完整 Markdown 正文 |
+| event_type | string | yes | 事件类型枚举 |
+| raw_input | string | yes | 用户原始输入 |
+| industry_tags | string[] | yes | 行业标签列表（至少1个或"未分类"） |
+| mentioned_stocks | object[] | no | 提及的股票列表 |
+| chain_table | object[] | no | 产业链传导表（仅 supply_chain 类型） |
+
 ### Response (201 Created)
 
 ```json
@@ -99,7 +118,7 @@ data: {"type": "complete", "article_id": null}
 
 ## POST /api/analysis/similarity
 
-检测相似历史文章（不调用 AI，基于关键词匹配）。
+检测相似历史文章（不调用 AI，基于关键词 Jaccard 相似度匹配）。
 
 ### Request
 
@@ -119,6 +138,7 @@ data: {"type": "complete", "article_id": null}
       "id": "uuid-xxx",
       "title": "美伊冲突对能源军工影响",
       "summary": "能源和军工板块短期受益...",
+      "industry_tags": ["石油石化", "国防军工"],
       "created_at": "2026-01-15T10:30:00Z",
       "similarity": 0.72
     }
@@ -126,8 +146,4 @@ data: {"type": "complete", "article_id": null}
 }
 ```
 
----
-
-## GET /api/analysis/draft
-
-获取本地草稿（此接口可选，草稿主要在前端 localStorage 管理）。
+**Note**: 相似度阈值 ≥ 0.3 才返回。知识库为空时返回空列表。

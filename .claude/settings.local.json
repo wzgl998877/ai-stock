@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npx specify:*)",
       "Bash(specify init:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(npm install:*)",
+      "Bash(where node:*)",
+      "Bash(export:*)"
     ]
   }
 }

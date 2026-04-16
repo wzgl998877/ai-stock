@@ -5,36 +5,44 @@
 
 ## Summary
 
-实现 AI 事件分析 & 行业知识库模块（模块一 MVP），核心能力包括：5种事件类型的结构化 AI 分析（流式输出）、行业标签自动提取与确认、知识库三视图浏览与全文搜索、相似问题检测、大事提醒、新用户引导。技术方案采用 FastAPI 后端（DDD 分层）+ React 前端，通过 SSE 实现流式输出，MySQL 存储知识库，Redis 缓存热数据。
+实现模块一（AI 事件分析 & 行业知识库）的完整功能，包括：
+- **AI 分析引擎**：5种事件类型（地缘政治/政策法规/财报季报/产业链分析/其他），对应独立提示词模板，流式 SSE 输出
+- **知识库**：保存/浏览/搜索历史分析，三视图（行业/时间线/股票），MySQL FULLTEXT 中文全文搜索
+- **辅助功能**：相似问题检测（关键词匹配）、大事提醒（站内通知）、新用户引导（3个示例）
+
+技术方案：后端 FastAPI + DDD 分层（Router→Application→Domain→Infrastructure），前端 React 18 + Ant Design 5 + Zustand，数据 MySQL + Redis 缓存，AI 经统一抽象层接入。
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+ (后端) / TypeScript (前端)
-**Primary Dependencies**: FastAPI, SQLAlchemy/SQLModel, React 18, Ant Design 5, Zustand, ECharts 5
-**Storage**: MySQL (主库) + Redis (缓存)
-**Testing**: pytest (后端) / Vitest (前端)
-**Target Platform**: Linux server (Docker Compose 部署), PC 浏览器
-**Project Type**: Web application (前后端分离)
-**Performance Goals**: 流式首字 ≤3s, 知识库搜索 ≤1s, 页面首屏 ≤2s
-**Constraints**: AKShare 免费接口有频率限制; AI 调用目标 60s 内完成
-**Scale/Scope**: 单用户（预留多用户扩展），PC 端为主
+**Language/Version**: Python 3.11+（后端）/ TypeScript 5.x（前端）
+**Primary Dependencies**: FastAPI, SQLAlchemy/SQLModel, Pydantic, httpx（后端）; React 18, Ant Design 5, Zustand, ECharts 5（前端）
+**Storage**: MySQL 8.0（主库，文章/提醒/标签）+ Redis（缓存，分析任务状态/计算结果）
+**Testing**: pytest（后端）/ Vitest（前端）
+**Target Platform**: Linux 服务器（Docker Compose 部署）+ PC 浏览器（Chrome/Firefox/Edge）
+**Project Type**: Web 应用（前后端分离）
+**Performance Goals**: SSE 首字延迟 ≤3s; 搜索响应 ≤1s; 列表首屏 ≤2s
+**Constraints**: 单用户系统，预留多用户扩展; LLM API Key 仅服务端环境变量
+**Scale/Scope**: ~10 篇/月，31 个行业标签，~6 个前端页面
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-| 宪章规则 | 状态 | 说明 |
-|----------|------|------|
-| I. 三模块协同优先 | ✅ 通过 | 模块一独立实现，预留模块二/三跳转接口（股票代码点击跳转、自选股数据读取） |
-| II. 个人投研工具边界 | ✅ 通过 | 无自动交易功能，分析结果标注"不构成投资建议" |
-| III. 简洁实用 | ✅ 通过 | MVP 聚焦核心闭环，不过度设计 |
-| 后端分层 Router→App→Domain→Infra | ✅ 通过 | 严格遵循，详见 data-model.md 和 contracts/ |
-| 前端分层 Page→App→Service | ✅ 通过 | 严格遵循，页面不直连 API |
-| 禁止密钥泄露 | ✅ 通过 | API Key 仅环境变量 |
-| 流式输出须成对实现 | ✅ 通过 | 后端 SSE + 前端 EventSource |
-| 大模型统一抽象层 | ✅ 通过 | Infrastructure 层封装，业务层不直连 |
-| Prompt 模板化管理 | ✅ 通过 | 五类模板独立文件管理 |
-| 数据库 Repository 模式 | ✅ 通过 | Domain 定义接口，Infrastructure 实现 |
+### Pre-Design Gate
+
+| # | Gate | Status | Notes |
+|---|------|--------|-------|
+| 1 | **三模块协同**：标明模块归属 + 跨模块跳转 | ✅ PASS | 归属模块一；股票代码→模块二个股详情页跳转（FR-010）；自选股数据依赖模块二 |
+| 2 | **个人投研工具边界**：无自动交易/投顾能力 | ✅ PASS | 纯分析+知识库，所有推荐附"不构成投资建议"（PRD 模板已含） |
+| 3 | **简洁实用**：不过度设计 | ✅ PASS | 相似检测用关键词匹配不用 AI；搜索用 MySQL 内置不用 ES；单用户先行 |
+| 4 | **后端分层**：Router→Application→Domain→Infrastructure | ✅ PLANNED | 详见 Project Structure |
+| 5 | **前端分层**：Page→Application→Service | ✅ PLANNED | 所有 API 经 services/，页面不直连 fetch |
+| 6 | **流式输出成对实现**：后端 SSE + 前端 EventSource | ✅ PLANNED | SSE `data: ...\n\n` 格式，前端实时渲染+停止+loading |
+| 7 | **AI 统一抽象层**：业务层不直连 SDK | ✅ PLANNED | Infrastructure 层封装 AIService，Prompt 模板化管理 |
+| 8 | **密钥不泄露**：API Key 仅环境变量 | ✅ PASS | `.env` 管理，禁止硬编码 |
+| 9 | **数据约束**：Decimal 类型 / Repository 封装 / Prompt 模板化 | ✅ PLANNED | 金额用 Decimal；所有 DB 操作在 Repository 内 |
+
+**Gate Result**: ✅ ALL PASS — 进入 Phase 0
 
 ## Project Structure
 
@@ -42,15 +50,12 @@
 
 ```text
 specs/001-ai-event-analysis/
-├── plan.md              # 本文件
-├── research.md          # Phase 0 输出
-├── data-model.md        # Phase 1 输出
-├── quickstart.md        # Phase 1 输出
-├── contracts/           # Phase 1 输出
-│   ├── analysis.md      # AI 分析接口
-│   ├── knowledge.md     # 知识库接口
-│   └── reminder.md      # 大事提醒接口
-└── tasks.md             # Phase 2 输出 (/speckit.tasks 命令生成)
+├── plan.md              # This file
+├── research.md          # Phase 0 output
+├── data-model.md        # Phase 1 output
+├── quickstart.md        # Phase 1 output
+├── contracts/           # Phase 1 output
+└── tasks.md             # Phase 2 output (by /speckit.tasks)
 ```
 
 ### Source Code (repository root)
@@ -58,88 +63,127 @@ specs/001-ai-event-analysis/
 ```text
 backend/
 ├── app/
+│   ├── main.py                    # FastAPI 应用入口
+│   ├── core/
+│   │   ├── config.py              # 配置管理（环境变量）
+│   │   ├── database.py            # 数据库连接
+│   │   └── exceptions.py          # 统一异常
 │   ├── routers/
-│   │   ├── analysis.py          # AI 分析路由
-│   │   ├── knowledge.py         # 知识库路由
-│   │   └── reminder.py          # 大事提醒路由
+│   │   ├── analysis.py            # AI 分析路由
+│   │   ├── knowledge.py           # 知识库路由
+│   │   └── reminder.py            # 大事提醒路由
 │   ├── application/
-│   │   ├── analysis_app.py      # 分析用例
-│   │   ├── knowledge_app.py     # 知识库用例
-│   │   └── reminder_app.py      # 提醒用例
+│   │   ├── use_cases/
+│   │   │   ├── analyze_event.py   # 事件分析用例
+│   │   │   ├── manage_article.py  # 文章管理用例
+│   │   │   ├── search_articles.py # 搜索用例
+│   │   │   ├── detect_similar.py  # 相似检测用例
+│   │   │   └── manage_reminder.py # 提醒管理用例
+│   │   └── dtos/
+│   │       ├── analysis_dto.py    # 分析请求/响应 DTO
+│   │       ├── article_dto.py     # 文章 DTO
+│   │       └── reminder_dto.py    # 提醒 DTO
 │   ├── domain/
 │   │   ├── entities/
-│   │   │   ├── article.py       # 分析文章实体
-│   │   │   └── reminder.py      # 大事提醒实体
+│   │   │   ├── article.py         # 分析文章实体
+│   │   │   └── reminder.py        # 大事提醒实体
 │   │   ├── value_objects/
-│   │   │   ├── event_type.py    # 事件类型枚举
-│   │   │   └── industry_tag.py  # 行业标签值对象
+│   │   │   ├── event_type.py      # 事件类型枚举
+│   │   │   └── industry_tag.py    # 行业标签值对象
 │   │   ├── services/
-│   │   │   └── similarity.py    # 相似度检测领域服务
+│   │   │   ├── analysis_parser.py # 分析结果解析（六段/七段结构）
+│   │   │   └── similarity.py      # 相似度计算
 │   │   └── repositories/
-│   │       ├── article_repo.py  # 文章仓库接口
-│   │       ├── reminder_repo.py # 提醒仓库接口
-│   │       └── search_repo.py   # 搜索仓库接口
+│   │       ├── article_repo.py    # 文章仓储接口
+│   │       ├── search_repo.py     # 搜索仓储接口
+│   │       └── reminder_repo.py   # 提醒仓储接口
 │   ├── infrastructure/
 │   │   ├── db/
-│   │   │   └── models.py        # ORM 模型
+│   │   │   ├── models.py          # SQLAlchemy ORM 模型
+│   │   │   └── migrations/        # Alembic 迁移
 │   │   ├── repositories/
-│   │   │   ├── article_repo_impl.py
-│   │   │   ├── reminder_repo_impl.py
-│   │   │   └── search_repo_impl.py
+│   │   │   ├── mysql_article_repo.py
+│   │   │   ├── mysql_search_repo.py
+│   │   │   └── mysql_reminder_repo.py
 │   │   ├── ai/
-│   │   │   ├── llm_service.py   # 大模型统一封装
-│   │   │   └── prompts/         # Prompt 模板目录
-│   │   │       ├── geopolitical.py
-│   │   │       ├── policy.py
-│   │   │       ├── earnings.py
-│   │   │       ├── supply_chain.py
-│   │   │       └── general.py
+│   │   │   ├── ai_service.py      # AI 服务抽象层
+│   │   │   └── prompts/
+│   │   │       ├── geopolicy.py   # 地缘政治模板
+│   │   │       ├── policy.py      # 政策法规模板
+│   │   │       ├── earnings.py    # 财报季报模板
+│   │   │       ├── chain.py       # 产业链分析模板
+│   │   │       └── general.py     # 其他通用模板
 │   │   └── search/
-│   │       └── fulltext_search.py     # MySQL 全文搜索实现
+│   │       └── fulltext_search.py # MySQL FULLTEXT 搜索实现
 │   ├── schemas/
-│   │   ├── analysis.py          # 分析请求/响应 DTO
-│   │   ├── knowledge.py         # 知识库 DTO
-│   │   └── reminder.py          # 提醒 DTO
-│   ├── core/
-│   │   ├── config.py            # 配置
-│   │   └── deps.py              # 依赖注入
-│   └── main.py
-└── tests/
+│   │   └── ...                    # Pydantic schemas（如需与 DTO 分离）
+│   └── data/
+│       └── industries.json        # 申万31个一级行业静态数据
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── contract/
+├── requirements.txt
+├── Dockerfile
+└── .env.example
 
 frontend/
 ├── src/
 │   ├── pages/
-│   │   ├── Analysis/            # AI 分析页
-│   │   │   ├── index.tsx
-│   │   │   └── components/
-│   │   ├── Knowledge/           # 知识库页
-│   │   │   ├── index.tsx
-│   │   │   └── components/
-│   │   └── Reminder/            # 大事提醒页
-│   │       ├── index.tsx
-│   │       └── components/
+│   │   ├── AnalysisPage.tsx       # AI 分析页
+│   │   ├── KnowledgePage.tsx      # 知识库浏览页
+│   │   ├── ArticleDetailPage.tsx  # 文章详情页
+│   │   └── ReminderPage.tsx       # 大事提醒管理页
+│   ├── components/
+│   │   ├── analysis/
+│   │   │   ├── EventTypeSelector.tsx  # 事件类型选择器
+│   │   │   ├── AnalysisInput.tsx      # 输入框+草稿
+│   │   │   ├── AnalysisResult.tsx     # 流式结果渲染
+│   │   │   ├── AnalysisStatusBar.tsx  # 全局分析状态条
+│   │   │   └── SimilarPrompt.tsx      # 相似问题提示卡
+│   │   ├── knowledge/
+│   │   │   ├── IndustryView.tsx       # 行业视图
+│   │   │   ├── TimelineView.tsx       # 时间线视图
+│   │   │   ├── StockView.tsx          # 股票视图
+│   │   │   ├── ArticleCard.tsx        # 文章卡片
+│   │   │   └── SearchBar.tsx          # 搜索栏
+│   │   ├── reminder/
+│   │   │   ├── ReminderList.tsx       # 提醒列表
+│   │   │   └── ReminderForm.tsx       # 添加提醒表单
+│   │   ├── onboarding/
+│   │   │   └── ExamplePrompts.tsx     # 新用户示例引导
+│   │   └── common/
+│   │       ├── StockCodeLink.tsx      # 股票代码可点击组件（→模块二）
+│   │       └── IndustryTag.tsx        # 行业标签组件
 │   ├── application/
-│   │   ├── analysisApp.ts       # 分析用例
-│   │   ├── knowledgeApp.ts      # 知识库用例
-│   │   └── reminderApp.ts       # 提醒用例
+│   │   ├── useAnalysis.ts         # 分析相关业务逻辑
+│   │   ├── useKnowledge.ts        # 知识库相关业务逻辑
+│   │   └── useReminder.ts         # 提醒相关业务逻辑
 │   ├── domain/
-│   │   ├── types.ts             # 类型定义
-│   │   └── constants.ts         # 常量（事件类型、行业列表）
+│   │   ├── types.ts               # 业务类型定义
+│   │   └── constants.ts           # 申万行业列表、事件类型等常量
 │   ├── services/
-│   │   ├── analysisService.ts   # 分析 API
-│   │   ├── knowledgeService.ts  # 知识库 API
-│   │   ├── reminderService.ts   # 提醒 API
-│   │   └── request.ts           # HTTP 封装
+│   │   ├── api.ts                 # axios 实例
+│   │   ├── analysisService.ts     # 分析 API
+│   │   ├── knowledgeService.ts    # 知识库 API
+│   │   └── reminderService.ts     # 提醒 API
 │   ├── store/
-│   │   ├── analysisStore.ts     # 分析状态
-│   │   └── knowledgeStore.ts    # 知识库状态
-│   ├── components/              # 公共组件
+│   │   ├── analysisStore.ts       # 分析状态（Zustand）
+│   │   ├── knowledgeStore.ts      # 知识库状态
+│   │   └── reminderStore.ts       # 提醒状态
+│   ├── hooks/
+│   │   ├── useSSE.ts              # SSE 流式连接 Hook
+│   │   └── useDraft.ts            # 草稿自动保存 Hook
 │   └── utils/
-└── tests/
+│       └── markdown.ts            # Markdown 渲染工具
+├── tests/
+├── package.json
+├── Dockerfile
+└── .env.example
 ```
 
-**Structure Decision**: 采用 Web application 结构（前后端分离），后端遵循 DDD 分层，前端遵循 Page→Application→Service 分层。目录按模块一的功能域组织，便于后续模块二/三扩展。
+**Structure Decision**: 采用 Web 应用结构（Option 2），前后端分离。后端遵循 DDD 分层（Router→Application→Domain→Infrastructure），前端遵循 Page→Application→Service 分层。模块间联动通过前端路由跳转实现（股票代码→模块二详情页），接口预留。
 
 ## Complexity Tracking
 
-无宪法违规，无需记录。
+> 无违规项需要论证。
