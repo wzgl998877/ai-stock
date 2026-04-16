@@ -16,9 +16,9 @@ const AnalysisStatusBar: React.FC = () => {
       <Alert
         type="info"
         showIcon
-        icon={<SyncOutlined spin />}
+        icon={<SyncOutlined spin style={{ color: "#07C160" }} />}
         message="分析进行中..."
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: 16, borderRadius: 12, background: "#f0fdf4", border: "1px solid #bbf7d0" }}
         banner
       />
     );
@@ -29,18 +29,21 @@ const AnalysisStatusBar: React.FC = () => {
       <Alert
         type="success"
         showIcon
-        icon={<CheckCircleOutlined />}
+        icon={<CheckCircleOutlined style={{ color: "#07C160" }} />}
         message={
           <Space>
             <span>分析完成</span>
             {title && (
-              <a onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+              <a
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                style={{ color: "#07C160" }}
+              >
                 点击查看
               </a>
             )}
           </Space>
         }
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: 16, borderRadius: 12, background: "#f0fdf4", border: "1px solid #bbf7d0" }}
         closable
       />
     );
@@ -52,7 +55,7 @@ const AnalysisStatusBar: React.FC = () => {
         type="error"
         message="分析失败"
         description="请检查网络连接后重试"
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: 16, borderRadius: 12 }}
         closable
       />
     );

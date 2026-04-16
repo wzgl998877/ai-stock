@@ -19,7 +19,7 @@ const EventTypeSelector: React.FC<Props> = ({ value, onChange, disabled }) => {
       optionType="button"
       buttonStyle="solid"
       disabled={disabled}
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: 16, gap: 6 }}
     >
       {EVENT_TYPES.map((t) => (
         <Radio.Button key={t.value} value={t.value}>

@@ -23,7 +23,6 @@ const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit }) => {
   const [input, setInput] = useState(draft);
   const [hint, setHint] = useState<string>("");
 
-  // 同步草稿恢复
   useEffect(() => {
     setInput(draft);
   }, [draft]);
@@ -31,7 +30,6 @@ const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit }) => {
   const handleChange = (val: string) => {
     setInput(val);
     saveDraft(val);
-    // 校验提示
     if (!val.trim()) {
       setHint("");
     } else if (val.trim().length < MIN_LENGTH) {
@@ -65,22 +63,44 @@ const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit }) => {
         disabled={disabled}
         maxLength={500}
         showCount
+        style={{
+          borderRadius: 10,
+          borderColor: "#eaecf0",
+          fontSize: 14,
+        }}
       />
       {hint && (
-        <Text type="warning" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
+        <Text
+          type="warning"
+          style={{ fontSize: 12, marginTop: 6, display: "block" }}
+        >
           {hint}
         </Text>
       )}
       <SimilarPrompt question={input} />
-      <Space style={{ marginTop: 12 }}>
+      <Space style={{ marginTop: 16 }}>
         <Button
           type="primary"
           icon={<SendOutlined />}
           onClick={handleSubmit}
           disabled={disabled || !input.trim()}
           loading={disabled}
+          style={{
+            height: 40,
+            paddingLeft: 24,
+            paddingRight: 24,
+            borderRadius: 10,
+            fontWeight: 500,
+            background: disabled || !input.trim()
+              ? undefined
+              : "linear-gradient(135deg, #07C160, #0cce6b)",
+            boxShadow:
+              disabled || !input.trim()
+                ? "none"
+                : "0 2px 8px rgba(7, 193, 96, 0.3)",
+          }}
         >
-          分析
+          开始分析
         </Button>
       </Space>
     </div>

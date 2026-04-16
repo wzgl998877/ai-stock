@@ -1,7 +1,7 @@
 /** SimilarPrompt — 相似问题提示卡（非阻断式） */
 
 import React, { useState, useEffect, useRef } from "react";
-import { Card, Typography, Space } from "antd";
+import { Typography, Space } from "antd";
 import { HistoryOutlined } from "@ant-design/icons";
 import { checkSimilarity } from "../../services/analysisService";
 import { SIMILARITY_DEBOUNCE_MS } from "../../domain/constants";
@@ -51,18 +51,26 @@ const SimilarPrompt: React.FC<Props> = ({ question }) => {
   if (!similar) return null;
 
   return (
-    <Card
-      size="small"
-      style={{ marginTop: 8 }}
-      styles={{ body: { padding: "8px 12px" } }}
+    <div
+      style={{
+        marginTop: 10,
+        padding: "10px 14px",
+        background: "#f0fdf4",
+        borderRadius: 10,
+        border: "1px solid #dcfce7",
+      }}
     >
       <Space>
-        <HistoryOutlined style={{ color: "#faad14" }} />
-        <Text type="secondary">
-          你之前分析过类似问题 → <Link strong>{similar.title}</Link>，要对比吗？
+        <HistoryOutlined style={{ color: "#07C160" }} />
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          你之前分析过类似问题 →{" "}
+          <Link strong style={{ color: "#07C160" }}>
+            {similar.title}
+          </Link>
+          ，要对比吗？
         </Text>
       </Space>
-    </Card>
+    </div>
   );
 };
 

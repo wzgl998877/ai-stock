@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { Spin, Alert, Typography } from "antd";
+import { LoadingOutlined } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
 import { useAnalysisStore } from "../../store/analysisStore";
 import { AnalysisStatus } from "../../domain/types";
@@ -12,17 +13,14 @@ const AnalysisResult: React.FC = () => {
   const { status, result, error } = useAnalysisStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 自动滚动到底部
   useEffect(() => {
     if (status === AnalysisStatus.STREAMING && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   }, [result, status]);
 
-  // 空状态
   if (status === AnalysisStatus.IDLE) return null;
 
-  // 错误状态
   if (status === AnalysisStatus.ERROR && error) {
     return (
       <Alert
@@ -30,42 +28,59 @@ const AnalysisResult: React.FC = () => {
         message="分析失败"
         description={error}
         showIcon
-        style={{ marginTop: 16 }}
+        style={{ marginTop: 20, borderRadius: 12 }}
       />
     );
   }
 
-  // 思考中（无内容时显示骨架屏）
   if (status === AnalysisStatus.STREAMING && !result) {
     return (
-      <div style={{ textAlign: "center", padding: "40px 0", marginTop: 16 }}>
-        <Spin size="large" />
-        <div style={{ marginTop: 12 }}>
-          <Text type="secondary">AI 正在思考中...</Text>
+      <div
+        style={{
+          textAlign: "center",
+          padding: "48px 0",
+          marginTop: 20,
+          background: "#ffffff",
+          borderRadius: 16,
+          boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
+        }}
+      >
+        <Spin
+          size="large"
+          indicator={<LoadingOutlined style={{ color: "#07C160", fontSize: 32 }} spin />}
+        />
+        <div style={{ marginTop: 16 }}>
+          <Text style={{ color: "#667085", fontSize: 14 }}>
+            AI 正在思考中...
+          </Text>
         </div>
       </div>
     );
   }
 
-  // 有内容时渲染
   if (!result) return null;
 
   return (
     <div
       ref={containerRef}
       style={{
-        marginTop: 16,
-        padding: 16,
-        border: "1px solid #f0f0f0",
-        borderRadius: 8,
-        maxHeight: 600,
+        marginTop: 20,
+        padding: 24,
+        background: "#ffffff",
+        borderRadius: 16,
+        maxHeight: 640,
         overflowY: "auto",
-        backgroundColor: "#fafafa",
+        boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04)",
       }}
     >
-      <ReactMarkdown>{result}</ReactMarkdown>
+      <div className="markdown-body">
+        <ReactMarkdown>{result}</ReactMarkdown>
+      </div>
       {status === AnalysisStatus.STREAMING && (
-        <Text type="secondary" style={{ fontSize: 12 }}>
+        <Text
+          className="streaming-pulse"
+          style={{ fontSize: 12, color: "#07C160", marginTop: 12, display: "block" }}
+        >
           分析进行中...
         </Text>
       )}
