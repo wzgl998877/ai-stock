@@ -55,6 +55,11 @@ pip install -r requirements.txt
 ```
 
 ### 第三步：安装前端依赖
+改到国内镜像
+```bash
+npm config set registry https://registry.npmmirror.com
+npm config get registry
+```
 
 ```bash
 cd frontend

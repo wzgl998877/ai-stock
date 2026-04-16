@@ -9,7 +9,8 @@
       "Bash(export:*)",
       "Bash(npx tsc:*)",
       "Bash(xxd:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebSearch"
     ]
   }
 }
