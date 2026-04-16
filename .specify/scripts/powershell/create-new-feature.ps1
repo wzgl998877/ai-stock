@@ -4,6 +4,8 @@
 param(
     [switch]$Json,
     [string]$ShortName,
+    # 自定义功能 id，分支名为 feature/<清理后的 id>（不再使用 001- 或时间戳前缀）
+    [string]$FeatureId,
     [Parameter()]
     [long]$Number = 0,
     [switch]$Timestamp,
@@ -20,6 +22,7 @@ if ($Help) {
     Write-Host "Options:"
     Write-Host "  -Json               Output in JSON format"
     Write-Host "  -ShortName <name>   Provide a custom short name (2-4 words) for the branch"
+    Write-Host "  -FeatureId <id>     Manual id under prefix feature/ (branch = feature/<id>, no auto number)"
     Write-Host "  -Number N           Specify branch number manually (overrides auto-detection)"
     Write-Host "  -Timestamp          Use timestamp prefix (YYYYMMDD-HHMMSS) instead of sequential numbering"
     Write-Host "  -Help               Show this help message"
@@ -28,6 +31,7 @@ if ($Help) {
     Write-Host "  ./create-new-feature.ps1 'Add user authentication system' -ShortName 'user-auth'"
     Write-Host "  ./create-new-feature.ps1 'Implement OAuth2 integration for API'"
     Write-Host "  ./create-new-feature.ps1 -Timestamp -ShortName 'user-auth' 'Add user authentication'"
+    Write-Host "  ./create-new-feature.ps1 -FeatureId 'ai-event-v1' -Json 'Event analysis'"
     exit 0
 }
 
@@ -188,49 +192,75 @@ if ($ShortName) {
     $branchSuffix = Get-BranchName -Description $featureDesc
 }
 
-# Warn if -Number and -Timestamp are both specified
-if ($Timestamp -and $Number -ne 0) {
-    Write-Warning "[specify] Warning: -Number is ignored when -Timestamp is used"
-    $Number = 0
-}
-
-# Determine branch prefix
-if ($Timestamp) {
-    $featureNum = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $branchName = "$featureNum-$branchSuffix"
+$useManualFeatureId = -not [string]::IsNullOrWhiteSpace($FeatureId)
+if ($useManualFeatureId) {
+    $cleanFeatureId = ConvertTo-CleanBranchName -Name $FeatureId.Trim()
+    if ([string]::IsNullOrWhiteSpace($cleanFeatureId)) {
+        Write-Error "Error: -FeatureId is empty or invalid after sanitization"
+        exit 1
+    }
+    if ($Timestamp) {
+        Write-Warning "[specify] Warning: -Timestamp is ignored when -FeatureId is used"
+    }
+    if ($Number -ne 0) {
+        Write-Warning "[specify] Warning: -Number is ignored when -FeatureId is used"
+    }
+    $featureNum = $cleanFeatureId
+    $branchName = "feature/$cleanFeatureId"
 } else {
-    # Determine branch number
-    if ($Number -eq 0) {
-        if ($hasGit) {
-            # Check existing branches on remotes
-            $Number = Get-NextBranchNumber -SpecsDir $specsDir
-        } else {
-            # Fall back to local directory check
-            $Number = (Get-HighestNumberFromSpecs -SpecsDir $specsDir) + 1
-        }
+    # Warn if -Number and -Timestamp are both specified
+    if ($Timestamp -and $Number -ne 0) {
+        Write-Warning "[specify] Warning: -Number is ignored when -Timestamp is used"
+        $Number = 0
     }
 
-    $featureNum = ('{0:000}' -f $Number)
-    $branchName = "$featureNum-$branchSuffix"
+    # Determine branch prefix
+    if ($Timestamp) {
+        $featureNum = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $branchName = "$featureNum-$branchSuffix"
+    } else {
+        # Determine branch number
+        if ($Number -eq 0) {
+            if ($hasGit) {
+                # Check existing branches on remotes
+                $Number = Get-NextBranchNumber -SpecsDir $specsDir
+            } else {
+                # Fall back to local directory check
+                $Number = (Get-HighestNumberFromSpecs -SpecsDir $specsDir) + 1
+            }
+        }
+
+        $featureNum = ('{0:000}' -f $Number)
+        $branchName = "$featureNum-$branchSuffix"
+    }
 }
 
 # GitHub enforces a 244-byte limit on branch names
 # Validate and truncate if necessary
 $maxBranchLength = 244
 if ($branchName.Length -gt $maxBranchLength) {
-    # Calculate how much we need to trim from suffix
-    # Account for prefix length: timestamp (15) + hyphen (1) = 16, or sequential (3) + hyphen (1) = 4
-    $prefixLength = $featureNum.Length + 1
-    $maxSuffixLength = $maxBranchLength - $prefixLength
-    
-    # Truncate suffix
-    $truncatedSuffix = $branchSuffix.Substring(0, [Math]::Min($branchSuffix.Length, $maxSuffixLength))
-    # Remove trailing hyphen if truncation created one
-    $truncatedSuffix = $truncatedSuffix -replace '-$', ''
-    
     $originalBranchName = $branchName
-    $branchName = "$featureNum-$truncatedSuffix"
-    
+    if ($useManualFeatureId) {
+        $prefixLiteral = 'feature/'
+        $maxSuffixLength = $maxBranchLength - $prefixLiteral.Length
+        $truncatedSuffix = $cleanFeatureId.Substring(0, [Math]::Min($cleanFeatureId.Length, $maxSuffixLength))
+        $truncatedSuffix = $truncatedSuffix -replace '-$', ''
+        $branchName = "$prefixLiteral$truncatedSuffix"
+        $featureNum = $truncatedSuffix
+    } else {
+        # Calculate how much we need to trim from suffix
+        # Account for prefix length: timestamp (15) + hyphen (1) = 16, or sequential (3) + hyphen (1) = 4
+        $prefixLength = $featureNum.Length + 1
+        $maxSuffixLength = $maxBranchLength - $prefixLength
+
+        # Truncate suffix
+        $truncatedSuffix = $branchSuffix.Substring(0, [Math]::Min($branchSuffix.Length, $maxSuffixLength))
+        # Remove trailing hyphen if truncation created one
+        $truncatedSuffix = $truncatedSuffix -replace '-$', ''
+
+        $branchName = "$featureNum-$truncatedSuffix"
+    }
+
     Write-Warning "[specify] Branch name exceeded GitHub's 244-byte limit"
     Write-Warning "[specify] Original: $originalBranchName ($($originalBranchName.Length) bytes)"
     Write-Warning "[specify] Truncated to: $branchName ($($branchName.Length) bytes)"
@@ -251,7 +281,9 @@ if ($hasGit) {
         # Check if branch already exists
         $existingBranch = git branch --list $branchName 2>$null
         if ($existingBranch) {
-            if ($Timestamp) {
+            if ($useManualFeatureId) {
+                Write-Error "Error: Branch '$branchName' already exists. Use a different -FeatureId."
+            } elseif ($Timestamp) {
                 Write-Error "Error: Branch '$branchName' already exists. Rerun to get a new timestamp or use a different -ShortName."
             } else {
                 Write-Error "Error: Branch '$branchName' already exists. Please use a different feature name or specify a different number with -Number."

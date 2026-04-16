@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx specify:*)",
-      "Bash(specify init:*)"
+      "Bash(specify init:*)",
+      "Bash(powershell:*)"
     ]
   }
 }

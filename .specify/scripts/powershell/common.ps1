@@ -95,6 +95,18 @@ function Get-CurrentBranch {
             }
         }
 
+        # specs/feature/<id>/spec.md layout
+        $featureSpecsRoot = Join-Path $specsDir 'feature'
+        if (-not $latestFeature -and (Test-Path -LiteralPath $featureSpecsRoot)) {
+            $latestLw = [DateTime]::MinValue
+            Get-ChildItem -LiteralPath $featureSpecsRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.LastWriteTimeUtc -gt $latestLw) {
+                    $latestLw = $_.LastWriteTimeUtc
+                    $latestFeature = "feature/$($_.Name)"
+                }
+            }
+        }
+
         if ($latestFeature) {
             return $latestFeature
         }
@@ -139,9 +151,9 @@ function Test-FeatureBranch {
         return $true
     }
     
-    if ($Branch -notmatch '^[0-9]{3}-' -and $Branch -notmatch '^\d{8}-\d{6}-') {
+    if ($Branch -notmatch '^[0-9]{3}-' -and $Branch -notmatch '^\d{8}-\d{6}-' -and $Branch -notmatch '^feature/[a-z0-9]+(-[a-z0-9]+)*$') {
         Write-Output "ERROR: Not on a feature branch. Current branch: $Branch"
-        Write-Output "Feature branches should be named like: 001-feature-name or 20260319-143022-feature-name"
+        Write-Output "Feature branches should be named like: 001-feature-name, 20260319-143022-feature-name, or feature/your-id"
         return $false
     }
     return $true

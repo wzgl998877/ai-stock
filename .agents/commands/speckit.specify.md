@@ -80,6 +80,8 @@ Given that feature description, do this:
    - Bash (timestamp): `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS" --json --timestamp --short-name "user-auth" "Add user authentication"`
    - PowerShell example: `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS" -Json -ShortName "user-auth" "Add user authentication"`
    - PowerShell (timestamp): `.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS" -Json -Timestamp -ShortName "user-auth" "Add user authentication"`
+   - **Manual `feature/<id>`**（id 由你指定，脚本会规范为小写+连字符）：PowerShell 示例：`.specify/scripts/powershell/create-new-feature.ps1 "$ARGUMENTS" -Json -FeatureId "my-custom-id" "Feature description"`  
+     规则写在脚本 `.specify/scripts/powershell/create-new-feature.ps1`（参数 `-FeatureId`）；校验分支名在 `.specify/scripts/powershell/common.ps1` 的 `Test-FeatureBranch`。
 
    **IMPORTANT**:
    - Do NOT pass `--number` — the script determines the correct next number automatically
