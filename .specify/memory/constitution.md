@@ -1,31 +1,30 @@
 <!--
   Sync Impact Report
   ==================
-  Version change: TEMPLATE (0.0.0) → 1.0.0
-  Bump rationale: MINOR — initial population from project constitution.md;
-    set to 1.0.0 to match the ratified source document.
+  Version change: 1.0.0 → 1.1.0
+  Bump rationale: MINOR — sync with latest root constitution.md:
+    - add UI 设计治理条款（Design System Governance）
+    - add explicit DESIGN.md path references
+    - normalize links for .specify/memory location
 
   Modified principles:
-    - (new) I. 三模块协同优先 (Three-Modules Synergy)
-    - (new) II. 个人投研工具边界 (Research-Only)
-    - (new) III. 简洁实用 (KISS & YAGNI)
+    - (refined) 技术约束中的路径引用（docs/rules）
+    - (new) UI 设计原则（Design System Governance）
+    - (new) 设计系统边界
 
   Added sections:
-    - Core Principles (3 principles)
-    - 技术约束 (Technical Constraints)
-    - 治理 (Governance)
+    - UI 设计原则（Design System Governance）
+    - 设计系统边界
 
-  Removed sections: N/A (first population)
+  Removed sections: none
 
   Templates requiring updates:
     - .specify/templates/plan-template.md  ✅ no changes needed
-          (Constitution Check section already generic)
     - .specify/templates/spec-template.md  ✅ no changes needed
-          (requirements format is generic)
     - .specify/templates/tasks-template.md ✅ no changes needed
-          (task structure is generic)
 
-  Follow-up TODOs: none
+  Follow-up TODOs:
+    - Keep this mirror file in sync when root constitution changes.
 -->
 
 # AI Stock 项目宪章 (Constitution)
@@ -41,7 +40,7 @@
 产品由 **模块一（AI 事件分析 & 知识库）**、**模块二（行情数据展示）**、**模块三（策略监控）** 构成，功能与数据 MUST 能互相联动。
 
 - 新增能力 MUST 标明归属模块，并说明与其它模块的**跳转或数据关联**（例如：分析中的股票代码 → K 线；自选股 → 监控信号；信号/个股 → 历史分析回溯）
-- MVP 范围以 `docs/product-overview.md` 中的**核心跳转路径**与**阶段交付**为准，MUST NOT 做该产品边界中明确排除的能力（自动交易、Level 2、多市场等）
+- MVP 范围以 `../../docs/product-overview.md` 中的**核心跳转路径**与**阶段交付**为准，MUST NOT 做该产品边界中明确排除的能力（自动交易、Level 2、多市场等）
 
 **理由**：三模块闭环是产品核心价值，任何孤岛式功能都会削弱用户投研体验。
 
@@ -82,7 +81,7 @@
 - **MUST NOT 跨层调用**：后端 MUST 遵守 Router → Application → Domain → Infrastructure；Router **MUST NOT** 直接访问数据库或调用大模型；Domain **MUST NOT** 依赖 FastAPI、**MUST NOT** 直接访问数据库与 AI
 - **MUST NOT 前端绕开 Service**：页面与组件 **MUST NOT** 直接使用 `fetch`；所有 HTTP 调用 MUST 集中在 `services/`
 - **MUST NOT 泄露密钥**：API Key、数据库密码等 MUST 仅来自环境变量（如 `.env`），**MUST NOT** 写入源码或提交仓库
-- **流式输出 MUST 成对实现**：后端 SSE 格式 MUST 符合约定（`data: ...\n\n`）；前端 MUST 具备实时输出、滚动、停止与 loading（见 `rules/`）
+- **流式输出 MUST 成对实现**：后端 SSE 格式 MUST 符合约定（`data: ...\n\n`）；前端 MUST 具备实时输出、滚动、停止与 loading（见 `../../rules/`）
 
 ### 数据约束
 
@@ -90,15 +89,30 @@
 - 所有数据库操作 MUST 在 **Repository** 内完成；JSON 可用于扩展字段，核心字段 MUST 可查询、可迁移
 - Prompt 与提示词 MUST **模板化管理**，MUST NOT 多处硬编码副本
 
+### UI 设计原则（Design System Governance）
+
+前端界面 MUST 保持统一的设计语言与信息结构，作为产品可用性的核心保障。
+
+- 所有页面设计 MUST 遵循项目统一设计规范（见 [`../../DESIGN.md`](../../DESIGN.md)）
+- UI MUST 具备清晰的信息层级与结构化布局（卡片化、分区化）
+- 页面设计 SHOULD 优先服务“数据理解效率”，而非视觉装饰
+- MUST NOT 无结构堆叠元素或随意设计页面布局
+
+### 设计系统边界
+
+- 宪章仅定义 UI 设计原则，不包含具体视觉细节
+- 具体颜色、间距、组件规范由 [`../../DESIGN.md`](../../DESIGN.md) 统一维护
+- UI 设计规范的调整 SHOULD 更新 [`../../DESIGN.md`](../../DESIGN.md)，而非直接修改宪章原则
+
 ---
 
 ## Governance
 
 ### 变更流程
 
-1. **理解上下文**：修改前 MUST 阅读相关 PRD（`docs/ai-analysis-prd.md`、`docs/market-data-prd.md`、`docs/strategy-monitor-prd.md`）及对应代码
-2. **对齐分层**：前后端分别 MUST 遵守 `rules/backend.md`、`rules/frontend.md`
-3. **本地验证**：MUST 按仓库约定执行构建、类型检查与关键路径验证（前后端脚本以项目落地后的 `README.md` 为准）
+1. **理解上下文**：修改前 MUST 阅读相关 PRD（`../../docs/ai-analysis-prd.md`、`../../docs/market-data-prd.md`、`../../docs/strategy-monitor-prd.md`）及对应代码
+2. **对齐分层**：前后端分别 MUST 遵守 `../../rules/backend.md`、`../../rules/frontend.md`
+3. **本地验证**：MUST 按仓库约定执行构建、类型检查与关键路径验证（前后端脚本以项目落地后的 `../../README.md` 为准）
 
 ### Code Review 清单
 
@@ -112,8 +126,8 @@
 
 - 本宪章优先级高于个人编码习惯，所有代码变更 MUST 符合宪章规定
 - 宪章修改 MUST 记录修改原因和影响范围
-- **详细执行规则见**：[rules/](./rules/) 目录
+- **详细执行规则见**：[`../../rules/`](../../rules/) 目录
 
 ---
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-16 | **Last Amended**: 2026-04-16
+**Version**: 1.1.0 | **Ratified**: 2026-04-16 | **Last Amended**: 2026-04-16

@@ -23,6 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - [模块一：AI 分析](./docs/ai-analysis-prd.md)
    - [模块二：行情数据](./docs/market-data-prd.md)
    - [模块三：策略监控](./docs/strategy-monitor-prd.md)
+5. **[UI 设计规范](./DESIGN.md)** — 理解"页面应该长什么样"
 
 ## ⚖️ 规则冲突优先级
 
@@ -48,9 +49,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **AI 与流式**：大模型须封装调用；分析结果须支持流式输出（SSE + 前端 EventSource 等）
 - **产品定位**：个人投研辅助工具，**非**自动交易系统；界面与文案须体现「不构成投资建议」
 
+## 🎨 UI 设计约束（强制）
+
+前端页面设计必须遵循 [`DESIGN.md`](./DESIGN.md)（设计系统）。
+
+- 页面必须保持结构化布局（分区 / 卡片化）
+- 禁止无结构堆叠元素（如随意堆 div）
+- 必须具备基础交互状态（loading / empty / error）
+
+不符合 [`DESIGN.md`](./DESIGN.md) 的实现视为错误，必须重新生成
+
 ## 📦 构建与运行
 
-> 以下命令在前后端目录落地后使用；若当前仓库尚未初始化工程，以实现后的 `README.md` 为准。
 
 ```bash
 # 后端（示例：在项目根目录或 backend 目录下）
