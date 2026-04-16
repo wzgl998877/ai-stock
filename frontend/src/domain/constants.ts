@@ -6,7 +6,6 @@ export const EVENT_TYPES: { value: EventType; label: string }[] = [
   { value: EventType.POLICY, label: "政策法规" },
   { value: EventType.EARNINGS, label: "财报季报" },
   { value: EventType.SUPPLY_CHAIN, label: "产业链分析" },
-  { value: EventType.OTHER, label: "其他" },
 ];
 
 // === 申万一级行业（31个） ===

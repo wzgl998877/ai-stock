@@ -1,27 +1,27 @@
-/** AnalysisInput — 输入框 + 草稿自动保存 + 字数校验 */
+/** AnalysisInput — 对话式输入框（Stripe Design） */
 
 import React, { useState, useEffect } from "react";
-import { Input, Button, Typography, Space } from "antd";
-import { SendOutlined } from "@ant-design/icons";
+import { Input, Typography } from "antd";
+import { ArrowUpOutlined } from "@ant-design/icons";
 import { useDraft } from "../../hooks/useDraft";
 import { EventType } from "../../domain/types";
 import SimilarPrompt from "./SimilarPrompt";
 
-const { TextArea } = Input;
 const { Text } = Typography;
 
 const MIN_LENGTH = 10;
 
 interface Props {
-  eventType: EventType;
+  eventType: EventType | null;
   disabled?: boolean;
   onSubmit: (question: string) => void;
 }
 
 const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit }) => {
-  const { draft, saveDraft, clearDraft } = useDraft(eventType);
+  const { draft, saveDraft, clearDraft } = useDraft(eventType ?? "default");
   const [input, setInput] = useState(draft);
   const [hint, setHint] = useState<string>("");
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     setInput(draft);
@@ -53,56 +53,96 @@ const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit }) => {
     setInput("");
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const canSend = input.trim().length >= MIN_LENGTH;
+
   return (
     <div>
-      <TextArea
-        value={input}
-        onChange={(e) => handleChange(e.target.value)}
-        placeholder="描述你想分析的市场事件，例如：美国对伊朗实施新一轮制裁，对A股有什么影响？"
-        autoSize={{ minRows: 3, maxRows: 6 }}
-        disabled={disabled}
-        maxLength={500}
-        showCount
+      {/* 输入框容器 */}
+      <div
         style={{
-          borderRadius: 10,
-          borderColor: "#eaecf0",
-          fontSize: 14,
+          display: "flex",
+          flexDirection: "column",
+          background: "#ffffff",
+          border: `1px solid ${focused ? "#c4b5fd" : "#e5edf5"}`,
+          borderRadius: 16,
+          padding: 10,
+          width: 780,
+          minHeight: 80,
+          maxHeight: 280,
+          boxShadow: "rgba(23,23,23,0.06) 0px 2px 8px",
+          transition: "border-color 0.15s ease",
+          boxSizing: "border-box",
         }}
-      />
+      >
+        <Input.TextArea
+          value={input}
+          onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="描述你想分析的市场事件..."
+          autoSize
+          disabled={disabled}
+          maxLength={500}
+          bordered={false}
+          style={{
+            fontSize: 15,
+            fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+            fontFeatureSettings: "'ss01' on",
+            resize: "none",
+            color: "#061b31",
+            lineHeight: 1.6,
+            padding: 0,
+            flex: 1,
+          }}
+        />
+        {/* 底部操作栏：发送按钮右对齐 */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+          <button
+            onClick={handleSubmit}
+            disabled={disabled || !canSend}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              border: "none",
+              background: canSend && !disabled ? "#533afd" : "#e5edf5",
+              color: canSend && !disabled ? "#ffffff" : "#b0b8c4",
+              cursor: canSend && !disabled ? "pointer" : "default",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.2s",
+              fontSize: 16,
+            }}
+          >
+            <ArrowUpOutlined />
+          </button>
+        </div>
+      </div>
+
       {hint && (
         <Text
-          type="warning"
-          style={{ fontSize: 12, marginTop: 6, display: "block" }}
+          style={{
+            fontSize: 12,
+            color: "#ea2261",
+            marginTop: 8,
+            display: "block",
+            paddingLeft: 20,
+            fontFeatureSettings: "'ss01' on",
+          }}
         >
           {hint}
         </Text>
       )}
       <SimilarPrompt question={input} />
-      <Space style={{ marginTop: 16 }}>
-        <Button
-          type="primary"
-          icon={<SendOutlined />}
-          onClick={handleSubmit}
-          disabled={disabled || !input.trim()}
-          loading={disabled}
-          style={{
-            height: 40,
-            paddingLeft: 24,
-            paddingRight: 24,
-            borderRadius: 10,
-            fontWeight: 500,
-            background: disabled || !input.trim()
-              ? undefined
-              : "linear-gradient(135deg, #07C160, #0cce6b)",
-            boxShadow:
-              disabled || !input.trim()
-                ? "none"
-                : "0 2px 8px rgba(7, 193, 96, 0.3)",
-          }}
-        >
-          开始分析
-        </Button>
-      </Space>
     </div>
   );
 };

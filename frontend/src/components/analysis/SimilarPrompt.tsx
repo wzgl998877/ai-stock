@@ -1,4 +1,4 @@
-/** SimilarPrompt — 相似问题提示卡（非阻断式） */
+/** SimilarPrompt — 相似问题提示卡（Stripe Design） */
 
 import React, { useState, useEffect, useRef } from "react";
 import { Typography, Space } from "antd";
@@ -53,18 +53,24 @@ const SimilarPrompt: React.FC<Props> = ({ question }) => {
   return (
     <div
       style={{
-        marginTop: 10,
-        padding: "10px 14px",
-        background: "#f0fdf4",
-        borderRadius: 10,
-        border: "1px solid #dcfce7",
+        marginTop: 8,
+        padding: "8px 12px",
+        background: "rgba(83,58,253,0.05)",
+        borderRadius: 4,
+        border: "1px solid #e5edf5",
       }}
     >
       <Space>
-        <HistoryOutlined style={{ color: "#07C160" }} />
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <HistoryOutlined style={{ color: "#533afd" }} />
+        <Text
+          style={{
+            fontSize: 13,
+            color: "#64748d",
+            fontFeatureSettings: "'ss01' on",
+          }}
+        >
           你之前分析过类似问题 →{" "}
-          <Link strong style={{ color: "#07C160" }}>
+          <Link strong style={{ color: "#533afd" }}>
             {similar.title}
           </Link>
           ，要对比吗？

@@ -1,4 +1,4 @@
-/** AppLayout — 左右布局框架（侧边栏 + 主区域） */
+/** AppLayout — 左右布局框架（侧边栏 + 主区域） — Stripe Design */
 
 import React from "react";
 import { Layout, Menu, Typography } from "antd";
@@ -43,7 +43,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         width={220}
         theme="light"
         style={{
-          borderRight: "1px solid #f2f4f7",
+          borderRight: "1px solid #e5edf5",
           display: "flex",
           flexDirection: "column",
           position: "fixed",
@@ -58,7 +58,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div
           style={{
             padding: "24px 20px 20px",
-            borderBottom: "1px solid #f2f4f7",
+            borderBottom: "1px solid #e5edf5",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -67,13 +67,14 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               style={{
                 width: 36,
                 height: 36,
-                borderRadius: 10,
+                borderRadius: 6,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 color: "#fff",
                 fontSize: 18,
-                fontWeight: 700,
+                fontWeight: 300,
+                fontFeatureSettings: "'ss01' on",
                 flexShrink: 0,
               }}
             >
@@ -81,13 +82,18 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
             <div>
               <Text
-                strong
-                style={{ fontSize: 15, color: "#101828", display: "block" }}
+                style={{
+                  fontSize: 15,
+                  color: "#061b31",
+                  display: "block",
+                  fontWeight: 400,
+                  fontFeatureSettings: "'ss01' on",
+                }}
               >
                 AI 投研助手
               </Text>
               <Text
-                style={{ fontSize: 11, color: "#98a2b3", lineHeight: 1.2 }}
+                style={{ fontSize: 11, color: "#64748d", lineHeight: 1.2 }}
               >
                 Smart Investment Research
               </Text>
@@ -113,7 +119,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           style={{
             marginTop: "auto",
             padding: "16px 20px",
-            borderTop: "1px solid #f2f4f7",
+            borderTop: "1px solid #e5edf5",
           }}
         >
           <Paragraph
@@ -135,7 +141,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <Layout
         style={{
           marginLeft: 220,
-          background: "#f5f7fa",
+          background: "#ffffff",
         }}
       >
         <Content

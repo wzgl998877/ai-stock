@@ -1,4 +1,29 @@
-/* === 全局样式 — AI 投研助手 === */
+/* === 全局样式 — AI 投研助手 (Stripe Design System) === */
+
+/* === Design Tokens === */
+:root {
+  --color-primary: #533afd;
+  --color-primary-hover: #4434d4;
+  --color-primary-light: #b9b9f9;
+  --color-primary-mid: #665efd;
+  --color-primary-bg: rgba(83, 58, 253, 0.05);
+  --color-heading: #061b31;
+  --color-body: #64748d;
+  --color-label: #273951;
+  --color-border: #e5edf5;
+  --color-success: #15be53;
+  --color-success-text: #108c3d;
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SourceCodePro', 'SFMono-Regular', Consolas, monospace;
+  --shadow-ambient: rgba(23, 23, 23, 0.06) 0px 3px 6px;
+  --shadow-standard: rgba(23, 23, 23, 0.08) 0px 15px 35px;
+  --shadow-elevated: rgba(50, 50, 93, 0.25) 0px 30px 45px -30px,
+    rgba(0, 0, 0, 0.1) 0px 18px 36px -18px;
+  --radius-tight: 4px;
+  --radius-standard: 5px;
+  --radius-comfortable: 6px;
+  --radius-large: 8px;
+}
 
 /* 基础重置 */
 *,
@@ -15,7 +40,10 @@ html {
 body {
   margin: 0;
   padding: 0;
-  background-color: #f5f7fa;
+  background-color: #ffffff;
+  font-family: var(--font-primary);
+  font-feature-settings: 'ss01' on;
+  color: var(--color-heading);
 }
 
 /* === 自定义滚动条 === */
@@ -39,10 +67,12 @@ body {
 
 /* === Markdown 渲染样式 === */
 .markdown-body {
-  color: #1d2939;
+  color: var(--color-heading);
   font-size: 14px;
   line-height: 1.75;
   word-wrap: break-word;
+  font-family: var(--font-primary);
+  font-feature-settings: 'ss01' on;
 }
 
 .markdown-body h1,
@@ -51,16 +81,16 @@ body {
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  color: #101828;
-  font-weight: 600;
+  color: var(--color-heading);
+  font-weight: 300;
   margin-top: 1.2em;
   margin-bottom: 0.6em;
   line-height: 1.4;
 }
 
-.markdown-body h1 { font-size: 22px; }
-.markdown-body h2 { font-size: 18px; }
-.markdown-body h3 { font-size: 16px; }
+.markdown-body h1 { font-size: 22px; letter-spacing: -0.44px; }
+.markdown-body h2 { font-size: 18px; letter-spacing: -0.36px; }
+.markdown-body h3 { font-size: 16px; letter-spacing: -0.16px; }
 
 .markdown-body p {
   margin-bottom: 12px;
@@ -77,41 +107,41 @@ body {
 }
 
 .markdown-body strong {
-  color: #07C160;
+  color: var(--color-primary);
   font-weight: 600;
 }
 
 .markdown-body a {
-  color: #07C160;
+  color: var(--color-primary);
   text-decoration: none;
   transition: color 0.2s;
 }
 
 .markdown-body a:hover {
-  color: #06a850;
+  color: var(--color-primary-hover);
   text-decoration: underline;
 }
 
 .markdown-body blockquote {
   margin: 12px 0;
   padding: 8px 16px;
-  border-left: 3px solid #07C160;
-  background-color: #f0fdf4;
-  border-radius: 0 8px 8px 0;
-  color: #475467;
+  border-left: 3px solid var(--color-primary);
+  background-color: var(--color-primary-bg);
+  border-radius: 0 var(--radius-large) var(--radius-large) 0;
+  color: var(--color-body);
 }
 
 .markdown-body code {
   padding: 2px 6px;
   background-color: #f2f4f7;
-  border-radius: 4px;
+  border-radius: var(--radius-tight);
   font-size: 13px;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .markdown-body pre {
   background-color: #1d2939;
-  border-radius: 10px;
+  border-radius: var(--radius-large);
   padding: 16px;
   overflow-x: auto;
   margin: 12px 0;
@@ -133,7 +163,7 @@ body {
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid #eaecf0;
+  border: 1px solid var(--color-border);
   padding: 8px 12px;
   text-align: left;
 }
@@ -141,7 +171,7 @@ body {
 .markdown-body th {
   background-color: #f9fafb;
   font-weight: 600;
-  color: #344054;
+  color: var(--color-label);
 }
 
 .markdown-body tr:hover td {
@@ -150,30 +180,30 @@ body {
 
 .markdown-body hr {
   border: none;
-  border-top: 1px solid #eaecf0;
+  border-top: 1px solid var(--color-border);
   margin: 20px 0;
 }
 
 /* === 品牌渐变 === */
 .brand-gradient {
-  background: linear-gradient(135deg, #07C160 0%, #0cce6b 50%, #2dd879 100%);
+  background: linear-gradient(135deg, #533afd 0%, #665efd 50%, #7b73ff 100%);
 }
 
 .brand-gradient-text {
-  background: linear-gradient(135deg, #07C160, #0cce6b);
+  background: linear-gradient(135deg, #533afd, #665efd);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* === 品牌绿色脉冲动画（流式输出时） === */
-@keyframes pulse-green {
+/* === 流式脉冲动画 === */
+@keyframes pulse-brand {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
 
 .streaming-pulse {
-  animation: pulse-green 1.5s ease-in-out infinite;
+  animation: pulse-brand 1.5s ease-in-out infinite;
 }
 
 /* === 打字光标动画 === */
@@ -184,7 +214,7 @@ body {
 
 .typing-cursor::after {
   content: '|';
-  color: #07C160;
+  color: var(--color-primary);
   font-weight: 300;
   animation: blink-cursor 0.8s step-end infinite;
   margin-left: 2px;
@@ -193,17 +223,17 @@ body {
 /* === 卡片悬停效果 === */
 .example-card {
   transition: all 0.25s ease;
-  border: 1px solid #eaecf0;
+  border: 1px solid var(--color-border);
 }
 
 .example-card:hover {
-  border-color: #07C160;
-  box-shadow: 0 4px 16px rgba(7, 193, 96, 0.12);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 16px rgba(83, 58, 253, 0.12);
   transform: translateY(-1px);
 }
 
 /* === 侧边栏导航项激活态 === */
 .sidebar-menu-item-active {
-  background: linear-gradient(90deg, #f0fdf4, #ffffff) !important;
-  border-right: 3px solid #07C160;
+  background: linear-gradient(90deg, var(--color-primary-bg), #ffffff) !important;
+  border-right: 3px solid var(--color-primary);
 }

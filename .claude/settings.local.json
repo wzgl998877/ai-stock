@@ -14,7 +14,8 @@
       "Bash(node:*)",
       "Bash(npx.cmd tsc:*)",
       "Bash(where:*)",
-      "Bash(D:/tool/node/npx.cmd tsc:*)"
+      "Bash(D:/tool/node/npx.cmd tsc:*)",
+      "Bash(test:*)"
     ]
   }
 }

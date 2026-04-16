@@ -13,39 +13,39 @@ const App: React.FC = () => (
     locale={zhCN}
     theme={{
       token: {
-        colorPrimary: "#07C160",
-        colorSuccess: "#07C160",
-        colorInfo: "#07C160",
-        borderRadius: 12,
+        colorPrimary: "#533afd",
+        colorSuccess: "#15be53",
+        colorInfo: "#533afd",
+        borderRadius: 6,
         colorBgContainer: "#ffffff",
-        colorBgLayout: "#f5f7fa",
-        fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif`,
+        colorBgLayout: "#ffffff",
+        fontFamily: `'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
         fontSize: 14,
-        colorText: "#1d2939",
-        colorTextSecondary: "#667085",
-        colorBorder: "#eaecf0",
-        colorBorderSecondary: "#f2f4f7",
+        colorText: "#061b31",
+        colorTextSecondary: "#64748d",
+        colorBorder: "#e5edf5",
+        colorBorderSecondary: "#e5edf5",
       },
       components: {
         Button: {
-          borderRadius: 8,
+          borderRadius: 4,
           controlHeight: 40,
-          fontWeight: 500,
+          fontWeight: 400,
         },
         Card: {
-          borderRadiusLG: 16,
+          borderRadiusLG: 6,
         },
         Radio: {
-          borderRadius: 8,
+          borderRadius: 4,
         },
         Input: {
-          borderRadius: 10,
+          borderRadius: 4,
         },
         Alert: {
-          borderRadius: 10,
+          borderRadius: 6,
         },
         Menu: {
-          itemBorderRadius: 8,
+          itemBorderRadius: 6,
           itemMarginBlock: 4,
         },
       },

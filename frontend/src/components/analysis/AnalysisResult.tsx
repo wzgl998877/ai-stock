@@ -1,15 +1,20 @@
-/** AnalysisResult — Markdown 实时渲染 + 自动滚动 + 骨架屏 */
+/** AnalysisResult — 消息气泡式结果展示（Stripe Design） */
 
 import React, { useEffect, useRef } from "react";
-import { Spin, Alert, Typography } from "antd";
-import { LoadingOutlined } from "@ant-design/icons";
+import { Spin, Typography, Button } from "antd";
+import { LoadingOutlined, StopOutlined } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
 import { useAnalysisStore } from "../../store/analysisStore";
 import { AnalysisStatus } from "../../domain/types";
 
 const { Text } = Typography;
 
-const AnalysisResult: React.FC = () => {
+interface Props {
+  isStreaming?: boolean;
+  onStop: () => void;
+}
+
+const AnalysisResult: React.FC<Props> = ({ onStop }) => {
   const { status, result, error } = useAnalysisStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -23,13 +28,19 @@ const AnalysisResult: React.FC = () => {
 
   if (status === AnalysisStatus.ERROR && error) {
     return (
-      <Alert
-        type="error"
-        message="分析失败"
-        description={error}
-        showIcon
-        style={{ marginTop: 20, borderRadius: 12 }}
-      />
+      <div
+        style={{
+          padding: "16px 20px",
+          background: "rgba(234,34,97,0.05)",
+          borderRadius: 6,
+          border: "1px solid rgba(234,34,97,0.2)",
+          color: "#ea2261",
+          fontSize: 14,
+        }}
+      >
+        <Text style={{ color: "#ea2261", fontWeight: 400 }}>分析失败：</Text>
+        <Text style={{ color: "#64748d" }}>{error}</Text>
+      </div>
     );
   }
 
@@ -39,18 +50,20 @@ const AnalysisResult: React.FC = () => {
         style={{
           textAlign: "center",
           padding: "48px 0",
-          marginTop: 20,
-          background: "#ffffff",
-          borderRadius: 16,
-          boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06)",
         }}
       >
         <Spin
           size="large"
-          indicator={<LoadingOutlined style={{ color: "#07C160", fontSize: 32 }} spin />}
+          indicator={<LoadingOutlined style={{ color: "#533afd", fontSize: 32 }} spin />}
         />
         <div style={{ marginTop: 16 }}>
-          <Text style={{ color: "#667085", fontSize: 14 }}>
+          <Text
+            style={{
+              color: "#64748d",
+              fontSize: 14,
+              fontFeatureSettings: "'ss01' on",
+            }}
+          >
             AI 正在思考中...
           </Text>
         </div>
@@ -61,29 +74,57 @@ const AnalysisResult: React.FC = () => {
   if (!result) return null;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        marginTop: 20,
-        padding: 24,
-        background: "#ffffff",
-        borderRadius: 16,
-        maxHeight: 640,
-        overflowY: "auto",
-        boxShadow: "0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04)",
-      }}
-    >
-      <div className="markdown-body">
-        <ReactMarkdown>{result}</ReactMarkdown>
+    <div ref={containerRef}>
+      {/* AI 回复区域 */}
+      <div
+        style={{
+          background: "#ffffff",
+          borderRadius: 8,
+          border: "1px solid #e5edf5",
+          padding: 24,
+          boxShadow: "rgba(23,23,23,0.06) 0px 3px 6px",
+        }}
+      >
+        <div className="markdown-body">
+          <ReactMarkdown>{result}</ReactMarkdown>
+        </div>
+        {status === AnalysisStatus.STREAMING && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: 16,
+              paddingTop: 12,
+              borderTop: "1px solid #e5edf5",
+            }}
+          >
+            <Text
+              className="streaming-pulse"
+              style={{
+                fontSize: 12,
+                color: "#533afd",
+                fontFeatureSettings: "'ss01' on",
+              }}
+            >
+              分析进行中...
+            </Text>
+            <Button
+              size="small"
+              icon={<StopOutlined />}
+              onClick={onStop}
+              style={{
+                color: "#64748d",
+                borderColor: "#e5edf5",
+                borderRadius: 4,
+                fontSize: 12,
+              }}
+            >
+              停止
+            </Button>
+          </div>
+        )}
       </div>
-      {status === AnalysisStatus.STREAMING && (
-        <Text
-          className="streaming-pulse"
-          style={{ fontSize: 12, color: "#07C160", marginTop: 12, display: "block" }}
-        >
-          分析进行中...
-        </Text>
-      )}
     </div>
   );
 };
