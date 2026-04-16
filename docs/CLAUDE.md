@@ -8,16 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📖 编码前必读（重要！）
 
-执行任何 Java 代码修改前，必须按顺序阅读以下文档：
+执行任何代码修改前，必须按顺序阅读以下文档：
 
-1. **[Constitution（系统宪法）](./constitution.md)** — 理解"**能不能做**"
+1. **[Constitution（系统宪法）](../constitution.md)** — 理解"**能不能做**"
    （核心原则、技术约束、架构红线）
 
-2. **[Rules（执行规则）](./rules/)** — 理解"**怎么做才对**"
-   - [分层与架构](./rules/layer-conventions.md)
-   - [数据库操作](./rules/database-rules.md)
-   - [命名与注释](./rules/naming-and-comments.md)
-   - [异常与日志](./rules/exception-logging.md)
+2. **[Rules（执行规则）](../rules/)** — 理解"**怎么做才对**"
+   - [后端分层与架构](../rules/backend.md)
+   - [前端分层与交互](../rules/frontend.md)
+
+3. **[产品概览](./product-overview.md)** — 理解三模块、用户路径与 MVP 边界
+
+4. **各模块 PRD**（按需深入）
+   - [模块一：AI 分析](./ai-analysis-prd.md)
+   - [模块二：行情数据](./market-data-prd.md)
+   - [模块三：策略监控](./strategy-monitor-prd.md)
 
 ## ⚖️ 规则冲突优先级
 
@@ -29,34 +34,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🛠 技术栈
 
-- **Java 8** + **Spring Boot 2.0.4**
-- **Spring Data JPA** + Hibernate（Oracle 数据库）
-- **Thrift RPC** — 通过内部 `commons-rpc` 库（ZooKeeper 服务发现）
-- **Apache POI**（Excel）、**JSch**（SFTP）、**Lombok**
+- **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 5 + Zustand
+- **后端**：Python 3 + FastAPI
+- **数据**：AKShare（A 股数据）、MySQL、Redis
+- **大模型**：统一抽象层，支持 OpenAI / DeepSeek 等兼容接口
+- **任务与部署**：APScheduler、Docker Compose（以仓库实际配置为准）
 
 ## 🏗 架构要点
 
-基础包路径：`com.jlpay.taifung.merch_settle`
-
-- **双访问模式**：每个业务操作同时暴露 HTTP REST（`controller/`）和 Thrift RPC（`rpc/`）
-- **三步清算流水线**：生成清算记录 → 审核/审批 → 生成清算文件并上传SFTP
-- **核心主键**：`settleDate + batchNo + busiType`
-- **原生 SQL 聚合**：Repository 大量使用 `@Query(nativeQuery=true)` 的 INSERT...SELECT 聚合查询
-- **借贷记处理**：SQL 中对 `debit_credit_flag = 'D'` 的记录金额取反
+- **三模块闭环**：模块一（AI 与知识库）→ 模块二（行情与个股）← 模块三（缠论信号与监控），跳转与数据须可联动
+- **后端分层**：Router → Application → Domain → Infrastructure（业务在 Domain，流程在 Application，技术在 Infrastructure）
+- **前端分层**：Page → Application → Service；**所有 API** 经 `services/`，页面不直连网络
+- **AI 与流式**：大模型须封装调用；分析结果须支持流式输出（SSE + 前端 EventSource 等）
+- **产品定位**：个人投研辅助工具，**非**自动交易系统；界面与文案须体现「不构成投资建议」
 
 ## 📦 构建与运行
 
+> 以下命令在前后端目录落地后使用；若当前仓库尚未初始化工程，以实现后的 `README.md` 为准。
+
 ```bash
-# 构建
-mvn clean package
+# 后端（示例：在项目根目录或 backend 目录下）
+# pip install -r requirements.txt
+# uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 本地运行（dev环境，端口8000）
-mvn spring-boot:run
+# 前端（示例：在 frontend 目录下）
+# npm install
+# npm run dev
+```
 
-# 指定环境运行
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```bash
+# 容器编排（若已提供）
+# docker compose up -d
 ```
 
 ## 📚 详细文档索引
 
-- **代码分析报告**：[Code_Analysis_Report.md](./jl-skills/generated/analyze/2026-04-03/Code_Analysis_Report.md)
+- **产品总览**：[product-overview.md](./product-overview.md)
+- **用户使用说明**：[README.md](../README.md)
+
+**最后更新**: 2026-04-16

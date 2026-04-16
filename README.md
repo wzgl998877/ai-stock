@@ -44,7 +44,7 @@
 **技术实现要点：**
 - 大模型接口：统一抽象层，支持 OpenAI / DeepSeek / 其他兼容接口
 - 分析结果结构化存储：行业标签 + 个股标签 + 时间戳
-- 数据库：PostgreSQL
+- 数据库：MySQL
 
 ---
 
@@ -104,7 +104,7 @@
     └── 定时任务调度 → APScheduler
     ↓
 数据库层
-    ├── PostgreSQL（结构化数据：分析文章、日志、自选股）
+    ├── MySQL（结构化数据：分析文章、日志、自选股）
     └── Redis（缓存：行情数据、计算结果）
 ```
 
@@ -118,7 +118,7 @@
 | 后端框架 | Python FastAPI | 轻量快速，AI 生态最佳 |
 | 股票数据 | AKShare | 免费开源，A股覆盖全面 |
 | 大模型接口 | 统一封装（支持多模型） | 灵活切换 OpenAI/DeepSeek |
-| 数据库 | PostgreSQL | 稳定可靠，支持 JSON 存储 |
+| 数据库 | MySQL | 稳定可靠，JSON 类型与生态成熟 |
 | 缓存 | Redis | 行情数据高频读取加速 |
 | 部署 | Docker Compose | 一键启动，方便迁移 |
 
@@ -197,7 +197,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 DEEPSEEK_API_KEY=your_deepseek_key
 
 # 数据库
-DATABASE_URL=postgresql://user:password@localhost:5432/ai_stock
+DATABASE_URL=mysql+pymysql://user:password@localhost:3306/ai_stock
 
 # Redis
 REDIS_URL=redis://localhost:6379

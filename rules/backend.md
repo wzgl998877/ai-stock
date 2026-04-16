@@ -179,7 +179,7 @@ data: xxx\n\n
 
 必须支持：
 
-- MySQL → PostgreSQL
+- 关系型主库可替换（须保持 Repository 抽象；实现以宪章约定为准）
 - 数据库搜索 → Elasticsearch
 - AI模型切换
 

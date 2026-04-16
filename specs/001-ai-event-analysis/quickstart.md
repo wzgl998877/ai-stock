@@ -7,7 +7,7 @@
 
 - Python 3.11+
 - Node.js 18+
-- PostgreSQL 15+
+- MySQL 8.0+
 - Redis 7+
 - Docker & Docker Compose (可选)
 
@@ -23,7 +23,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 填入:
 #   OPENAI_API_KEY / OPENAI_BASE_URL
-#   DATABASE_URL=postgresql://user:password@localhost:5432/ai_stock
+#   DATABASE_URL=mysql+aiomysql://user:password@localhost:3306/ai_stock
 #   REDIS_URL=redis://localhost:6379
 
 # 3. 初始化数据库
@@ -64,7 +64,7 @@ docker compose up -d
 | uvicorn | ^0.29 | ASGI 服务器 |
 | sqlalchemy | ^2.0 | ORM |
 | sqlmodel | ^0.0.18 | SQLAlchemy + Pydantic 集成 |
-| asyncpg | ^0.29 | PostgreSQL 异步驱动 |
+| aiomysql | ^0.2 | MySQL 异步驱动（与 SQLAlchemy async 配合；亦可选用 asyncmy） |
 | redis | ^5.0 | Redis 客户端 |
 | httpx | ^0.27 | HTTP 客户端（调用 LLM API） |
 | pydantic | ^2.0 | 数据验证 |
@@ -125,7 +125,7 @@ OPENAI_API_KEY=your_key
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 
 # 数据库
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/ai_stock
+DATABASE_URL=mysql+aiomysql://user:password@localhost:3306/ai_stock
 
 # Redis
 REDIS_URL=redis://localhost:6379/0

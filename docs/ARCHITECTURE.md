@@ -34,7 +34,7 @@
     └── 定时任务调度 → APScheduler
     ↓
 数据层
-    ├── PostgreSQL（结构化数据）
+    ├── MySQL（结构化数据）
     └── Redis（缓存）
 ```
 
@@ -73,7 +73,7 @@ Page → Application → Service
 | 状态管理 | Zustand |
 | 后端框架 | Python 3 + FastAPI |
 | 数据源 | AKShare |
-| 数据库 | PostgreSQL |
+| 数据库 | MySQL |
 | 缓存 | Redis |
 | 大模型 | 统一抽象层（OpenAI / DeepSeek） |
 | 任务调度 | APScheduler |

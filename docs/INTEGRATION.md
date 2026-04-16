@@ -21,11 +21,11 @@
 - **限制**: 免费接口有频率限制，实时数据存在延迟
 - **策略**: 历史数据本地缓存，实时数据按需拉取
 
-### PostgreSQL
+### MySQL
 
 - **用途**: 结构化数据存储（分析文章、知识库、自选股、缠论信号）
 - **配置项**:
-  - `DATABASE_URL`: 连接地址（格式：`postgresql://user:password@localhost:5432/ai_stock`）
+  - `DATABASE_URL`: 连接地址（示例：`mysql+pymysql://user:password@localhost:3306/ai_stock`，具体驱动以项目依赖为准）
 
 ### Redis
 
@@ -46,7 +46,7 @@
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
-| Docker Compose | - | 一键编排前后端 + PostgreSQL + Redis |
+| Docker Compose | - | 一键编排前后端 + MySQL + Redis |
 | Python | 3.x | 后端运行环境 |
 | Node.js | - | 前端构建环境 |
 
@@ -59,7 +59,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 DEEPSEEK_API_KEY=your_deepseek_key
 
 # 数据库
-DATABASE_URL=postgresql://user:password@localhost:5432/ai_stock
+DATABASE_URL=mysql+pymysql://user:password@localhost:3306/ai_stock
 
 # Redis
 REDIS_URL=redis://localhost:6379

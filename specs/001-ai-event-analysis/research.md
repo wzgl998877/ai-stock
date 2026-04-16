@@ -37,18 +37,18 @@
 ## 3. 全文搜索方案
 
 ### Decision
-使用 PostgreSQL `pg_trgm` 扩展实现中文模糊搜索。
+使用 MySQL **InnoDB FULLTEXT** 索引，配合 **ngram** 解析器实现中文模糊搜索。
 
 ### Rationale
-- Constitution 明确使用 PostgreSQL 作为主库
-- pg_trgm 支持三字符粒度的模糊匹配，对中文有一定支持
+- Constitution 明确使用 **MySQL** 作为主库
+- ngram FULLTEXT 对中文短词有一定支持，运维上仍为单库方案
 - 无额外服务依赖（对比 Elasticsearch），降低运维复杂度
 - 数据量在 MVP 阶段（预计几百到几千篇文章）完全够用
 
 ### Alternatives Considered
 - Elasticsearch: 功能强大但引入额外服务，MVP 阶段过度
-- jieba 分词 + 倒排索引: 实现复杂度高，pg_trgm 已能满足基本需求
-- 向量搜索 (pgvector): 适合语义搜索但增加复杂度，Phase 2 考虑
+- jieba 分词 + 倒排索引: 实现复杂度高，内置 FULLTEXT 已能满足基本需求
+- 向量搜索（独立向量库或插件）: 适合语义搜索但增加复杂度，Phase 2 考虑
 
 ## 4. 相似问题检测方案
 

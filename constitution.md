@@ -36,10 +36,10 @@
 
 - **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 5 + **Zustand**
 - **后端**：Python 3 + **FastAPI**
-- **数据**：**PostgreSQL**（主库）+ **Redis**（缓存/计算结果）；A 股数据 **AKShare**
+- **数据**：**MySQL**（主库）+ **Redis**（缓存/计算结果）；A 股数据 **AKShare**
 - **大模型**：经统一抽象层接入（如 OpenAI / DeepSeek 兼容接口），**禁止**在业务层散落直连 SDK
 
-> 若 `rules/backend.md` 标题仍写 MySQL，以本宪章为准采用 **PostgreSQL**；持久化访问须经 Repository，保持可替换实现。
+> 持久化访问须经 **Repository**，主库以本宪章为准采用 **MySQL**；若 `rules/backend.md` 与宪章冲突，以本宪章为准。
 
 ### 架构红线
 

@@ -181,7 +181,7 @@
 - 节假日和周末不触发（通过AKShare交易日历判断）
 - 每次任务计算当前用户所有自选股的最新信号
 - 计算结果写入Redis缓存（Key: `signal:{stock_code}`，TTL：1小时）
-- 同步写入PostgreSQL持久化（历史信号记录）
+- 同步写入MySQL持久化（历史信号记录）
 
 **功能 6：信号状态API**
 - `GET /api/strategy/{code}/signal`：返回指定股票当前信号状态和最近信号时间
@@ -225,7 +225,7 @@
 - 计算引擎：Python（纯逻辑，不依赖外部库，便于单元测试）
 - 定时任务：**APScheduler**（集成在FastAPI进程内）
 - 缓存：Redis（信号状态）
-- 持久化：PostgreSQL（历史信号记录）
+- 持久化：MySQL（历史信号记录）
 - K线标注渲染：ECharts 5 `markPoint` 组件
 
 ---

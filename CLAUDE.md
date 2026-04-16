@@ -36,7 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 5 + Zustand
 - **后端**：Python 3 + FastAPI
-- **数据**：AKShare（A 股数据）、PostgreSQL、Redis
+- **数据**：AKShare（A 股数据）、MySQL、Redis
 - **大模型**：统一抽象层，支持 OpenAI / DeepSeek 等兼容接口
 - **任务与部署**：APScheduler、Docker Compose（以仓库实际配置为准）
 

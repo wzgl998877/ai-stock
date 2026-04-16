@@ -5,13 +5,13 @@
 
 ## Summary
 
-实现 AI 事件分析 & 行业知识库模块（模块一 MVP），核心能力包括：5种事件类型的结构化 AI 分析（流式输出）、行业标签自动提取与确认、知识库三视图浏览与全文搜索、相似问题检测、大事提醒、新用户引导。技术方案采用 FastAPI 后端（DDD 分层）+ React 前端，通过 SSE 实现流式输出，PostgreSQL 存储知识库，Redis 缓存热数据。
+实现 AI 事件分析 & 行业知识库模块（模块一 MVP），核心能力包括：5种事件类型的结构化 AI 分析（流式输出）、行业标签自动提取与确认、知识库三视图浏览与全文搜索、相似问题检测、大事提醒、新用户引导。技术方案采用 FastAPI 后端（DDD 分层）+ React 前端，通过 SSE 实现流式输出，MySQL 存储知识库，Redis 缓存热数据。
 
 ## Technical Context
 
 **Language/Version**: Python 3.11+ (后端) / TypeScript (前端)
 **Primary Dependencies**: FastAPI, SQLAlchemy/SQLModel, React 18, Ant Design 5, Zustand, ECharts 5
-**Storage**: PostgreSQL (主库) + Redis (缓存)
+**Storage**: MySQL (主库) + Redis (缓存)
 **Testing**: pytest (后端) / Vitest (前端)
 **Target Platform**: Linux server (Docker Compose 部署), PC 浏览器
 **Project Type**: Web application (前后端分离)
@@ -95,7 +95,7 @@ backend/
 │   │   │       ├── supply_chain.py
 │   │   │       └── general.py
 │   │   └── search/
-│   │       └── pg_search.py     # PostgreSQL 全文搜索实现
+│   │       └── fulltext_search.py     # MySQL 全文搜索实现
 │   ├── schemas/
 │   │   ├── analysis.py          # 分析请求/响应 DTO
 │   │   ├── knowledge.py         # 知识库 DTO
