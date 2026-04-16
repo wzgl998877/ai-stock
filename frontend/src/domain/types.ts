@@ -87,6 +87,31 @@ export interface SSEEvent {
   data: string | string[];
 }
 
+// === 保存文章请求 ===
+export interface SaveArticleDTO {
+  title: string;
+  summary: string;
+  content: string;
+  event_type: string;
+  raw_input: string;
+  industry_codes: string[];
+  stock_refs: StockReference[];
+  chain_table: ChainTableEntry[] | null;
+}
+
+// === 相似文章 ===
+export interface SimilarArticleDTO {
+  id: string;
+  title: string;
+  similarity: number;
+}
+
+// === 文章列表响应 ===
+export type ArticleListResponseDTO = PaginatedResponse<ArticleListItem>;
+
+// === 文章详情 DTO ===
+export type ArticleDetailDTO = ArticleDetail;
+
 // === 分析状态 ===
 export enum AnalysisStatus {
   IDLE = "idle",

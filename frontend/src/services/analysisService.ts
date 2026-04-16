@@ -3,7 +3,6 @@
 import api from "./api";
 import type {
   SSEEvent,
-  SaveArticleDTO,
   ArticleListResponseDTO,
   ArticleDetailDTO,
   SimilarArticleDTO,

@@ -71,18 +71,18 @@
 
 ### Implementation for User Story 1
 
-- [ ] T024 [US1] 创建 Application 用例：AnalyzeEventUseCase（接收 event_type + question，调用 AIService 流式生成，使用 AnalysisParser 解析 TITLE/SUMMARY/industries，通过 SSE 推送，含自动重试逻辑）in `backend/app/application/use_cases/analyze_event.py`
-- [ ] T025 [US1] 创建 Router：POST /api/analysis/stream（StreamingResponse SSE 格式，参数校验：question 非空且≥10字）in `backend/app/routers/analysis.py`
-- [ ] T026 [P] [US1] 创建前端 Service：analysisService（streamAnalysis — fetch + ReadableStream 解析 SSE，saveArticle，checkSimilarity）in `frontend/src/services/analysisService.ts`
-- [ ] T027 [P] [US1] 创建前端 Zustand Store：analysisStore（状态：idle/streaming/done/error，存储 taskId、result、title、summary、industries、error）in `frontend/src/store/analysisStore.ts`
-- [ ] T028 [P] [US1] 创建前端 SSE Hook：useSSE（封装 fetch + ReadableStream，按 type 分发事件更新 store）in `frontend/src/hooks/useSSE.ts`
-- [ ] T029 [P] [US1] 创建前端草稿 Hook：useDraft（localStorage 自动保存/恢复，>20字触发，防抖1秒）in `frontend/src/hooks/useDraft.ts`
-- [ ] T030 [US1] 创建前端 Application：useAnalysis（编排分析流程：参数校验→调用 streamAnalysis→更新 store→重试逻辑）in `frontend/src/application/useAnalysis.ts`
-- [ ] T031 [P] [US1] 创建 EventTypeSelector 组件（5种类型按钮组，默认选中「其他」）in `frontend/src/components/analysis/EventTypeSelector.tsx`
-- [ ] T032 [P] [US1] 创建 AnalysisInput 组件（TextArea + 草稿自动保存 + 输入校验 + 字数提示）in `frontend/src/components/analysis/AnalysisInput.tsx`
-- [ ] T033 [P] [US1] 创建 AnalysisResult 组件（Markdown 实时渲染 + 自动滚动 + 产业链传导表格展示 + "AI正在思考中..."骨架屏）in `frontend/src/components/analysis/AnalysisResult.tsx`
-- [ ] T034 [P] [US1] 创建 AnalysisStatusBar 组件（全局状态条，"分析进行中..."/"分析完成，点击查看"）in `frontend/src/components/analysis/AnalysisStatusBar.tsx`
-- [ ] T035 [US1] 组装 AnalysisPage 页面（集成 EventTypeSelector + AnalysisInput + AnalysisResult + AnalysisStatusBar，"分析"按钮防重复提交）in `frontend/src/pages/AnalysisPage.tsx`
+- [x] T026 [US1] 创建 Application 用例：AnalyzeEventUseCase（接收 event_type + question，调用 AIService 流式生成，使用 AnalysisParser 解析 TITLE/SUMMARY/industries，通过 SSE 推送，含自动重试逻辑）in `backend/app/application/use_cases/analyze_event.py`
+- [x] T027 [US1] 创建 Router：POST /api/analysis/stream（StreamingResponse SSE 格式，参数校验：question 非空且≥10字）in `backend/app/routers/analysis.py`
+- [x] T028 [P] [US1] 创建前端 Service：analysisService（streamAnalysis — fetch + ReadableStream 解析 SSE，saveArticle，checkSimilarity）in `frontend/src/services/analysisService.ts`
+- [x] T029 [P] [US1] 创建前端 Zustand Store：analysisStore（状态：idle/streaming/done/error，存储 taskId、result、title、summary、industries、error）in `frontend/src/store/analysisStore.ts`
+- [x] T030 [P] [US1] 创建前端 SSE Hook：useSSE（封装 fetch + ReadableStream，按 type 分发事件更新 store）in `frontend/src/hooks/useSSE.ts`
+- [x] T031 [P] [US1] 创建前端草稿 Hook：useDraft（localStorage 自动保存/恢复，>20字触发，防抖1秒）in `frontend/src/hooks/useDraft.ts`
+- [x] T032 [US1] 创建前端 Application：useAnalysis（编排分析流程：参数校验→调用 streamAnalysis→更新 store→重试逻辑）in `frontend/src/application/useAnalysis.ts`
+- [x] T033 [P] [US1] 创建 EventTypeSelector 组件（5种类型按钮组，默认选中「其他」）in `frontend/src/components/analysis/EventTypeSelector.tsx`
+- [x] T034 [P] [US1] 创建 AnalysisInput 组件（TextArea + 草稿自动保存 + 输入校验 + 字数提示）in `frontend/src/components/analysis/AnalysisInput.tsx`
+- [x] T035 [P] [US1] 创建 AnalysisResult 组件（Markdown 实时渲染 + 自动滚动 + 产业链传导表格展示 + "AI正在思考中..."骨架屏）in `frontend/src/components/analysis/AnalysisResult.tsx`
+- [x] T036 [P] [US1] 创建 AnalysisStatusBar 组件（全局状态条，"分析进行中..."/"分析完成，点击查看"）in `frontend/src/components/analysis/AnalysisStatusBar.tsx`
+- [x] T037 [US1] 组装 AnalysisPage 页面（集成 EventTypeSelector + AnalysisInput + AnalysisResult + AnalysisStatusBar，"分析"按钮防重复提交）+ App.tsx 路由入口 in `frontend/src/pages/AnalysisPage.tsx`
 
 **Checkpoint**: 可输入事件描述 → 选择类型 → 看到流式分析结果 → 切换页面不影响分析 → 全局状态条通知完成
 
@@ -98,11 +98,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T036 [US2] 创建 Application 用例：SaveArticleUseCase（接收标题、摘要、正文、industry_codes + stock_refs，校验至少1个行业，调用 ArticleRepository.save 同步写入 t_analysis_article + t_article_industry + t_article_stock，含降级逻辑：摘要为空时截取正文前80字）in `backend/app/application/use_cases/manage_article.py`
-- [ ] T037 [US2] 在 analysis.py Router 中添加 POST /api/analysis/articles 保存接口（201 Created，接收 industry_codes + stock_refs，校验 industry_codes 非空）in `backend/app/routers/analysis.py`
-- [ ] T038 [US2] 更新 AnalysisPage 页面：分析结果顶部显示可编辑的标题和摘要，底部显示「保存到知识库」和「不保存」按钮，点击保存弹出行业标签确认弹窗（产业链分析按传导层级分组显示）in `frontend/src/pages/AnalysisPage.tsx`
-- [ ] T039 [P] [US2] 创建 IndustryTag 组件（标签展示 + 增删交互，产业链分析按层级分组）in `frontend/src/components/common/IndustryTag.tsx`
-- [ ] T040 [P] [US2] 创建 StockCodeLink 组件（股票代码高亮可点击，预留跳转模块二路由）in `frontend/src/components/common/StockCodeLink.tsx`
+- [ ] T038 [US2] 创建 Application 用例：SaveArticleUseCase（接收标题、摘要、正文、industry_codes + stock_refs，校验至少1个行业，调用 ArticleRepository.save 同步写入 t_analysis_article + t_article_industry + t_article_stock，含降级逻辑：摘要为空时截取正文前80字）in `backend/app/application/use_cases/manage_article.py`
+- [ ] T039 [US2] 在 analysis.py Router 中添加 POST /api/analysis/articles 保存接口（201 Created，接收 industry_codes + stock_refs，校验 industry_codes 非空）in `backend/app/routers/analysis.py`
+- [ ] T040 [US2] 更新 AnalysisPage 页面：分析结果顶部显示可编辑的标题和摘要，底部显示「保存到知识库」和「不保存」按钮，点击保存弹出行业标签确认弹窗（产业链分析按传导层级分组显示）in `frontend/src/pages/AnalysisPage.tsx`
+- [ ] T041 [P] [US2] 创建 IndustryTag 组件（标签展示 + 增删交互，产业链分析按层级分组）in `frontend/src/components/common/IndustryTag.tsx`
+- [ ] T042 [P] [US2] 创建 StockCodeLink 组件（股票代码高亮可点击，预留跳转模块二路由）in `frontend/src/components/common/StockCodeLink.tsx`
 
 **Checkpoint**: 分析完成 → 编辑标题/摘要 → 确认行业标签 → 保存成功提示"已保存，关联了X个行业" / 不保存直接关闭
 
@@ -118,19 +118,19 @@
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] 创建 Application 用例：ListArticlesUseCase（三视图查询：timeline 按时间倒序、industry 通过 JOIN t_article_industry 按行业代码筛选、stock 通过 JOIN t_article_stock 按股票代码筛选，分页）+ GetArticleDetailUseCase（含关联查询 industries + stocks）+ DeleteArticleUseCase（软删除）in `backend/app/application/use_cases/manage_article.py`
-- [ ] T042 [US3] 创建 Application 用例：SearchArticlesUseCase（调用 SearchRepository 执行 MySQL FULLTEXT 搜索 t_analysis_article，行业通过 JOIN t_article_industry、股票通过 JOIN t_article_stock 筛选，返回分页结果+高亮片段）in `backend/app/application/use_cases/search_articles.py`
-- [ ] T043 [US3] 创建 Router：GET /api/knowledge/articles（列表，参数用 industry_code/stock_code）、GET /api/knowledge/articles/{id}（详情，返回关联的 industries + stocks）、DELETE /api/knowledge/articles/{id}（软删除）、GET /api/knowledge/industries（从 t_industry 查询有文章的行业列表）、GET /api/knowledge/watchlist-stocks（从 t_article_stock 查询有文章的股票列表预留）、GET /api/knowledge/search（全文搜索）in `backend/app/routers/knowledge.py`
-- [ ] T044 [P] [US3] 创建前端 Service：knowledgeService（getArticles、getArticleDetail、deleteArticle、getIndustries、getWatchlistStocks、searchArticles）in `frontend/src/services/knowledgeService.ts`
-- [ ] T045 [P] [US3] 创建前端 Zustand Store：knowledgeStore（视图模式、当前行业/股票、搜索关键词、文章列表、分页）in `frontend/src/store/knowledgeStore.ts`
-- [ ] T046 [P] [US3] 创建前端 Application：useKnowledge（视图切换、分页加载、搜索触发）in `frontend/src/application/useKnowledge.ts`
-- [ ] T047 [P] [US3] 创建 ArticleCard 组件（三层信息：标题加粗→摘要灰色小字≤80字2行截断→行业标签+日期）in `frontend/src/components/knowledge/ArticleCard.tsx`
-- [ ] T048 [P] [US3] 创建 IndustryView 组件（左侧行业列表+文章数量，右侧文章列表）in `frontend/src/components/knowledge/IndustryView.tsx`
-- [ ] T049 [P] [US3] 创建 TimelineView 组件（文章按日期倒序排列，日期分组标题）in `frontend/src/components/knowledge/TimelineView.tsx`
-- [ ] T050 [P] [US3] 创建 StockView 组件（左侧自选股列表，右侧文章列表，自选股为空时提示"去模块二添加"）in `frontend/src/components/knowledge/StockView.tsx`
-- [ ] T051 [P] [US3] 创建 SearchBar 组件（搜索输入框+防抖+关键词高亮+搜索结果展示）in `frontend/src/components/knowledge/SearchBar.tsx`
-- [ ] T052 [US3] 组装 KnowledgePage 页面（视图切换 Tab + SearchBar + 对应视图组件 + 分页）in `frontend/src/pages/KnowledgePage.tsx`
-- [ ] T053 [US3] 创建 ArticleDetailPage 页面（完整 Markdown 渲染，股票代码高亮可点击跳转，行业标签展示）in `frontend/src/pages/ArticleDetailPage.tsx`
+- [ ] T043 [US3] 创建 Application 用例：ListArticlesUseCase（三视图查询：timeline 按时间倒序、industry 通过 JOIN t_article_industry 按行业代码筛选、stock 通过 JOIN t_article_stock 按股票代码筛选，分页）+ GetArticleDetailUseCase（含关联查询 industries + stocks）+ DeleteArticleUseCase（软删除）in `backend/app/application/use_cases/manage_article.py`
+- [ ] T044 [US3] 创建 Application 用例：SearchArticlesUseCase（调用 SearchRepository 执行 MySQL FULLTEXT 搜索 t_analysis_article，行业通过 JOIN t_article_industry、股票通过 JOIN t_article_stock 筛选，返回分页结果+高亮片段）in `backend/app/application/use_cases/search_articles.py`
+- [ ] T045 [US3] 创建 Router：GET /api/knowledge/articles（列表，参数用 industry_code/stock_code）、GET /api/knowledge/articles/{id}（详情，返回关联的 industries + stocks）、DELETE /api/knowledge/articles/{id}（软删除）、GET /api/knowledge/industries（从 t_industry 查询有文章的行业列表）、GET /api/knowledge/watchlist-stocks（从 t_article_stock 查询有文章的股票列表预留）、GET /api/knowledge/search（全文搜索）in `backend/app/routers/knowledge.py`
+- [ ] T046 [P] [US3] 创建前端 Service：knowledgeService（getArticles、getArticleDetail、deleteArticle、getIndustries、getWatchlistStocks、searchArticles）in `frontend/src/services/knowledgeService.ts`
+- [ ] T047 [P] [US3] 创建前端 Zustand Store：knowledgeStore（视图模式、当前行业/股票、搜索关键词、文章列表、分页）in `frontend/src/store/knowledgeStore.ts`
+- [ ] T048 [P] [US3] 创建前端 Application：useKnowledge（视图切换、分页加载、搜索触发）in `frontend/src/application/useKnowledge.ts`
+- [ ] T049 [P] [US3] 创建 ArticleCard 组件（三层信息：标题加粗→摘要灰色小字≤80字2行截断→行业标签+日期）in `frontend/src/components/knowledge/ArticleCard.tsx`
+- [ ] T050 [P] [US3] 创建 IndustryView 组件（左侧行业列表+文章数量，右侧文章列表）in `frontend/src/components/knowledge/IndustryView.tsx`
+- [ ] T051 [P] [US3] 创建 TimelineView 组件（文章按日期倒序排列，日期分组标题）in `frontend/src/components/knowledge/TimelineView.tsx`
+- [ ] T052 [P] [US3] 创建 StockView 组件（左侧自选股列表，右侧文章列表，自选股为空时提示"去模块二添加"）in `frontend/src/components/knowledge/StockView.tsx`
+- [ ] T053 [P] [US3] 创建 SearchBar 组件（搜索输入框+防抖+关键词高亮+搜索结果展示）in `frontend/src/components/knowledge/SearchBar.tsx`
+- [ ] T054 [US3] 组装 KnowledgePage 页面（视图切换 Tab + SearchBar + 对应视图组件 + 分页）in `frontend/src/pages/KnowledgePage.tsx`
+- [ ] T055 [US3] 创建 ArticleDetailPage 页面（完整 Markdown 渲染，股票代码高亮可点击跳转，行业标签展示）in `frontend/src/pages/ArticleDetailPage.tsx`
 
 **Checkpoint**: 三种视图切换浏览 → 全文搜索 → 查看文章详情 → 股票代码点击跳转 → 删除文章
 
@@ -146,10 +146,10 @@
 
 ### Implementation for User Story 4
 
-- [ ] T054 [US4] 创建 Application 用例：DetectSimilarUseCase（调用 SimilarityCalculator，jieba 分词 + Jaccard 相似度，阈值≥0.3，知识库为空时返回空列表）in `backend/app/application/use_cases/detect_similar.py`
-- [ ] T055 [US4] 在 analysis.py Router 中添加 POST /api/analysis/similarity 接口 in `backend/app/routers/analysis.py`
-- [ ] T056 [P] [US4] 创建 SimilarPrompt 组件（输入框下方非阻断式提示卡，显示"你X个月前分析过类似问题→《XXX》，要对比吗？"）in `frontend/src/components/analysis/SimilarPrompt.tsx`
-- [ ] T057 [US4] 更新 AnalysisInput 组件：集成相似检测（停止输入1秒后调用 similarity API，显示/隐藏 SimilarPrompt）in `frontend/src/components/analysis/AnalysisInput.tsx`
+- [ ] T056 [US4] 创建 Application 用例：DetectSimilarUseCase（调用 SimilarityCalculator，jieba 分词 + Jaccard 相似度，阈值≥0.3，知识库为空时返回空列表）in `backend/app/application/use_cases/detect_similar.py`
+- [ ] T057 [US4] 在 analysis.py Router 中添加 POST /api/analysis/similarity 接口 in `backend/app/routers/analysis.py`
+- [ ] T058 [P] [US4] 创建 SimilarPrompt 组件（输入框下方非阻断式提示卡，显示"你X个月前分析过类似问题→《XXX》，要对比吗？"）in `frontend/src/components/analysis/SimilarPrompt.tsx`
+- [ ] T059 [US4] 更新 AnalysisInput 组件：集成相似检测（停止输入1秒后调用 similarity API，显示/隐藏 SimilarPrompt）in `frontend/src/components/analysis/AnalysisInput.tsx`
 
 **Checkpoint**: 输入问题 → 1秒后自动检测 → 显示相似文章提示卡 → 点击查看历史文章 → 不影响当前输入
 
@@ -165,15 +165,15 @@
 
 ### Implementation for User Story 5
 
-- [ ] T058 [US5] 创建 Application 用例：ManageReminderUseCase（创建含重复名称检测、更新、删除软删除、按状态列表（pending/reminded_3day/reminded_today/archived）、未读计数、触发分析预填）in `backend/app/application/use_cases/manage_reminder.py`
-- [ ] T059 [US5] 创建 Router：GET /api/reminders、POST /api/reminders、PUT /api/reminders/{id}、DELETE /api/reminders/{id}（软删除）、GET /api/reminders/unread-count、POST /api/reminders/{id}/trigger-analysis in `backend/app/routers/reminder.py`
-- [ ] T060 [US5] 创建 APScheduler 定时任务（每日8:00检查：事件前3天将 status 从 pending 更新为 reminded_3day，当天更新为 reminded_today，过期更新为 archived）in `backend/app/infrastructure/scheduler.py`（在 main.py 中注册启动）
-- [ ] T061 [P] [US5] 创建前端 Service：reminderService（getReminders、createReminder、updateReminder、deleteReminder、getUnreadCount、triggerAnalysis）in `frontend/src/services/reminderService.ts`
-- [ ] T062 [P] [US5] 创建前端 Zustand Store：reminderStore（提醒列表、未读数量、表单状态）in `frontend/src/store/reminderStore.ts`
-- [ ] T063 [P] [US5] 创建前端 Application：useReminder（CRUD 操作、未读数轮询、触发分析跳转）in `frontend/src/application/useReminder.ts`
-- [ ] T064 [P] [US5] 创建 ReminderList 组件（未来事件列表按日期升序 + 已过期归档区 + 未读铃铛红点）in `frontend/src/components/reminder/ReminderList.tsx`
-- [ ] T065 [P] [US5] 创建 ReminderForm 组件（事件名称必填、日期必填、关联行业多选）in `frontend/src/components/reminder/ReminderForm.tsx`
-- [ ] T066 [US5] 组装 ReminderPage 页面（ReminderList + ReminderForm + 事件当天弹窗提醒+一键触发分析）in `frontend/src/pages/ReminderPage.tsx`
+- [ ] T060 [US5] 创建 Application 用例：ManageReminderUseCase（创建含重复名称检测、更新、删除软删除、按状态列表（pending/reminded_3day/reminded_today/archived）、未读计数、触发分析预填）in `backend/app/application/use_cases/manage_reminder.py`
+- [ ] T061 [US5] 创建 Router：GET /api/reminders、POST /api/reminders、PUT /api/reminders/{id}、DELETE /api/reminders/{id}（软删除）、GET /api/reminders/unread-count、POST /api/reminders/{id}/trigger-analysis in `backend/app/routers/reminder.py`
+- [ ] T062 [US5] 创建 APScheduler 定时任务（每日8:00检查：事件前3天将 status 从 pending 更新为 reminded_3day，当天更新为 reminded_today，过期更新为 archived）in `backend/app/infrastructure/scheduler.py`（在 main.py 中注册启动）
+- [ ] T063 [P] [US5] 创建前端 Service：reminderService（getReminders、createReminder、updateReminder、deleteReminder、getUnreadCount、triggerAnalysis）in `frontend/src/services/reminderService.ts`
+- [ ] T064 [P] [US5] 创建前端 Zustand Store：reminderStore（提醒列表、未读数量、表单状态）in `frontend/src/store/reminderStore.ts`
+- [ ] T065 [P] [US5] 创建前端 Application：useReminder（CRUD 操作、未读数轮询、触发分析跳转）in `frontend/src/application/useReminder.ts`
+- [ ] T066 [P] [US5] 创建 ReminderList 组件（未来事件列表按日期升序 + 已过期归档区 + 未读铃铛红点）in `frontend/src/components/reminder/ReminderList.tsx`
+- [ ] T067 [P] [US5] 创建 ReminderForm 组件（事件名称必填、日期必填、关联行业多选）in `frontend/src/components/reminder/ReminderForm.tsx`
+- [ ] T068 [US5] 组装 ReminderPage 页面（ReminderList + ReminderForm + 事件当天弹窗提醒+一键触发分析）in `frontend/src/pages/ReminderPage.tsx`
 
 **Checkpoint**: 添加提醒 → 查看列表 → 铃铛红点 → 弹窗提醒 → 一键触发分析 → 过期自动归档
 
@@ -189,8 +189,8 @@
 
 ### Implementation for User Story 6
 
-- [ ] T067 [US6] 创建 ExamplePrompts 组件（3个示例问题卡片：地缘政治/政策法规/财报季报各一个，从 constants.ts 读取，点击自动填入并触发分析，完成一次分析后隐藏）in `frontend/src/components/onboarding/ExamplePrompts.tsx`
-- [ ] T068 [US6] 更新 AnalysisPage：检测知识库文章数为0时显示 ExamplePrompts，放在 AnalysisInput 下方 in `frontend/src/pages/AnalysisPage.tsx`
+- [ ] T069 [US6] 创建 ExamplePrompts 组件（3个示例问题卡片：地缘政治/政策法规/财报季报各一个，从 constants.ts 读取，点击自动填入并触发分析，完成一次分析后隐藏）in `frontend/src/components/onboarding/ExamplePrompts.tsx`
+- [ ] T070 [US6] 更新 AnalysisPage：检测知识库文章数为0时显示 ExamplePrompts，放在 AnalysisInput 下方 in `frontend/src/pages/AnalysisPage.tsx`
 
 **Checkpoint**: 首次使用 → 看到3个示例 → 点击示例 → 自动填入+触发分析 → 完成后引导隐藏
 
@@ -200,13 +200,13 @@
 
 **Purpose**: 收尾工作，确保整体质量
 
-- [ ] T069 [P] 创建 Docker Compose 配置（MySQL + Redis + backend + frontend）in `docker-compose.yml`
-- [ ] T070 [P] 创建后端 Dockerfile in `backend/Dockerfile`，创建前端 Dockerfile in `frontend/Dockerfile`
-- [ ] T071 [P] 添加前端路由配置（AnalysisPage、KnowledgePage、ArticleDetailPage、ReminderPage）in `frontend/src/App.tsx`
-- [ ] T072 [P] 添加前端全局布局（顶部导航栏：分析/知识库/提醒入口 + 铃铛图标 + 分析状态条）in `frontend/src/components/layout/`
-- [ ] T073 [P] 添加后端 CORS 中间件配置（允许前端域名）in `backend/app/main.py`
-- [ ] T074 [P] 添加后端统一错误处理中间件 in `backend/app/core/exceptions.py`
-- [ ] T075 [P] 添加后端日志配置（AI 调用日志、关键业务操作日志，禁止泄露 API Key）in `backend/app/core/logging.py`
+- [ ] T071 [P] 创建 Docker Compose 配置（MySQL + Redis + backend + frontend）in `docker-compose.yml`
+- [ ] T072 [P] 创建后端 Dockerfile in `backend/Dockerfile`，创建前端 Dockerfile in `frontend/Dockerfile`
+- [ ] T073 [P] 添加前端路由配置（AnalysisPage、KnowledgePage、ArticleDetailPage、ReminderPage）in `frontend/src/App.tsx`
+- [ ] T074 [P] 添加前端全局布局（顶部导航栏：分析/知识库/提醒入口 + 铃铛图标 + 分析状态条）in `frontend/src/components/layout/`
+- [ ] T075 [P] 添加后端 CORS 中间件配置（允许前端域名）in `backend/app/main.py`
+- [ ] T076 [P] 添加后端统一错误处理中间件 in `backend/app/core/exceptions.py`
+- [ ] T077 [P] 添加后端日志配置（AI 调用日志、关键业务操作日志，禁止泄露 API Key）in `backend/app/core/logging.py`
 
 ---
 
@@ -244,9 +244,9 @@
 
 - Phase 1: T002-T009 全部可并行（不同文件）
 - Phase 2: T012-T015、T017-T023 大部分可并行
-- Phase 3: T026-T034 大部分可并行（不同文件）
-- Phase 5: T044-T051 大部分可并行
-- Phase 7: T061-T065 可并行
+- Phase 3: T028-T036 大部分可并行（不同文件）
+- Phase 5: T046-T053 大部分可并行
+- Phase 7: T063-T067 可并行
 - **跨 Story 并行**: US5 和 US6 可与 US2-US4 并行执行
 
 ---

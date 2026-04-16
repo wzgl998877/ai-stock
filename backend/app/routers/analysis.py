@@ -28,7 +28,7 @@ def _get_use_case(request: Request) -> AnalyzeEventUseCase:
     return AnalyzeEventUseCase(ai_service)
 
 
-def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
+async def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
     """将 async generator 中的 dict 事件转为 SSE data: ...\\n\\n 格式"""
     async for event in event_gen:
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
