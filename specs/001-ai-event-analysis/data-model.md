@@ -2,58 +2,171 @@
 
 **Feature**: 001-ai-event-analysis
 **Date**: 2026-04-16
+**Updated**: 2026-04-16（同步 `docs/FEATURES/AI_Analysis/ai-analysis.ddl.md` DDL）
+
+## 全局约定
+
+- **主键**: `VARCHAR(32)` UUID，不含连字符
+- **软删除**: 所有表含 `deleted CHAR(1) DEFAULT '0'`，查询须过滤
+- **审计字段**: 所有表含 `create_time`、`update_time`、`create_user`、`update_user`
+- **字符集**: `utf8mb4_unicode_ci`
+
+## ER 关系概览
+
+```
+t_user ──1:N── t_analysis_article
+                  ├── N:M ── t_article_industry ── t_industry
+                  └── N:M ── t_article_stock ── t_stock
+
+t_user ──1:N── t_event_reminder
+t_user ──1:N── t_chat_session ──1:N── t_chat_message
+
+t_stock ── N:M ── t_stock_industry ── t_industry
+```
 
 ## Entities
 
-### 1. AnalysisArticle (分析文章)
+### 1. t_user (用户表)
 
-用户保存的 AI 分析文章，是知识库的核心实体。
-
-| Field | Type | Required | Description | Validation |
-|-------|------|----------|-------------|------------|
-| id | UUID | yes | 主键 | 自动生成 |
-| title | String(50) | yes | AI 生成标题 | ≤15字中文，用户可编辑 |
-| summary | String(200) | yes | AI 生成摘要 | ≤80字中文，2句话结论导向 |
-| content | Text | yes | 分析正文 | Markdown 格式，六段/七段结构 |
-| event_type | Enum | yes | 事件类型 | geopolitical/policy/earnings/supply_chain/other |
-| raw_input | String(500) | yes | 用户原始输入 | 最少10字 |
-| industry_tags | JSON | no | AI 提取的行业标签 | 申万一级行业列表 |
-| mentioned_stocks | JSON | no | 提及的股票列表 | [{code, name}] 格式 |
-| chain_table | JSON | no | 产业链传导表 | 仅 supply_chain 类型 |
-| user_id | String(50) | yes | 用户标识 | 预留多用户 |
-| created_at | DateTime | yes | 创建时间 | 自动填充 |
-| updated_at | DateTime | yes | 更新时间 | 自动更新 |
-
-**Relationships**: 一篇文章关联多个 IndustryTag (多对多，通过 article_industries 表)
-
-### 2. EventReminder (大事提醒)
-
-用户手动录入的未来重要事件。
-
-| Field | Type | Required | Description | Validation |
-|-------|------|----------|-------------|------------|
-| id | UUID | yes | 主键 | 自动生成 |
-| title | String(100) | yes | 事件名称 | 必填 |
-| event_date | Date | yes | 事件日期 | 必须是未来日期 |
-| industry_tags | JSON | no | 关联行业 | 申万一级行业列表 |
-| status | Enum | yes | 状态 | pending/reminded/archived |
-| remind_3day_sent | Boolean | yes | 3天前提醒是否已发 | 默认 false |
-| remind_today_sent | Boolean | yes | 当天提醒是否已发 | 默认 false |
-| user_id | String(50) | yes | 用户标识 | 预留多用户 |
-| created_at | DateTime | yes | 创建时间 | 自动填充 |
-| updated_at | DateTime | yes | 更新时间 | 自动更新 |
-
-### 3. ArticleIndustry (文章-行业关联)
-
-多对多关联表。
+用户主表，初期单用户，预留多用户扩展。
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| article_id | UUID | yes | 文章 ID (FK) |
-| industry_name | String(30) | yes | 行业名称（申万一级） |
-| chain_level | Integer | no | 传导层级（仅产业链分析） |
+| user_id | VARCHAR(32) PK | yes | 用户编号 |
+| user_account | VARCHAR(32) | yes | 登录账号 |
+| user_name | VARCHAR(32) | no | 用户名 |
+| password | VARCHAR(128) | yes | 登录密码（加密存储） |
+| nick_name | VARCHAR(100) | no | 昵称 |
+| icon_url | VARCHAR(255) | no | 头像地址 |
+| gender | CHAR(1) | no | 性别（0=未知,1=男,2=女） |
+| mobile | VARCHAR(35) | no | 手机号码 |
+| user_type | CHAR(1) | no | 用户类型（0=普通,1=管理员） |
+| status | CHAR(1) | yes | 状态（0=正常,1=停用） |
+| last_login | DATETIME | no | 上次登录时间 |
 
-**Note**: 使用复合主键 (article_id, industry_name)
+### 2. t_industry (申万行业字典表)
+
+申万行业分类，支持三级层级结构。一级分类共 31 个行业。
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| industry_code | VARCHAR(10) PK | yes | 行业代码（如 110000） |
+| name | VARCHAR(30) | yes | 行业名称（如 农林牧渔） |
+| level | TINYINT | yes | 层级：1=一级, 2=二级, 3=三级 |
+| parent_code | VARCHAR(10) | no | 父级行业代码（一级为 NULL） |
+| display_order | INT | yes | 显示顺序 |
+
+**Indexes**: `idx_parent (parent_code)`
+
+### 3. t_stock (股票基本信息表)
+
+A 股股票主数据，跨模块共享。
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| stock_code | VARCHAR(10) PK | yes | 股票代码（如 600519） |
+| name | VARCHAR(50) | yes | 股票简称（如 贵州茅台） |
+| full_name | VARCHAR(100) | no | 股票全称 |
+| exchange | ENUM('SH','SZ','BJ') | yes | 交易所 |
+| list_date | DATE | no | 上市日期 |
+| is_active | BOOLEAN | yes | 是否正常交易 |
+
+### 4. t_stock_industry (股票-行业关联表)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | VARCHAR(32) PK | yes | 主键 UUID |
+| stock_code | VARCHAR(10) | yes | 股票代码 |
+| industry_code | VARCHAR(10) | yes | 行业代码 |
+| is_primary | BOOLEAN | yes | 是否为主要所属行业 |
+| classification_source | ENUM('official','ai_extracted','user_defined') | yes | 分类来源 |
+
+**Unique**: `uk_stock_industry (stock_code, industry_code)`
+
+### 5. t_analysis_article (AI 分析文章主表)
+
+AI 生成的分析报告，知识库核心实体。
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| article_id | VARCHAR(32) PK | yes | 文章 UUID |
+| title | VARCHAR(50) | yes | AI 生成标题（≤15字），用户可编辑 |
+| summary | VARCHAR(200) | yes | AI 生成摘要（≤80字，2句话结论导向） |
+| content | TEXT | yes | 分析正文（Markdown 格式） |
+| event_type | ENUM('geopolitical','policy','earnings','supply_chain','other') | yes | 事件类型 |
+| raw_input | VARCHAR(500) | yes | 用户原始输入（≥10字） |
+| chain_table | JSON | no | 产业链传导表（仅 supply_chain 类型） |
+| user_id | VARCHAR(32) | yes | 用户编号（FK → t_user） |
+
+**Indexes**: `idx_user_id (user_id)`
+
+> 注意：行业标签和提及股票通过独立关联表管理（见下方），不在此表存储 JSON。
+
+### 6. t_article_industry (文章-行业关联表)
+
+替代原先的 JSON `industry_tags` 字段，支持按行业精确查询和统计。
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | VARCHAR(32) PK | yes | 主键 UUID |
+| article_id | VARCHAR(32) | yes | 文章 UUID |
+| industry_code | VARCHAR(10) | yes | 行业代码（FK → t_industry） |
+| chain_level | INT | no | 产业链传导层级（仅产业链分析） |
+
+**Unique**: `uk_article_industry (article_id, industry_code)`
+**Indexes**: `idx_article_id`, `idx_industry_code`
+
+### 7. t_article_stock (文章-股票关联表)
+
+替代原先的 JSON `mentioned_stocks` 字段，支持按股票精确查询（股票视图）。
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| id | VARCHAR(32) PK | yes | 主键 UUID |
+| article_id | VARCHAR(32) | yes | 文章 UUID |
+| stock_code | VARCHAR(10) | yes | 股票代码 |
+| stock_name | VARCHAR(50) | yes | 股票名称（冗余快照） |
+
+**Unique**: `uk_article_stock (article_id, stock_code)`
+**Indexes**: `idx_article_id`, `idx_stock_code`
+
+### 8. t_event_reminder (大事提醒表)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| reminder_id | VARCHAR(32) PK | yes | 提醒 UUID |
+| title | VARCHAR(100) | yes | 事件名称 |
+| event_date | DATE | yes | 事件日期 |
+| industry_tags | JSON | no | 关联行业（冗余便于展示） |
+| status | ENUM('pending','reminded_3day','reminded_today','archived') | yes | 提醒状态（4 阶段） |
+| user_id | VARCHAR(32) | yes | 用户编号（FK → t_user） |
+
+**Indexes**: `idx_user_id (user_id)`
+
+> 状态流：`pending` → `reminded_3day`（提前3天）→ `reminded_today`（当天）→ `archived`（过期归档）
+
+### 9. t_chat_session (对话会话表)
+
+多轮对话上下文管理，支持用户与 AI 的持续交互。
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| session_id | VARCHAR(32) PK | yes | 会话 UUID |
+| user_id | VARCHAR(32) | yes | 用户编号 |
+| title | VARCHAR(100) | no | 会话标题（自动生成或用户编辑） |
+
+**Indexes**: `idx_user_id (user_id)`
+
+### 10. t_chat_message (对话消息表)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| message_id | VARCHAR(32) PK | yes | 消息 UUID |
+| session_id | VARCHAR(32) | yes | 所属会话（FK → t_chat_session） |
+| role | ENUM('user','assistant','system') | yes | 角色 |
+| content | TEXT | yes | 消息内容 |
+
+**Indexes**: `idx_session_id (session_id)`
 
 ## Value Objects
 
@@ -70,24 +183,23 @@ OTHER = "other"                   # 其他
 ### ReminderStatus (提醒状态枚举)
 
 ```
-PENDING = "pending"      # 待触发
-REMINDED = "reminded"    # 已提醒
-ARCHIVED = "archived"    # 已归档（过期）
+PENDING = "pending"                # 待触发
+REMINDED_3DAY = "reminded_3day"    # 已发3天前提醒
+REMINDED_TODAY = "reminded_today"  # 已发当天提醒
+ARCHIVED = "archived"              # 已归档（过期）
 ```
 
-### IndustryTag (行业标签)
+### ChainTableEntry (产业链传导表 JSON 结构)
 
-- 基于申万31个一级行业分类
-- 作为静态数据维护在 `data/industries.json`
-- 包含行业名称
-
-### StockReference (股票引用)
-
-```
+```json
 {
-  "code": "600519",    # 股票代码
-  "name": "贵州茅台",   # 股票名称
-  "industry": "食品饮料" # 所属行业
+  "level": 1,
+  "industry": "石油石化",
+  "logic": "油价上涨直接推升成本",
+  "direction": "受益",
+  "degree": "高",
+  "timing": "短期（1-4周）",
+  "stocks": [{"code": "601857", "name": "中国石油"}]
 }
 ```
 
@@ -96,7 +208,7 @@ ARCHIVED = "archived"    # 已归档（过期）
 ### Article Lifecycle
 
 ```
-[用户输入] → [AI 分析中] → [结果展示] → [用户确认标签] → [保存到知识库]
+[用户输入] → [AI 分析中] → [结果展示] → [用户确认行业/股票标签] → [保存到知识库]
                                     ↓
                               [不保存/丢弃]
 ```
@@ -104,81 +216,26 @@ ARCHIVED = "archived"    # 已归档（过期）
 ### Reminder Lifecycle
 
 ```
-[创建提醒] → [pending] → [3天前提醒] → [当天提醒] → [过期归档 archived]
-                 ↓                        ↓
-           remind_3day_sent=true    remind_today_sent=true
+[创建提醒]
+    → pending
+    → reminded_3day（提前3天自动切换）
+    → reminded_today（当天自动切换）
+    → archived（过期后自动归档）
 ```
 
-## Indexes
+## 与原 data-model.md 的变更对照
 
-### analysis_articles 表
+| 项目 | 原方案 | 新方案 | 原因 |
+|------|--------|--------|------|
+| 行业标签 | JSON `industry_tags` | 独立关联表 `t_article_industry` | 支持精确查询和按行业统计 |
+| 股票引用 | JSON `mentioned_stocks` | 独立关联表 `t_article_stock` | 支持股票视图精确匹配 |
+| 行业数据 | 静态 JSON 文件 | 字典表 `t_industry` + `t_stock_industry` | 支持三级分类、跨模块共享 |
+| 用户 | 预留 `user_id` 字段 | 独立用户表 `t_user` | 支持认证和多用户 |
+| 股票 | 无主数据 | 独立股票表 `t_stock` | 跨模块共享，模块二/三复用 |
+| 提醒状态 | 3 状态 | 4 状态（细化提醒阶段） | 更精确的提醒流程追踪 |
+| 对话 | 无 | `t_chat_session` + `t_chat_message` | 支持多轮对话上下文 |
+| 全局 | 无软删除/审计 | 所有表含 `deleted` + 审计字段 | 生产规范 |
 
-| Index | Columns | Type | Purpose |
-|-------|---------|------|---------|
-| idx_created_at | created_at DESC | B-Tree | 时间线视图倒序 |
-| idx_event_type | event_type | B-Tree | 按类型筛选 |
-| idx_user_id | user_id | B-Tree | 多用户隔离 |
-| ft_search | title, summary, content | FULLTEXT (ngram) | 全文搜索 |
+## 完整 DDL
 
-### article_industries 表
-
-| Index | Columns | Type | Purpose |
-|-------|---------|------|---------|
-| PK | article_id, industry_name | PRIMARY | 复合主键 |
-| idx_industry | industry_name | B-Tree | 按行业筛选文章 |
-
-### event_reminders 表
-
-| Index | Columns | Type | Purpose |
-|-------|---------|------|---------|
-| idx_event_date | event_date | B-Tree | 按日期查询 |
-| idx_status_date | status, event_date | B-Tree | 调度查询优化 |
-| idx_user_id | user_id | B-Tree | 多用户隔离 |
-
-## DDL (参考)
-
-```sql
-CREATE TABLE analysis_articles (
-    id CHAR(36) PRIMARY KEY,
-    title VARCHAR(50) NOT NULL,
-    summary VARCHAR(200) NOT NULL,
-    content TEXT NOT NULL,
-    event_type ENUM('geopolitical','policy','earnings','supply_chain','other') NOT NULL,
-    raw_input VARCHAR(500) NOT NULL,
-    industry_tags JSON,
-    mentioned_stocks JSON,
-    chain_table JSON,
-    user_id VARCHAR(50) NOT NULL DEFAULT 'default',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FULLTEXT INDEX ft_search (title, summary, content) WITH PARSER ngram,
-    INDEX idx_created_at (created_at DESC),
-    INDEX idx_event_type (event_type),
-    INDEX idx_user_id (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE article_industries (
-    article_id CHAR(36) NOT NULL,
-    industry_name VARCHAR(30) NOT NULL,
-    chain_level INT,
-    PRIMARY KEY (article_id, industry_name),
-    INDEX idx_industry (industry_name),
-    FOREIGN KEY (article_id) REFERENCES analysis_articles(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE event_reminders (
-    id CHAR(36) PRIMARY KEY,
-    title VARCHAR(100) NOT NULL,
-    event_date DATE NOT NULL,
-    industry_tags JSON,
-    status ENUM('pending','reminded','archived') NOT NULL DEFAULT 'pending',
-    remind_3day_sent BOOLEAN NOT NULL DEFAULT FALSE,
-    remind_today_sent BOOLEAN NOT NULL DEFAULT FALSE,
-    user_id VARCHAR(50) NOT NULL DEFAULT 'default',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_event_date (event_date),
-    INDEX idx_status_date (status, event_date),
-    INDEX idx_user_id (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-```
+> 详见 `docs/FEATURES/AI_Analysis/ai-analysis.ddl.md`

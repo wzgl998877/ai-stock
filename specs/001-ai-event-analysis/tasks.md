@@ -42,22 +42,24 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T010 创建 SQLAlchemy ORM 模型（AnalysisArticle、ArticleIndustry、EventReminder 三张表，含 FULLTEXT ngram 索引）in `backend/app/infrastructure/db/models.py`
-- [ ] T011 创建 Alembic 迁移配置和初始迁移脚本（三张表 DDL）in `backend/app/infrastructure/db/migrations/`
-- [ ] T012 [P] 创建 Domain 实体：Article 实体 in `backend/app/domain/entities/article.py`，Reminder 实体 in `backend/app/domain/entities/reminder.py`
-- [ ] T013 [P] 创建 Domain 值对象：EventType 枚举 in `backend/app/domain/value_objects/event_type.py`，IndustryTag in `backend/app/domain/value_objects/industry_tag.py`
-- [ ] T014 [P] 创建 Domain Repository 接口定义：ArticleRepository in `backend/app/domain/repositories/article_repo.py`，SearchRepository in `backend/app/domain/repositories/search_repo.py`，ReminderRepository in `backend/app/domain/repositories/reminder_repo.py`
-- [ ] T015 [P] 创建申万31个一级行业静态数据文件 in `backend/app/data/industries.json`
-- [ ] T016 创建 Infrastructure 层 Repository 实现：MySQLArticleRepository in `backend/app/infrastructure/repositories/mysql_article_repo.py`（save、get_by_id、list、delete、get_by_industry、get_by_stock）
-- [ ] T017 [P] 创建 MySQLSearchRepository（FULLTEXT + ngram 搜索实现）in `backend/app/infrastructure/repositories/mysql_search_repo.py`
-- [ ] T018 [P] 创建 MySQLReminderRepository（CRUD + 按状态/日期查询）in `backend/app/infrastructure/repositories/mysql_reminder_repo.py`
-- [ ] T019 [P] 创建 Domain Service：AnalysisParser（六段/七段结构解析、TITLE/SUMMARY 提取、产业链传导表 Markdown 表格解析）in `backend/app/domain/services/analysis_parser.py`
-- [ ] T020 [P] 创建 Domain Service：SimilarityCalculator（jieba 分词 + Jaccard 相似度计算）in `backend/app/domain/services/similarity.py`
-- [ ] T021 创建 AI 服务抽象层（AIService，基于 httpx 流式调用 OpenAI 兼容 API）in `backend/app/infrastructure/ai/ai_service.py`
-- [ ] T022 [P] 创建 5 种 Prompt 模板：地缘政治 in `backend/app/infrastructure/ai/prompts/geopolicy.py`，政策法规 in `backend/app/infrastructure/ai/prompts/policy.py`，财报季报 in `backend/app/infrastructure/ai/prompts/earnings.py`，产业链分析 in `backend/app/infrastructure/ai/prompts/chain.py`，其他通用 in `backend/app/infrastructure/ai/prompts/general.py`（每个模板导出函数，注入申万行业列表）
-- [ ] T023 [P] 创建后端 DTO：AnalysisRequestDTO、AnalysisArticleDTO、SaveArticleDTO、SimilarityRequestDTO in `backend/app/application/dtos/analysis_dto.py`；ArticleListDTO、ArticleDetailDTO in `backend/app/application/dtos/article_dto.py`；ReminderDTO in `backend/app/application/dtos/reminder_dto.py`
+- [x] T010 创建 SQLAlchemy ORM 模型（10 张表：t_user、t_industry、t_stock、t_stock_industry、t_analysis_article、t_article_industry、t_article_stock、t_event_reminder、t_chat_session、t_chat_message），所有表含软删除 `deleted` + 审计字段（create_time/update_time/create_user/update_user）in `backend/app/infrastructure/db/models.py`
+- [x] T011 创建 Alembic 迁移配置和初始迁移脚本（10 张表 DDL，含 t_analysis_article 上的 FULLTEXT ngram 索引）in `backend/app/infrastructure/db/migrations/`
+- [x] T012 [P] 创建 Domain 实体：Article 实体 in `backend/app/domain/entities/article.py`，Reminder 实体 in `backend/app/domain/entities/reminder.py`，User 实体 in `backend/app/domain/entities/user.py`，Industry 实体 in `backend/app/domain/entities/industry.py`，Stock 实体 in `backend/app/domain/entities/stock.py`，ChatSession 实体 in `backend/app/domain/entities/chat_session.py`，ChatMessage 实体 in `backend/app/domain/entities/chat_message.py`
+- [x] T013 [P] 创建 Domain 值对象：EventType 枚举 in `backend/app/domain/value_objects/event_type.py`，IndustryTag in `backend/app/domain/value_objects/industry_tag.py`，ReminderStatus（4 状态：pending/reminded_3day/reminded_today/archived）in `backend/app/domain/value_objects/reminder_status.py`
+- [x] T014 [P] 创建 Domain Repository 接口定义：ArticleRepository in `backend/app/domain/repositories/article_repo.py`（save 需同步写入 t_article_industry + t_article_stock），SearchRepository in `backend/app/domain/repositories/search_repo.py`，ReminderRepository in `backend/app/domain/repositories/reminder_repo.py`，IndustryRepository in `backend/app/domain/repositories/industry_repo.py`（按层级查询、按 code 查询），StockRepository in `backend/app/domain/repositories/stock_repo.py`（按代码/名称查询），ChatRepository in `backend/app/domain/repositories/chat_repo.py`（session + message CRUD）
+- [x] T015 [P] 创建申万行业种子数据 SQL（含一级31个行业 + 二三级预留，INSERT 到 t_industry）in `backend/app/data/seed_industries.sql`
+- [x] T016 创建 Infrastructure 层 Repository 实现：MySQLArticleRepository in `backend/app/infrastructure/repositories/mysql_article_repo.py`（save 同步写入 t_article_industry + t_article_stock 关联表、get_by_id、list、软删除 delete、get_by_industry 通过 JOIN t_article_industry、get_by_stock 通过 JOIN t_article_stock）
+- [x] T017 [P] 创建 MySQLSearchRepository（FULLTEXT + ngram 搜索 t_analysis_article，支持行业通过 JOIN t_article_industry、股票通过 JOIN t_article_stock 筛选）in `backend/app/infrastructure/repositories/mysql_search_repo.py`
+- [x] T018 [P] 创建 MySQLReminderRepository（CRUD + 按状态/日期查询，状态含 4 阶段：pending/reminded_3day/reminded_today/archived）in `backend/app/infrastructure/repositories/mysql_reminder_repo.py`
+- [x] T019 [P] 创建 MySQLIndustryRepository（按层级/parent_code 查询，按 industry_code 查询）in `backend/app/infrastructure/repositories/mysql_industry_repo.py`
+- [x] T020 [P] 创建 MySQLChatRepository（session CRUD + message CRUD，按 session_id 查消息列表）in `backend/app/infrastructure/repositories/mysql_chat_repo.py`
+- [x] T021 [P] 创建 Domain Service：AnalysisParser（六段/七段结构解析、TITLE/SUMMARY 提取、产业链传导表 Markdown 表格解析、行业代码从 t_industry 匹配、股票代码从 t_stock 匹配）in `backend/app/domain/services/analysis_parser.py`
+- [x] T022 [P] 创建 Domain Service：SimilarityCalculator（jieba 分词 + Jaccard 相似度计算）in `backend/app/domain/services/similarity.py`
+- [x] T023 创建 AI 服务抽象层（AIService，基于 httpx 流式调用 OpenAI 兼容 API）in `backend/app/infrastructure/ai/ai_service.py`
+- [x] T024 [P] 创建 5 种 Prompt 模板：地缘政治 in `backend/app/infrastructure/ai/prompts/geopolicy.py`，政策法规 in `backend/app/infrastructure/ai/prompts/policy.py`，财报季报 in `backend/app/infrastructure/ai/prompts/earnings.py`，产业链分析 in `backend/app/infrastructure/ai/prompts/chain.py`，其他通用 in `backend/app/infrastructure/ai/prompts/general.py`（每个模板导出函数，注入申万行业列表，行业使用名称供 LLM 输出，后端解析时匹配 industry_code）
+- [x] T025 [P] 创建后端 DTO：AnalysisRequestDTO、AnalysisArticleDTO、SaveArticleDTO（industry_tags 改为 industry_codes: string[]、mentioned_stocks 改为 stock_refs: [{code, name}]）、SimilarityRequestDTO in `backend/app/application/dtos/analysis_dto.py`；ArticleListDTO、ArticleDetailDTO（含关联的 industries: [{code, name}]、stocks: [{code, name}]）in `backend/app/application/dtos/article_dto.py`；ReminderDTO in `backend/app/application/dtos/reminder_dto.py`；IndustryDTO、StockDTO in `backend/app/application/dtos/common_dto.py`
 
-**Checkpoint**: Foundation ready — Domain 实体、Repository 接口/实现、AI 服务、Prompt 模板全部就位，可开始 User Story 实现
+**Checkpoint**: Foundation ready — 10 张表 ORM + 迁移、Domain 实体（含 User/Industry/Stock/Chat）、Repository 接口/实现（含关联表操作）、AI 服务、Prompt 模板全部就位，可开始 User Story 实现
 
 ---
 
@@ -96,8 +98,8 @@
 
 ### Implementation for User Story 2
 
-- [ ] T036 [US2] 创建 Application 用例：SaveArticleUseCase（接收标题、摘要、正文、行业标签等，校验至少1个行业标签，调用 ArticleRepository 保存，含降级逻辑：摘要为空时截取正文前80字）in `backend/app/application/use_cases/manage_article.py`
-- [ ] T037 [US2] 在 analysis.py Router 中添加 POST /api/analysis/articles 保存接口（201 Created，校验 industry_tags 非空）in `backend/app/routers/analysis.py`
+- [ ] T036 [US2] 创建 Application 用例：SaveArticleUseCase（接收标题、摘要、正文、industry_codes + stock_refs，校验至少1个行业，调用 ArticleRepository.save 同步写入 t_analysis_article + t_article_industry + t_article_stock，含降级逻辑：摘要为空时截取正文前80字）in `backend/app/application/use_cases/manage_article.py`
+- [ ] T037 [US2] 在 analysis.py Router 中添加 POST /api/analysis/articles 保存接口（201 Created，接收 industry_codes + stock_refs，校验 industry_codes 非空）in `backend/app/routers/analysis.py`
 - [ ] T038 [US2] 更新 AnalysisPage 页面：分析结果顶部显示可编辑的标题和摘要，底部显示「保存到知识库」和「不保存」按钮，点击保存弹出行业标签确认弹窗（产业链分析按传导层级分组显示）in `frontend/src/pages/AnalysisPage.tsx`
 - [ ] T039 [P] [US2] 创建 IndustryTag 组件（标签展示 + 增删交互，产业链分析按层级分组）in `frontend/src/components/common/IndustryTag.tsx`
 - [ ] T040 [P] [US2] 创建 StockCodeLink 组件（股票代码高亮可点击，预留跳转模块二路由）in `frontend/src/components/common/StockCodeLink.tsx`
@@ -116,9 +118,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] 创建 Application 用例：ListArticlesUseCase（三视图查询：timeline 按时间倒序、industry 按行业筛选、stock 按股票代码筛选，分页）+ GetArticleDetailUseCase + DeleteArticleUseCase in `backend/app/application/use_cases/manage_article.py`
-- [ ] T042 [US3] 创建 Application 用例：SearchArticlesUseCase（调用 SearchRepository 执行 MySQL FULLTEXT 搜索，返回分页结果+高亮片段）in `backend/app/application/use_cases/search_articles.py`
-- [ ] T043 [US3] 创建 Router：GET /api/knowledge/articles（列表）、GET /api/knowledge/articles/{id}（详情）、DELETE /api/knowledge/articles/{id}（删除）、GET /api/knowledge/industries（行业列表）、GET /api/knowledge/watchlist-stocks（自选股列表预留）、GET /api/knowledge/search（全文搜索）in `backend/app/routers/knowledge.py`
+- [ ] T041 [US3] 创建 Application 用例：ListArticlesUseCase（三视图查询：timeline 按时间倒序、industry 通过 JOIN t_article_industry 按行业代码筛选、stock 通过 JOIN t_article_stock 按股票代码筛选，分页）+ GetArticleDetailUseCase（含关联查询 industries + stocks）+ DeleteArticleUseCase（软删除）in `backend/app/application/use_cases/manage_article.py`
+- [ ] T042 [US3] 创建 Application 用例：SearchArticlesUseCase（调用 SearchRepository 执行 MySQL FULLTEXT 搜索 t_analysis_article，行业通过 JOIN t_article_industry、股票通过 JOIN t_article_stock 筛选，返回分页结果+高亮片段）in `backend/app/application/use_cases/search_articles.py`
+- [ ] T043 [US3] 创建 Router：GET /api/knowledge/articles（列表，参数用 industry_code/stock_code）、GET /api/knowledge/articles/{id}（详情，返回关联的 industries + stocks）、DELETE /api/knowledge/articles/{id}（软删除）、GET /api/knowledge/industries（从 t_industry 查询有文章的行业列表）、GET /api/knowledge/watchlist-stocks（从 t_article_stock 查询有文章的股票列表预留）、GET /api/knowledge/search（全文搜索）in `backend/app/routers/knowledge.py`
 - [ ] T044 [P] [US3] 创建前端 Service：knowledgeService（getArticles、getArticleDetail、deleteArticle、getIndustries、getWatchlistStocks、searchArticles）in `frontend/src/services/knowledgeService.ts`
 - [ ] T045 [P] [US3] 创建前端 Zustand Store：knowledgeStore（视图模式、当前行业/股票、搜索关键词、文章列表、分页）in `frontend/src/store/knowledgeStore.ts`
 - [ ] T046 [P] [US3] 创建前端 Application：useKnowledge（视图切换、分页加载、搜索触发）in `frontend/src/application/useKnowledge.ts`
@@ -163,9 +165,9 @@
 
 ### Implementation for User Story 5
 
-- [ ] T058 [US5] 创建 Application 用例：ManageReminderUseCase（创建含重复名称检测、更新、删除、按状态列表、未读计数、触发分析预填）in `backend/app/application/use_cases/manage_reminder.py`
-- [ ] T059 [US5] 创建 Router：GET /api/reminders、POST /api/reminders、PUT /api/reminders/{id}、DELETE /api/reminders/{id}、GET /api/reminders/unread-count、POST /api/reminders/{id}/trigger-analysis in `backend/app/routers/reminder.py`
-- [ ] T060 [US5] 创建 APScheduler 定时任务（每日8:00检查即将到期事件，更新提醒标记，过期事件自动归档）in `backend/app/infrastructure/scheduler.py`（在 main.py 中注册启动）
+- [ ] T058 [US5] 创建 Application 用例：ManageReminderUseCase（创建含重复名称检测、更新、删除软删除、按状态列表（pending/reminded_3day/reminded_today/archived）、未读计数、触发分析预填）in `backend/app/application/use_cases/manage_reminder.py`
+- [ ] T059 [US5] 创建 Router：GET /api/reminders、POST /api/reminders、PUT /api/reminders/{id}、DELETE /api/reminders/{id}（软删除）、GET /api/reminders/unread-count、POST /api/reminders/{id}/trigger-analysis in `backend/app/routers/reminder.py`
+- [ ] T060 [US5] 创建 APScheduler 定时任务（每日8:00检查：事件前3天将 status 从 pending 更新为 reminded_3day，当天更新为 reminded_today，过期更新为 archived）in `backend/app/infrastructure/scheduler.py`（在 main.py 中注册启动）
 - [ ] T061 [P] [US5] 创建前端 Service：reminderService（getReminders、createReminder、updateReminder、deleteReminder、getUnreadCount、triggerAnalysis）in `frontend/src/services/reminderService.ts`
 - [ ] T062 [P] [US5] 创建前端 Zustand Store：reminderStore（提醒列表、未读数量、表单状态）in `frontend/src/store/reminderStore.ts`
 - [ ] T063 [P] [US5] 创建前端 Application：useReminder（CRUD 操作、未读数轮询、触发分析跳转）in `frontend/src/application/useReminder.ts`
