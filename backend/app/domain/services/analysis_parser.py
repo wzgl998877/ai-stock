@@ -77,14 +77,41 @@ class AnalysisParser:
                 line = line.strip()
                 if not line:
                     continue
-                # 格式: "行业名称：逻辑" 或 "行业名称：逻辑"
-                match = re.match(r"^([^\s：:]+)[：:]", line)
+                # 去掉常见的前缀符号: "- ", "* ", "**", "1. ", "1) " 等
+                cleaned = re.sub(r"^[-*•]\s*", "", line)
+                cleaned = re.sub(r"^\*+", "", cleaned)
+                cleaned = re.sub(r"^\d+[\.\)、]\s*", "", cleaned)
+
+                # 格式1: "行业名称：逻辑" 或 "行业名称:逻辑"
+                match = re.match(r"^([^：:]+)[：:]", cleaned)
                 if match:
                     name = match.group(1).strip()
-                    # 过滤掉明显的非行业行
-                    if len(name) <= 10 and not name.startswith("-") and not name.startswith("|"):
+                    if self._is_valid_industry_name(name):
                         names.add(name)
+                        continue
+
+                # 格式2: "**行业名称**：逻辑" 或 "**行业名称**"
+                match = re.match(r"^\*{1,2}([^*]+)\*{1,2}", cleaned)
+                if match:
+                    name = match.group(1).strip()
+                    if self._is_valid_industry_name(name):
+                        names.add(name)
+                        continue
+
         result.industry_names = list(names)
+
+    @staticmethod
+    def _is_valid_industry_name(name: str) -> bool:
+        """判断提取的名称是否像行业名称"""
+        if not name or len(name) > 10:
+            return False
+        if name.startswith("-") or name.startswith("|"):
+            return False
+        # 排除明显的非行业文本
+        skip_words = ["注意", "提示", "风险", "免责", "以上", "以下", "投资建议"]
+        if any(w in name for w in skip_words):
+            return False
+        return True
 
     def extract_chain_table(self, chain_raw: str) -> List[Dict]:
         """解析产业链传导表 Markdown 表格为结构化数据"""

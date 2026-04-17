@@ -20,7 +20,7 @@ export async function streamAnalysis(
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const baseURL = import.meta.env.VITE_API_BASE_URL;
   const response = await fetch(`${baseURL}${BASE}/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
