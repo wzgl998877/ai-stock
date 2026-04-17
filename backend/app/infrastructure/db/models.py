@@ -18,7 +18,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    TinyInteger,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.mysql import JSON

@@ -22,12 +22,23 @@ export interface StockReference {
 }
 
 // === 文章（列表项） ===
+export interface IndustryRefItem {
+  code: string;
+  name: string;
+  chain_level?: number | null;
+}
+
+export interface StockRefItem {
+  code: string;
+  name: string;
+}
+
 export interface ArticleListItem {
   id: string;
   title: string;
   summary: string;
-  industry_tags: string[];
-  mentioned_stocks: StockReference[];
+  industries: IndustryRefItem[];
+  stocks: StockRefItem[];
   event_type: EventType;
   created_at: string;
   highlight?: string;
@@ -41,8 +52,8 @@ export interface ArticleDetail {
   content: string;
   event_type: EventType;
   raw_input: string;
-  industry_tags: string[];
-  mentioned_stocks: StockReference[];
+  industries: IndustryRefItem[];
+  stocks: StockRefItem[];
   chain_table: ChainTableEntry[] | null;
   created_at: string;
   updated_at: string;

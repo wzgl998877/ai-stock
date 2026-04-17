@@ -98,11 +98,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T038 [US2] 创建 Application 用例：SaveArticleUseCase（接收标题、摘要、正文、industry_codes + stock_refs，校验至少1个行业，调用 ArticleRepository.save 同步写入 t_analysis_article + t_article_industry + t_article_stock，含降级逻辑：摘要为空时截取正文前80字）in `backend/app/application/use_cases/manage_article.py`
-- [ ] T039 [US2] 在 analysis.py Router 中添加 POST /api/analysis/articles 保存接口（201 Created，接收 industry_codes + stock_refs，校验 industry_codes 非空）in `backend/app/routers/analysis.py`
-- [ ] T040 [US2] 更新 AnalysisPage 页面：分析结果顶部显示可编辑的标题和摘要，底部显示「保存到知识库」和「不保存」按钮，点击保存弹出行业标签确认弹窗（产业链分析按传导层级分组显示）in `frontend/src/pages/AnalysisPage.tsx`
-- [ ] T041 [P] [US2] 创建 IndustryTag 组件（标签展示 + 增删交互，产业链分析按层级分组）in `frontend/src/components/common/IndustryTag.tsx`
-- [ ] T042 [P] [US2] 创建 StockCodeLink 组件（股票代码高亮可点击，预留跳转模块二路由）in `frontend/src/components/common/StockCodeLink.tsx`
+- [x] T038 [US2] 创建 Application 用例：SaveArticleUseCase（接收标题、摘要、正文、industry_codes + stock_refs，校验至少1个行业，调用 ArticleRepository.save 同步写入 t_analysis_article + t_article_industry + t_article_stock，含降级逻辑：摘要为空时截取正文前80字）in `backend/app/application/use_cases/manage_article.py`
+- [x] T039 [US2] 在 analysis.py Router 中添加 POST /api/analysis/articles 保存接口（201 Created，接收 industry_codes + stock_refs，校验 industry_codes 非空）in `backend/app/routers/analysis.py`
+- [x] T040 [US2] 更新 AnalysisPage 页面：分析结果顶部显示可编辑的标题和摘要，底部显示「保存到知识库」和「不保存」按钮，点击保存弹出行业标签确认弹窗（产业链分析按传导层级分组显示）in `frontend/src/pages/AnalysisPage.tsx`
+- [x] T041 [P] [US2] 创建 IndustryTag 组件（标签展示 + 增删交互，产业链分析按层级分组）in `frontend/src/components/common/IndustryTag.tsx`
+- [x] T042 [P] [US2] 创建 StockCodeLink 组件（股票代码高亮可点击，预留跳转模块二路由）in `frontend/src/components/common/StockCodeLink.tsx`
 
 **Checkpoint**: 分析完成 → 编辑标题/摘要 → 确认行业标签 → 保存成功提示"已保存，关联了X个行业" / 不保存直接关闭
 
@@ -118,19 +118,19 @@
 
 ### Implementation for User Story 3
 
-- [ ] T043 [US3] 创建 Application 用例：ListArticlesUseCase（三视图查询：timeline 按时间倒序、industry 通过 JOIN t_article_industry 按行业代码筛选、stock 通过 JOIN t_article_stock 按股票代码筛选，分页）+ GetArticleDetailUseCase（含关联查询 industries + stocks）+ DeleteArticleUseCase（软删除）in `backend/app/application/use_cases/manage_article.py`
-- [ ] T044 [US3] 创建 Application 用例：SearchArticlesUseCase（调用 SearchRepository 执行 MySQL FULLTEXT 搜索 t_analysis_article，行业通过 JOIN t_article_industry、股票通过 JOIN t_article_stock 筛选，返回分页结果+高亮片段）in `backend/app/application/use_cases/search_articles.py`
-- [ ] T045 [US3] 创建 Router：GET /api/knowledge/articles（列表，参数用 industry_code/stock_code）、GET /api/knowledge/articles/{id}（详情，返回关联的 industries + stocks）、DELETE /api/knowledge/articles/{id}（软删除）、GET /api/knowledge/industries（从 t_industry 查询有文章的行业列表）、GET /api/knowledge/watchlist-stocks（从 t_article_stock 查询有文章的股票列表预留）、GET /api/knowledge/search（全文搜索）in `backend/app/routers/knowledge.py`
-- [ ] T046 [P] [US3] 创建前端 Service：knowledgeService（getArticles、getArticleDetail、deleteArticle、getIndustries、getWatchlistStocks、searchArticles）in `frontend/src/services/knowledgeService.ts`
-- [ ] T047 [P] [US3] 创建前端 Zustand Store：knowledgeStore（视图模式、当前行业/股票、搜索关键词、文章列表、分页）in `frontend/src/store/knowledgeStore.ts`
-- [ ] T048 [P] [US3] 创建前端 Application：useKnowledge（视图切换、分页加载、搜索触发）in `frontend/src/application/useKnowledge.ts`
-- [ ] T049 [P] [US3] 创建 ArticleCard 组件（三层信息：标题加粗→摘要灰色小字≤80字2行截断→行业标签+日期）in `frontend/src/components/knowledge/ArticleCard.tsx`
-- [ ] T050 [P] [US3] 创建 IndustryView 组件（左侧行业列表+文章数量，右侧文章列表）in `frontend/src/components/knowledge/IndustryView.tsx`
-- [ ] T051 [P] [US3] 创建 TimelineView 组件（文章按日期倒序排列，日期分组标题）in `frontend/src/components/knowledge/TimelineView.tsx`
-- [ ] T052 [P] [US3] 创建 StockView 组件（左侧自选股列表，右侧文章列表，自选股为空时提示"去模块二添加"）in `frontend/src/components/knowledge/StockView.tsx`
-- [ ] T053 [P] [US3] 创建 SearchBar 组件（搜索输入框+防抖+关键词高亮+搜索结果展示）in `frontend/src/components/knowledge/SearchBar.tsx`
-- [ ] T054 [US3] 组装 KnowledgePage 页面（视图切换 Tab + SearchBar + 对应视图组件 + 分页）in `frontend/src/pages/KnowledgePage.tsx`
-- [ ] T055 [US3] 创建 ArticleDetailPage 页面（完整 Markdown 渲染，股票代码高亮可点击跳转，行业标签展示）in `frontend/src/pages/ArticleDetailPage.tsx`
+- [x] T043 [US3] 创建 Application 用例：ListArticlesUseCase（三视图查询：timeline 按时间倒序、industry 通过 JOIN t_article_industry 按行业代码筛选、stock 通过 JOIN t_article_stock 按股票代码筛选，分页）+ GetArticleDetailUseCase（含关联查询 industries + stocks）+ DeleteArticleUseCase（软删除）in `backend/app/application/use_cases/manage_article.py`
+- [x] T044 [US3] 创建 Application 用例：SearchArticlesUseCase（调用 SearchRepository 执行 MySQL FULLTEXT 搜索 t_analysis_article，行业通过 JOIN t_article_industry、股票通过 JOIN t_article_stock 筛选，返回分页结果+高亮片段）in `backend/app/application/use_cases/search_articles.py`
+- [x] T045 [US3] 创建 Router：GET /api/knowledge/articles（列表，参数用 industry_code/stock_code）、GET /api/knowledge/articles/{id}（详情，返回关联的 industries + stocks）、DELETE /api/knowledge/articles/{id}（软删除）、GET /api/knowledge/industries（从 t_industry 查询有文章的行业列表）、GET /api/knowledge/watchlist-stocks（从 t_article_stock 查询有文章的股票列表预留）、GET /api/knowledge/search（全文搜索）in `backend/app/routers/knowledge.py`
+- [x] T046 [P] [US3] 创建前端 Service：knowledgeService（getArticles、getArticleDetail、deleteArticle、getIndustries、getWatchlistStocks、searchArticles）in `frontend/src/services/knowledgeService.ts`
+- [x] T047 [P] [US3] 创建前端 Zustand Store：knowledgeStore（视图模式、当前行业/股票、搜索关键词、文章列表、分页）in `frontend/src/store/knowledgeStore.ts`
+- [x] T048 [P] [US3] 创建前端 Application：useKnowledge（视图切换、分页加载、搜索触发）in `frontend/src/application/useKnowledge.ts`
+- [x] T049 [P] [US3] 创建 ArticleCard 组件（三层信息：标题加粗→摘要灰色小字≤80字2行截断→行业标签+日期）in `frontend/src/components/knowledge/ArticleCard.tsx`
+- [x] T050 [P] [US3] 创建 IndustryView 组件（左侧行业列表+文章数量，右侧文章列表）in `frontend/src/components/knowledge/IndustryView.tsx`
+- [x] T051 [P] [US3] 创建 TimelineView 组件（文章按日期倒序排列，日期分组标题）in `frontend/src/components/knowledge/TimelineView.tsx`
+- [x] T052 [P] [US3] 创建 StockView 组件（左侧自选股列表，右侧文章列表，自选股为空时提示"去模块二添加"）in `frontend/src/components/knowledge/StockView.tsx`
+- [x] T053 [P] [US3] 创建 SearchBar 组件（搜索输入框+防抖+关键词高亮+搜索结果展示）in `frontend/src/components/knowledge/SearchBar.tsx`
+- [x] T054 [US3] 组装 KnowledgePage 页面（视图切换 Tab + SearchBar + 对应视图组件 + 分页）in `frontend/src/pages/KnowledgePage.tsx`
+- [x] T055 [US3] 创建 ArticleDetailPage 页面（完整 Markdown 渲染，股票代码高亮可点击跳转，行业标签展示）in `frontend/src/pages/ArticleDetailPage.tsx`
 
 **Checkpoint**: 三种视图切换浏览 → 全文搜索 → 查看文章详情 → 股票代码点击跳转 → 删除文章
 

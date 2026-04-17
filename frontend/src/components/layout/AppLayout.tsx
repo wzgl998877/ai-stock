@@ -6,6 +6,7 @@ import {
   ExperimentOutlined,
   StockOutlined,
   RadarChartOutlined,
+  BookOutlined,
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -17,6 +18,11 @@ const NAV_ITEMS = [
     key: "/analysis",
     icon: <ExperimentOutlined />,
     label: "AI 事件分析",
+  },
+  {
+    key: "/knowledge",
+    icon: <BookOutlined />,
+    label: "知识库",
   },
   {
     key: "/market",

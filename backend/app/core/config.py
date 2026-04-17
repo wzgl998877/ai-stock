@@ -14,8 +14,13 @@ class Settings(BaseSettings):
     # === Redis ===
     redis_url: str = "redis://localhost:6379/0"
 
-    # === 应用 ===
+    # === 日志 ===
     log_level: str = "info"
+    log_dir: str = "logs"
+    log_max_bytes: int = 10 * 1024 * 1024  # 10MB
+    log_backup_count: int = 10
+
+    # === 应用 ===
     cors_origins: List[str] = ["http://localhost:5173"]
     analysis_timeout: int = 120
 

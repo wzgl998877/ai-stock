@@ -4,13 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.logging import setup_logging
 from app.infrastructure.ai.ai_service import AIService
-from app.routers import analysis
+from app.routers import analysis, knowledge
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    setup_logging()
     app.state.ai_service = AIService()
     yield
     # Shutdown
@@ -32,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(analysis.router)
+app.include_router(knowledge.router)
 
 
 @app.get("/health")

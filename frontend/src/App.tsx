@@ -6,6 +6,8 @@ import { ConfigProvider, theme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import AppLayout from "./components/layout/AppLayout";
 import AnalysisPage from "./pages/AnalysisPage";
+import KnowledgePage from "./pages/KnowledgePage";
+import ArticleDetailPage from "./pages/ArticleDetailPage";
 import "./styles/global.css";
 
 const App: React.FC = () => (
@@ -56,6 +58,8 @@ const App: React.FC = () => (
       <AppLayout>
         <Routes>
           <Route path="/analysis" element={<AnalysisPage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/knowledge/articles/:id" element={<ArticleDetailPage />} />
           <Route path="*" element={<Navigate to="/analysis" replace />} />
         </Routes>
       </AppLayout>

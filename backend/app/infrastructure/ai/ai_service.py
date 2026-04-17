@@ -19,6 +19,7 @@ class AIService:
         self.base_url = settings.openai_base_url.rstrip("/")
         self.model = settings.llm_model
         self.timeout = settings.analysis_timeout
+        logger.info("AIService 初始化: base_url=%s, model=%s", self.base_url, self.model)
 
     async def stream_chat(
         self, system_prompt: str, user_message: str,
@@ -44,28 +45,57 @@ class AIService:
             "max_tokens": 4096,
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as response:
-                if response.status_code != 200:
-                    error_body = await response.aread()
-                    logger.error("AI API error: status=%d body=%s", response.status_code, error_body[:200])
-                    raise RuntimeError(f"AI API error: {response.status_code}")
+        logger.info("AI 流式调用开始: url=%s, model=%s, user_msg长度=%d", url, self.model, len(user_message))
+        chunk_count = 0
 
-                async for line in response.aiter_lines():
-                    line = line.strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data = line[6:]  # strip "data: " prefix
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    if response.status_code != 200:
+                        error_body = await response.aread()
+                        logger.error("AI API error: status=%d body=%s", response.status_code, error_body[:500])
+                        raise RuntimeError(f"AI API error: {response.status_code} - {error_body[:200]}")
+
+                    raw_line_count = 0
+                    async for line in response.aiter_lines():
+                        raw_line_count += 1
+                        line = line.strip()
+                        if not line:
+                            continue
+                        # 打印前 10 行原始数据，方便排查格式问题
+                        if raw_line_count <= 10:
+                            logger.info("SSE raw line %d: %s", raw_line_count, line[:300])
+                        if not line.startswith("data: "):
+                            # 非 SSE 格式行，可能是错误 JSON
+                            try:
+                                err_obj = json.loads(line)
+                                if err_obj.get("code") or err_obj.get("error"):
+                                    err_msg = err_obj.get("msg") or err_obj.get("error", {}).get("message", line[:200])
+                                    logger.error("AI API 业务错误: %s", err_msg)
+                                    raise RuntimeError(f"AI API 业务错误: {err_msg}")
+                            except json.JSONDecodeError:
+                                pass
+                            continue
+                        data = line[6:]  # strip "data: " prefix
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            # 兼容不同 API 返回格式：choices[0].delta.content 或 choices[0].message.content
+                            choice = chunk.get("choices", [{}])[0]
+                            delta = choice.get("delta", {}) or choice.get("message", {})
+                            content = delta.get("content", "")
+                            if content:
+                                chunk_count += 1
+                                yield content
+                        except json.JSONDecodeError:
+                            logger.warning("JSON 解析失败: %s", data[:200])
+                            continue
+
+            logger.info("AI 流式调用完成: 共 %d 个有效 chunk", chunk_count)
+        except Exception as e:
+            logger.error("AI 流式调用异常: %s", e, exc_info=True)
+            raise
 
     async def generate_title_and_summary(
         self, system_prompt: str, user_message: str,

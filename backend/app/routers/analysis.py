@@ -4,8 +4,9 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.dtos.analysis_dto import (
     AnalysisRequestDTO,
@@ -15,8 +16,11 @@ from app.application.dtos.analysis_dto import (
     SimilarArticleDTO,
 )
 from app.application.use_cases.analyze_event import AnalyzeEventUseCase
+from app.application.use_cases.manage_article import SaveArticleUseCase
+from app.core.database import get_db
 from app.core.exceptions import InvalidInputError, AIServiceError, NoIndustryTagError
 from app.infrastructure.ai.ai_service import AIService
+from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,8 @@ async def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
 @router.post("/stream")
 async def stream_analysis(body: AnalysisRequestDTO, request: Request):
     """启动 AI 事件分析，SSE 流式返回"""
+    logger.info("收到分析请求: event_type=%s, question长度=%d", body.event_type, len(body.question or ""))
+
     # 参数校验
     if not body.question or not body.question.strip():
         raise InvalidInputError("请输入事件描述")
@@ -58,18 +64,30 @@ async def stream_analysis(body: AnalysisRequestDTO, request: Request):
 
 
 @router.post("/articles", status_code=201, response_model=SaveArticleResponseDTO)
-async def save_article(body: SaveArticleDTO):
+async def save_article(body: SaveArticleDTO, db: AsyncSession = Depends(get_db)):
     """保存分析结果到知识库"""
     if not body.industry_codes:
         raise NoIndustryTagError()
 
-    # TODO: 实现 ArticleRepository.save
-    # 当前返回占位响应
-    return SaveArticleResponseDTO(
-        id="placeholder",
+    repo = MySQLArticleRepository(db)
+    use_case = SaveArticleUseCase(repo)
+    article = await use_case.execute(
         title=body.title,
+        summary=body.summary,
+        content=body.content,
+        event_type=body.event_type,
+        raw_input=body.raw_input,
+        industry_codes=body.industry_codes,
+        stock_refs=[{"code": s.code, "name": s.name} for s in body.stock_refs],
+        chain_table=body.chain_table,
+    )
+    await db.commit()
+
+    return SaveArticleResponseDTO(
+        id=article.article_id,
+        title=article.title,
         industry_count=len(body.industry_codes),
-        created_at="2026-01-01T00:00:00Z",
+        created_at=article.create_time.isoformat() if article.create_time else "",
     )
 
 

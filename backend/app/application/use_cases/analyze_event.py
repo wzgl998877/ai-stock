@@ -39,10 +39,12 @@ class AnalyzeEventUseCase:
         # 获取 prompt
         builder = PROMPT_BUILDERS.get(EventType(event_type))
         if not builder:
+            logger.error("不支持的事件类型: %s", event_type)
             yield {"type": "error", "data": f"不支持的事件类型: {event_type}"}
             return
 
         system_prompt = builder(question)
+        logger.info("分析开始: event_type=%s, question前50字=%s", event_type, question[:50])
 
         # 流式调用 AI，含重试
         full_content = ""
@@ -66,7 +68,9 @@ class AnalyzeEventUseCase:
                     return
 
         # 解析结果
+        logger.info("AI 内容生成完成, 总长度=%d, 开始解析", len(full_content))
         parse_result = self.parser.parse(full_content, event_type)
+        logger.info("解析结果: title=%s, industries=%s", parse_result.title, parse_result.industry_names)
 
         # 推送 title
         if parse_result.title:
