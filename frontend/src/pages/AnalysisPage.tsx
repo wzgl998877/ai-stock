@@ -24,6 +24,7 @@ const AnalysisPage: React.FC = () => {
   const [editIndustries, setEditIndustries] = useState<string[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [inputClearFlag, setInputClearFlag] = useState(false);
 
   const handleSubmit = (question: string) => {
     analyze(eventType ?? EventType.GEO_POLITICAL, question);
@@ -62,6 +63,7 @@ const AnalysisPage: React.FC = () => {
       message.success(`已保存，关联了${editIndustries.length}个行业`);
       setSaveModalOpen(false);
       reset();
+      setInputClearFlag((v) => !v);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -72,6 +74,7 @@ const AnalysisPage: React.FC = () => {
   // 不保存，重置
   const handleDiscard = () => {
     reset();
+    setInputClearFlag((v) => !v);
   };
 
   return (
@@ -131,6 +134,7 @@ const AnalysisPage: React.FC = () => {
                 eventType={eventType}
                 disabled={isStreaming}
                 onSubmit={handleSubmit}
+                forceClear={inputClearFlag}
               />
               {/* 事件类型标签在输入框下方 */}
               <EventTypeSelector
@@ -244,6 +248,7 @@ const AnalysisPage: React.FC = () => {
               eventType={eventType}
               disabled={isStreaming}
               onSubmit={handleSubmit}
+              forceClear={inputClearFlag}
             />
             <EventTypeSelector
               value={eventType}

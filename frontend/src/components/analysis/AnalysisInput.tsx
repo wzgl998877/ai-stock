@@ -15,17 +15,23 @@ interface Props {
   eventType: EventType | null;
   disabled?: boolean;
   onSubmit: (question: string) => void;
+  /** 外部强制清空（用于分析完成后重置） */
+  forceClear?: boolean;
 }
 
-const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit }) => {
-  const { draft, saveDraft, clearDraft } = useDraft(eventType ?? "default");
-  const [input, setInput] = useState(draft);
+const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit, forceClear }) => {
+  const { saveDraft, clearDraft } = useDraft(eventType ?? "default");
+  const [input, setInput] = useState("");
   const [hint, setHint] = useState<string>("");
   const [focused, setFocused] = useState(false);
 
+  // 外部强制清空
   useEffect(() => {
-    setInput(draft);
-  }, [draft]);
+    if (forceClear) {
+      setInput("");
+      setHint("");
+    }
+  }, [forceClear]);
 
   const handleChange = (val: string) => {
     setInput(val);

@@ -1,6 +1,6 @@
-/** 草稿自动保存 Hook (localStorage) */
+/**草稿自动保存 Hook (localStorage) */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { DRAFT_KEY_PREFIX, DRAFT_MIN_LENGTH, DRAFT_DEBOUNCE_MS } from "../domain/constants";
 
 interface DraftData {
@@ -11,29 +11,11 @@ interface DraftData {
 
 export function useDraft(eventType: string) {
   const key = `${DRAFT_KEY_PREFIX}${eventType}`;
-  const [draft, setDraft] = useState<string>("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 页面加载时恢复草稿
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const data: DraftData = JSON.parse(raw);
-        setDraft(data.content);
-      }
-    } catch {
-      // ignore
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [key]);
 
   // 保存草稿（防抖）
   const saveDraft = useCallback(
     (content: string) => {
-      setDraft(content);
       if (timerRef.current) clearTimeout(timerRef.current);
 
       if (content.length >= DRAFT_MIN_LENGTH) {
@@ -52,9 +34,9 @@ export function useDraft(eventType: string) {
 
   // 清除草稿
   const clearDraft = useCallback(() => {
-    setDraft("");
+    if (timerRef.current) clearTimeout(timerRef.current);
     localStorage.removeItem(key);
   }, [key]);
 
-  return { draft, saveDraft, clearDraft };
+  return { saveDraft, clearDraft };
 }

@@ -46,6 +46,8 @@ class AIService:
         }
 
         logger.info("AI 流式调用开始: url=%s, model=%s, user_msg长度=%d", url, self.model, len(user_message))
+        logger.info("AI system_prompt: %s", system_prompt[:500])
+        logger.info("AI user_message: %s", user_message[:300])
         chunk_count = 0
 
         try:
