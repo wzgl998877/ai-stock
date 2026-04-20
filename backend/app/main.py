@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,12 +9,27 @@ from app.core.logging import setup_logging
 from app.infrastructure.ai.ai_service import AIService
 from app.routers import analysis, knowledge
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     setup_logging()
     app.state.ai_service = AIService()
+
+    # 初始化 LangGraph 分析工作流
+    try:
+        from app.infrastructure.workflow.graph.analysis_graph import build_analysis_graph
+        from app.core.database import async_session
+
+        analysis_graph = build_analysis_graph(session_factory=async_session)
+        app.state.analysis_graph = analysis_graph
+        logger.info("LangGraph 分析工作流初始化成功")
+    except Exception as e:
+        logger.warning("LangGraph 工作流初始化失败，将降级运行: %s", e)
+        app.state.analysis_graph = None
+
     yield
     # Shutdown
 

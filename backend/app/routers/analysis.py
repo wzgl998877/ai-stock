@@ -29,7 +29,8 @@ router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 def _get_use_case(request: Request) -> AnalyzeEventUseCase:
     ai_service = request.app.state.ai_service
-    return AnalyzeEventUseCase(ai_service)
+    analysis_graph = getattr(request.app.state, "analysis_graph", None)
+    return AnalyzeEventUseCase(ai_service, analysis_graph)
 
 
 async def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
@@ -50,7 +51,8 @@ async def stream_analysis(body: AnalysisRequestDTO, request: Request):
         raise InvalidInputError("描述太简短，请详细说明")
 
     ai_service: AIService = request.app.state.ai_service
-    use_case = AnalyzeEventUseCase(ai_service)
+    analysis_graph = getattr(request.app.state, "analysis_graph", None)
+    use_case = AnalyzeEventUseCase(ai_service, analysis_graph)
 
     return StreamingResponse(
         _sse_stream(use_case.execute(body.event_type, body.question)),

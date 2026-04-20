@@ -1,9 +1,8 @@
-"""AnalyzeEventUseCase — AI 事件分析核心用例"""
+"""AnalyzeEventUseCase — AI 事件分析核心用例（LangGraph 版）"""
 
-import json
 import logging
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from app.domain.services.analysis_parser import AnalysisParser
 from app.domain.value_objects.event_type import EventType
@@ -23,8 +22,15 @@ PROMPT_BUILDERS = {
 
 
 class AnalyzeEventUseCase:
-    def __init__(self, ai_service: AIService, max_retries: int = 2, retry_delay: float = 5.0):
+    def __init__(
+        self,
+        ai_service: AIService,
+        analysis_graph=None,
+        max_retries: int = 2,
+        retry_delay: float = 5.0,
+    ):
         self.ai_service = ai_service
+        self.analysis_graph = analysis_graph  # LangGraph 编译后的工作流（可选）
         self.parser = AnalysisParser()
         self.max_retries = max_retries
         self.retry_delay = retry_delay
@@ -34,28 +40,58 @@ class AnalyzeEventUseCase:
     ) -> AsyncGenerator[dict, None]:
         """
         流式分析事件，yield SSE 事件字典。
-        事件格式: {"type": "content"|"title"|"summary"|"industries"|"error"|"done", "data": ...}
+
+        流程：
+        1. [LangGraph] classify -> load -> retrieve，获取预处理数据
+        2. [UseCase] 拼装 context + 选择 Prompt
+        3. [UseCase] AIService.stream_chat() 流式推理
+        4. [UseCase] AnalysisParser 解析结果
         """
-        # 获取 prompt
+        # ---- Phase 1: LangGraph 预处理 ----
+        raw_text = question
+        search_results = []
+
+        if self.analysis_graph:
+            try:
+                initial_state = {
+                    "source": question,
+                    "event_type": event_type,
+                }
+                result = await self.analysis_graph.ainvoke(initial_state)
+                raw_text = result.get("raw_text", question)
+                search_results = result.get("search_results", [])
+
+                if result.get("error"):
+                    logger.warning("LangGraph 预处理有错误: %s", result["error"])
+
+            except Exception as e:
+                logger.error("LangGraph 执行失败，降级为直接文本分析: %s", e, exc_info=True)
+                raw_text = question
+
+        # ---- Phase 2: 构建 Prompt ----
         builder = PROMPT_BUILDERS.get(EventType(event_type))
         if not builder:
             logger.error("不支持的事件类型: %s", event_type)
             yield {"type": "error", "data": f"不支持的事件类型: {event_type}"}
             return
 
-        system_prompt = builder(question)
-        logger.info("分析开始: event_type=%s, question前50字=%s", event_type, question[:50])
+        user_message = self._build_user_message(raw_text, search_results)
+        system_prompt = builder(user_message)
 
-        # 流式调用 AI，含重试
+        logger.info(
+            "分析开始: event_type=%s, raw_text长度=%d, search_results=%d",
+            event_type, len(raw_text), len(search_results),
+        )
+
+        # ---- Phase 3: 流式推理 ----
         full_content = ""
-        last_error = None
 
-        for attempt in range(1, self.max_retries + 2):  # 1 次初始 + max_retries 次重试
+        for attempt in range(1, self.max_retries + 2):
             try:
-                async for chunk in self.ai_service.stream_chat(system_prompt, question):
+                async for chunk in self.ai_service.stream_chat(system_prompt, user_message):
                     full_content += chunk
                     yield {"type": "content", "data": chunk}
-                break  # 成功则退出重试循环
+                break
 
             except Exception as e:
                 last_error = str(e)
@@ -67,26 +103,37 @@ class AnalyzeEventUseCase:
                     yield {"type": "error", "data": f"AI 分析失败: {last_error}"}
                     return
 
-        # 解析结果
+        # ---- Phase 4: 解析结果 ----
         logger.info("AI 内容生成完成, 总长度=%d, 开始解析", len(full_content))
         parse_result = self.parser.parse(full_content, event_type)
         logger.info("解析结果: title=%s, industries=%s", parse_result.title, parse_result.industry_names)
 
-        # 推送 title
         if parse_result.title:
             yield {"type": "title", "data": parse_result.title}
         else:
-            # 降级：截取前15字作为标题
             fallback_title = question[:15] + ("..." if len(question) > 15 else "")
             yield {"type": "title", "data": fallback_title}
 
-        # 推送 summary
         if parse_result.summary:
             yield {"type": "summary", "data": parse_result.summary}
 
-        # 推送 industries
         if parse_result.industry_names:
             yield {"type": "industries", "data": parse_result.industry_names}
 
-        # 完成
         yield {"type": "done", "data": ""}
+
+    def _build_user_message(self, raw_text: str, search_results: list[dict]) -> str:
+        """构建增强后的 user_message，将历史检索结果作为附加 context 注入。"""
+        if not search_results:
+            return raw_text
+
+        context_parts = ["[历史相关分析参考]"]
+        for i, r in enumerate(search_results, 1):
+            created = r.get("created_at", "")[:10]
+            context_parts.append(
+                f"{i}. 《{r['title']}》({r['event_type']}, {created}): {r['summary']}"
+            )
+        context_parts.append("")
+        context_parts.append(f"用户输入: {raw_text}")
+
+        return "\n".join(context_parts)
