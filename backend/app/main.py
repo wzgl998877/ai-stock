@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.infrastructure.ai.ai_service import AIService
-from app.routers import analysis, knowledge
+from app.routers import analysis, knowledge, chat
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ app.add_middleware(
 
 app.include_router(analysis.router)
 app.include_router(knowledge.router)
+app.include_router(chat.router)
 
 
 @app.get("/health")

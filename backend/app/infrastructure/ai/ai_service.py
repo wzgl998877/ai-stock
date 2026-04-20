@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Union
 
 import httpx
 
@@ -22,30 +22,41 @@ class AIService:
         logger.info("AIService 初始化: base_url=%s, model=%s", self.base_url, self.model)
 
     async def stream_chat(
-        self, system_prompt: str, user_message: str,
+        self,
+        system_prompt: str,
+        user_message: str,
+        history_messages: list[dict] | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         流式调用 LLM，逐块 yield 文本内容。
 
-        使用 OpenAI Chat Completions API (stream=True)。
+        支持两种调用方式：
+        1. 兼容旧接口：system_prompt + user_message（无 history_messages）
+        2. 多轮对话：传入 history_messages 完整消息列表
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": self.model,
-            "messages": [
+
+        if history_messages is not None:
+            messages = history_messages
+        else:
+            messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
-            ],
+            ]
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
             "stream": True,
             "temperature": 0.7,
             "max_tokens": 4096,
         }
 
-        logger.info("AI 流式调用开始: url=%s, model=%s, user_msg长度=%d", url, self.model, len(user_message))
+        logger.info("AI 流式调用开始: url=%s, model=%s, messages数=%d", url, self.model, len(messages))
         logger.info("AI system_prompt: %s", system_prompt[:500])
         logger.info("AI user_message: %s", user_message[:300])
         chunk_count = 0

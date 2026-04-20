@@ -29,3 +29,6 @@ langchain-core>=0.3,<1.0
 
 # 网页爬取（web_scraper）
 beautifulsoup4>=4.12,<5.0
+
+# 外部搜索 API（Agent 自主搜索）
+tavily-python>=0.5,<1.0

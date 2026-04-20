@@ -1,14 +1,16 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Any
 
 
 @dataclass
 class ChatMessage:
     message_id: str
     session_id: str
-    role: str  # user/assistant/system
+    role: str  # user/assistant
     content: str
+    thinking_steps: Optional[List[dict]] = None  # 思维链步骤数组
+    event_type: Optional[str] = None  # 本条分析的事件类型
     create_time: Optional[datetime] = None
     update_time: Optional[datetime] = None
     deleted: str = "0"

@@ -19,6 +19,8 @@ def _message_to_entity(model: MessageModel) -> ChatMessage:
         session_id=model.session_id,
         role=model.role,
         content=model.content,
+        thinking_steps=model.thinking_steps,
+        event_type=model.event_type,
         create_time=model.create_time,
         update_time=model.update_time,
         deleted=model.deleted,
@@ -30,6 +32,7 @@ def _session_to_entity(model: SessionModel) -> ChatSession:
         session_id=model.session_id,
         user_id=model.user_id,
         title=model.title,
+        event_type=model.event_type,
         messages=[_message_to_entity(m) for m in model.messages],
         create_time=model.create_time,
         update_time=model.update_time,
@@ -46,6 +49,7 @@ class MySQLChatRepository(ChatRepository):
             session_id=chat_session.session_id or uuid.uuid4().hex,
             user_id=chat_session.user_id,
             title=chat_session.title,
+            event_type=chat_session.event_type,
         )
         self.session.add(model)
         await self.session.flush()
@@ -88,6 +92,8 @@ class MySQLChatRepository(ChatRepository):
             session_id=message.session_id,
             role=message.role,
             content=message.content,
+            thinking_steps=message.thinking_steps,
+            event_type=message.event_type,
         )
         self.session.add(model)
         await self.session.flush()

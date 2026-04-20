@@ -91,11 +91,37 @@ export interface PaginatedResponse<T> {
 }
 
 // === SSE 事件类型 ===
-export type SSEEventType = "content" | "title" | "summary" | "industries" | "error" | "done";
+export type SSEEventType = "thinking" | "content" | "title" | "summary" | "industries" | "error" | "done";
 
 export interface SSEEvent {
   type: SSEEventType;
-  data: string | string[];
+  data: string | string[] | ThinkingStepData;
+}
+
+// === 思维链步骤 ===
+export interface ThinkingStepData {
+  step: string;        // classify / search / retrieve / reasoning
+  status: "running" | "done" | "failed";
+  message: string;
+}
+
+// === Chat 会话 ===
+export interface ChatSessionType {
+  id: string;
+  title: string;
+  event_type: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// === Chat 消息 ===
+export interface ChatMessageType {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  thinking_steps: ThinkingStepData[] | null;
+  event_type: string | null;
+  created_at: string;
 }
 
 // === 保存文章请求 ===

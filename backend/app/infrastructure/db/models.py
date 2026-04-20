@@ -246,6 +246,7 @@ class ChatSession(AuditMixin, Base):
         String(32), ForeignKey("t_user.user_id"), nullable=False
     )
     title: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     messages = relationship(
         "ChatMessage", backref="session", lazy="selectin", order_by="ChatMessage.create_time"
@@ -271,6 +272,8 @@ class ChatMessage(AuditMixin, Base):
         Enum("user", "assistant", "system"), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    thinking_steps: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     __table_args__ = (
         Index("idx_session_id", "session_id"),
