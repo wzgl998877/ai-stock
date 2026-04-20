@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { Button, Modal, Input, Typography, message } from "antd";
 import MessageList from "../components/chat/MessageList";
+import SessionSidebar from "../components/chat/SessionSidebar";
 import AnalysisInput from "../components/analysis/AnalysisInput";
 import EventTypeSelector from "../components/analysis/EventTypeSelector";
 import IndustryTag from "../components/common/IndustryTag";
@@ -37,8 +38,10 @@ const AnalysisPage: React.FC = () => {
     startStreaming,
     doneStreaming,
     resetMessages,
-    setSessions,
     addSession,
+    switchSession,
+    loadHistory,
+    setSessions,
   } = useChatStore();
 
   // 保存相关状态
@@ -189,6 +192,31 @@ const AnalysisPage: React.FC = () => {
     setInputClearFlag((v) => !v);
   };
 
+  // === 切换会话 ===
+  const handleSelectSession = useCallback(
+    async (sessionId: string) => {
+      if (sessionId === currentSessionId) return;
+      handleStop();
+      switchSession(sessionId);
+
+      try {
+        const detail = await chatService.getSession(sessionId);
+        const loadedMessages: import("../domain/types").ChatMessageType[] = (detail.messages || []).map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          thinking_steps: m.thinking_steps,
+          event_type: m.event_type,
+          created_at: m.created_at,
+        }));
+        loadHistory(loadedMessages);
+      } catch (err) {
+        message.error("加载会话失败");
+      }
+    },
+    [currentSessionId]
+  );
+
   return (
     <div
       style={{
@@ -197,41 +225,8 @@ const AnalysisPage: React.FC = () => {
         overflow: "hidden",
       }}
     >
-      {/* 侧边栏占位（Phase 6 实现 SessionSidebar） */}
-      <div
-        style={{
-          width: 260,
-          borderRight: "1px solid #e5edf5",
-          background: "#f8fafc",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ padding: "16px 16px 12px" }}>
-          <Button
-            block
-            onClick={handleNewChat}
-            style={{
-              borderRadius: 6,
-              fontWeight: 400,
-              border: "1px solid #e5edf5",
-              background: "#fff",
-            }}
-          >
-            + 新建对话
-          </Button>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            padding: "0 16px",
-            overflowY: "auto",
-          }}
-        >
-          {/* 会话列表占位，Phase 6 实现 */}
-        </div>
-      </div>
+      {/* 侧边栏 */}
+      <SessionSidebar onNewChat={handleNewChat} onSelectSession={handleSelectSession} />
 
       {/* 主区域 */}
       <div

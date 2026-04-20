@@ -140,3 +140,42 @@ class AIService:
             result = response.json()
             content = result["choices"][0]["message"]["content"]
             return content, content  # 简化：返回相同内容，由调用方解析
+
+    async def tool_call(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        tool_choice: str = "auto",
+    ) -> dict:
+        """
+        非流式调用 LLM，支持 function calling / tools。
+
+        Returns:
+            dict: message 对象，包含 content 和/或 tool_calls
+        """
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload: dict = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "temperature": 0,
+            "max_tokens": 256,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+
+        logger.info("AI tool_call: url=%s, model=%s, tools=%d", url, self.model, len(tools or []))
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, json=payload, headers=headers)
+            if response.status_code != 200:
+                error_body = response.text[:500]
+                logger.error("AI tool_call error: status=%d body=%s", response.status_code, error_body)
+                raise RuntimeError(f"AI API error: {response.status_code} - {error_body}")
+            result = response.json()
+            return result["choices"][0]["message"]

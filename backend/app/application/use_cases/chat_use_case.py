@@ -78,6 +78,7 @@ class ChatUseCase:
         # 2. LangGraph 预处理 — 内联以便实时 yield thinking 事件
         raw_text = content
         search_results: list[dict] = []
+        web_search_results: list[dict] = []
         thinking_steps: list[dict] = []
 
         if self.analysis_graph:
@@ -137,6 +138,7 @@ class ChatUseCase:
 
                 raw_text = accumulated.get("raw_text", content)
                 search_results = accumulated.get("search_results", [])
+                web_search_results = accumulated.get("web_search_results", [])
 
             except Exception as e:
                 logger.warning("LangGraph 预处理失败，降级使用原始输入: %s", e)
@@ -144,7 +146,7 @@ class ChatUseCase:
 
         # 3. 构建 messages 数组（多轮对话 + 增强上下文）
         history = await self.chat_repo.list_messages(session_id)
-        messages = self._build_messages(history, effective_event_type, raw_text, search_results)
+        messages = self._build_messages(history, effective_event_type, raw_text, search_results, web_search_results)
 
         # 4. thinking: 正在分析...
         reasoning_event = {"step": "reasoning", "status": "running", "message": "正在分析..."}
@@ -202,6 +204,7 @@ class ChatUseCase:
         event_type: str | None,
         raw_text: str | None = None,
         search_results: list[dict] | None = None,
+        web_search_results: list[dict] | None = None,
     ) -> list[dict]:
         """将历史消息拼接为 OpenAI messages 数组，支持 LangGraph 增强上下文"""
         effective_type = event_type or "other"
@@ -224,10 +227,24 @@ class ChatUseCase:
         # 使用增强后的内容构建 system prompt
         user_content = raw_text or messages[-1].get("content", "")
 
-        # 拼接知识库检索结果
+        # 拼接所有外部上下文
+        context_parts = []
+        if web_search_results:
+            context_parts.append("[互联网搜索结果]")
+            for i, r in enumerate(web_search_results, 1):
+                context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
+            context_parts.append("")
+
         if search_results:
-            context = self._build_context(user_content, search_results)
-            system_prompt = builder(context)
+            context_parts.append("[历史相关分析参考]")
+            for i, r in enumerate(search_results, 1):
+                created = r.get("created_at", "")[:10]
+                context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
+            context_parts.append("")
+
+        if context_parts:
+            context_parts.append(f"用户输入: {user_content}")
+            system_prompt = builder("\n".join(context_parts))
         else:
             system_prompt = builder(user_content)
 
@@ -239,14 +256,3 @@ class ChatUseCase:
             messages.insert(-1, context_msg)
 
         return messages
-
-    @staticmethod
-    def _build_context(raw_text: str, search_results: list[dict]) -> str:
-        """构建增强上下文，将知识库检索结果注入"""
-        parts = ["[历史相关分析参考]"]
-        for i, r in enumerate(search_results, 1):
-            created = r.get("created_at", "")[:10]
-            parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
-        parts.append("")
-        parts.append(f"用户输入: {raw_text}")
-        return "\n".join(parts)

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # === 相似检测 ===
     similarity_threshold: float = 0.3
 
+    # === 搜索 ===
+    tavily_api_key: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

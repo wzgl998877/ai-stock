@@ -8,16 +8,22 @@ interface ChatState {
   sessions: ChatSessionType[];
   currentSessionId: string | null;
   messages: ChatMessageType[];
-  streamingMessageId: string | null; // 当前正在流式输出的 AI 消息 ID
+  streamingMessageId: string | null;
   title: string;
   summary: string;
   industries: string[];
+  sessionsLoaded: boolean;
 
   // === Session Actions ===
   setSessions: (sessions: ChatSessionType[]) => void;
   addSession: (session: ChatSessionType) => void;
   removeSession: (id: string) => void;
   setCurrentSessionId: (id: string | null) => void;
+  setSessionsLoaded: (loaded: boolean) => void;
+
+  // === Session Switching ===
+  switchSession: (id: string) => void;
+  loadHistory: (messages: ChatMessageType[]) => void;
 
   // === Message Actions ===
   setMessages: (messages: ChatMessageType[]) => void;
@@ -37,21 +43,22 @@ interface ChatState {
 }
 
 const initialMessageState = {
-  messages: [],
-  streamingMessageId: null,
+  messages: [] as ChatMessageType[],
+  streamingMessageId: null as string | null,
   title: "",
   summary: "",
-  industries: [],
+  industries: [] as string[],
 };
 
 export const useChatStore = create<ChatState>((set) => ({
   sessions: [],
   currentSessionId: null,
+  sessionsLoaded: false,
   ...initialMessageState,
 
   // --- Session Actions ---
 
-  setSessions: (sessions) => set({ sessions }),
+  setSessions: (sessions) => set({ sessions, sessionsLoaded: true }),
 
   addSession: (session) =>
     set((state) => ({ sessions: [session, ...state.sessions] })),
@@ -59,10 +66,24 @@ export const useChatStore = create<ChatState>((set) => ({
   removeSession: (id) =>
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
+      currentSessionId: state.currentSessionId === id ? null : state.currentSessionId,
     })),
 
   setCurrentSessionId: (id) =>
     set({ currentSessionId: id }),
+
+  setSessionsLoaded: (loaded) => set({ sessionsLoaded: loaded }),
+
+  // --- Session Switching ---
+
+  switchSession: (id) =>
+    set({
+      currentSessionId: id,
+      ...initialMessageState,
+    }),
+
+  loadHistory: (messages) =>
+    set({ ...initialMessageState, messages }),
 
   // --- Message Actions ---
 

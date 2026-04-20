@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
         from app.infrastructure.workflow.graph.analysis_graph import build_analysis_graph
         from app.core.database import async_session
 
-        analysis_graph = build_analysis_graph(session_factory=async_session)
+        analysis_graph = build_analysis_graph(session_factory=async_session, ai_service=app.state.ai_service)
         app.state.analysis_graph = analysis_graph
         logger.info("LangGraph 分析工作流初始化成功")
     except Exception as e:

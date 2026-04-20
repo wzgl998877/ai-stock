@@ -96,10 +96,10 @@
 
 ### 后端实现
 
-- [ ] T026 [P] [US3] 新增 web_search tool：封装 Tavily Search API，返回搜索结果摘要 in `backend/app/infrastructure/workflow/tools/web_search.py`
-- [ ] T027 [US3] 新增 agent_classify 节点：替代硬编码 classify_node，使用 LLM function calling 自主决定是否调用 web_search tool in `backend/app/infrastructure/workflow/nodes/agent_classify.py`
-- [ ] T028 [US3] 修改 analysis_graph.py：将 classify 节点替换为 agent_classify，添加条件边（需要搜索→web_search→load→retrieve；不需要→load→retrieve） in `backend/app/infrastructure/workflow/graph/analysis_graph.py`
-- [ ] T029 [US3] 新增 config.py 配置项：TAVILY_API_KEY in `backend/app/core/config.py`
+- [x] T026 [P] [US3] 新增 web_search tool：封装 Tavily Search API，返回搜索结果摘要 in `backend/app/infrastructure/workflow/tools/web_search.py`
+- [x] T027 [US3] 新增 agent_classify 节点：替代硬编码 classify_node，使用 LLM function calling 自主决定是否调用 web_search tool in `backend/app/infrastructure/workflow/nodes/agent_classify.py`
+- [x] T028 [US3] 修改 analysis_graph.py：将 classify 节点替换为 agent_classify，添加条件边（需要搜索→web_search→load→retrieve；不需要→load→retrieve） in `backend/app/infrastructure/workflow/graph/analysis_graph.py`
+- [x] T029 [US3] 新增 config.py 配置项：TAVILY_API_KEY in `backend/app/core/config.py`
 
 **Checkpoint**: 输入"美国伊朗最新战争情况"→思维链显示搜索过程→输入"新能源汽车产业链"→可能跳过搜索直接分析
 
@@ -113,9 +113,9 @@
 
 ### 前端实现
 
-- [ ] T030 [P] [US4] 新增 SessionSidebar 组件：会话列表、新建按钮、选中高亮、删除按钮、可折叠 in `frontend/src/components/chat/SessionSidebar.tsx`
-- [ ] T031 [US4] 改造 AnalysisPage：集成 SessionSidebar，切换会话时从 chatService.getSession 加载历史消息 in `frontend/src/pages/AnalysisPage.tsx`
-- [ ] T032 [US4] chatStore 增加会话管理：sessions 列表、currentSessionId、switchSession、loadHistory in `frontend/src/store/chatStore.ts`
+- [x] T030 [P] [US4] 新增 SessionSidebar 组件：会话列表、新建按钮、选中高亮、删除按钮、可折叠 in `frontend/src/components/chat/SessionSidebar.tsx`
+- [x] T031 [US4] 改造 AnalysisPage：集成 SessionSidebar，切换会话时从 chatService.getSession 加载历史消息 in `frontend/src/pages/AnalysisPage.tsx`
+- [x] T032 [US4] chatStore 增加会话管理：sessions 列表、currentSessionId、switchSession、loadHistory in `frontend/src/store/chatStore.ts`
 
 **Checkpoint**: 侧边栏显示会话列表→新建会话→切换→刷新页面→历史恢复
 
@@ -123,10 +123,10 @@
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T033 清理废弃文件：标记 analysisStore.ts、useSSE.ts、AnalysisResult.tsx 为废弃或删除
-- [ ] T034 [P] 确保原有 `/api/analysis/stream` 端点仍可用（向后兼容）
-- [ ] T035 [P] 添加 TAVILY_API_KEY 到 .env.example
-- [ ] T036 端到端验证：启动后端→打开前端→完整走通「输入→思维链→流式结果→追问→保存到知识库」流程
+- [x] T033 清理废弃文件：标记 analysisStore.ts、useSSE.ts、AnalysisResult.tsx 为废弃或删除
+- [x] T034 [P] 确保原有 `/api/analysis/stream` 端点仍可用（向后兼容）
+- [x] T035 [P] 添加 TAVILY_API_KEY 到 .env.example
+- [x] T036 端到端验证：启动后端→打开前端→完整走通「输入→思维链→流式结果→追问→保存到知识库」流程
 
 ---
 
