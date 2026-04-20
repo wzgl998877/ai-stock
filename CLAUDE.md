@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 2. **[Rules（执行规则）](./rules/)** — 理解"**怎么做才对**"
    - [后端分层与架构](./rules/backend.md)
+   - [Workflow 编排（LangGraph）](./rules/langgraph.md)
    - [前端分层与交互](./rules/frontend.md)
 
 3. **[产品概览](./docs/product-overview.md)** — 理解三模块、用户路径与 MVP 边界
@@ -39,6 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **后端**：Python 3 + FastAPI
 - **数据**：AKShare（A 股数据）、MySQL、Redis
 - **大模型**：统一抽象层，支持 OpenAI / DeepSeek 等兼容接口
+- **Workflow 编排**：LangGraph（多步骤 AI 工作流）
 - **任务与部署**：APScheduler、Docker Compose（以仓库实际配置为准）
 
 ## 🏗 架构要点
@@ -46,7 +48,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **三模块闭环**：模块一（AI 与知识库）→ 模块二（行情与个股）← 模块三（缠论信号与监控），跳转与数据须可联动
 - **后端分层**：Router → Application → Domain → Infrastructure（业务在 Domain，流程在 Application，技术在 Infrastructure）
 - **前端分层**：Page → Application → Service；**所有 API** 经 `services/`，页面不直连网络
-- **AI 与流式**：大模型须封装调用；分析结果须支持流式输出（SSE + 前端 EventSource 等）
+- **AI 与流式**：大模型须封装调用（AIService）；多步骤编排走 LangGraph Workflow；分析结果须支持流式输出（SSE + 前端 EventSource 等）
 - **产品定位**：个人投研辅助工具，**非**自动交易系统；界面与文案须体现「不构成投资建议」
 
 ## 🎨 UI 设计约束（强制）
