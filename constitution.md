@@ -38,6 +38,7 @@
 - **后端**：Python 3 + **FastAPI**
 - **数据**：**MySQL**（主库）+ **Redis**（缓存/计算结果）；A 股数据 **AKShare**
 - **大模型**：经统一抽象层接入（如 OpenAI / DeepSeek 兼容接口），**禁止**在业务层散落直连 SDK
+- **Agent 编排**：多步骤 AI 工作流使用 **LangGraph**，规则详见 `rules/langgraph.md`
 
 > 持久化访问须经 **Repository**，主库以本宪章为准采用 **MySQL**；若 `rules/backend.md` 与宪章冲突，以本宪章为准。
 

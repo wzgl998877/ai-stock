@@ -116,6 +116,13 @@ class AIService:
 - 模板化管理
 - 禁止硬编码
 
+### LangGraph Agent
+
+当业务需要多步骤 AI 编排（文档加载 → 搜索 → 总结等）时，引入 LangGraph。
+
+- 详细规则见 **[rules/langgraph.md](./langgraph.md)**
+- LangGraph 定位为 Infrastructure 层组件，Node 中调用 LLM 仍须通过 AIService
+
 ------
 
 ## 六、搜索模块规范

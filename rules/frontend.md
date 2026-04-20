@@ -161,15 +161,3 @@ const es = new EventSource('/api/stream')
 UI负责展示
 Application负责逻辑
 Service负责数据
-
-```
----
-
-需要的话我可以帮你再补一套👇（强烈建议下一步做）：
-
-👉 **code review rules（AI自动检查代码是否违规）**  
-👉 **prompt工程规范（让AI输出稳定）**  
-👉 **数据库设计规范（避免后期重构）**
-
-直接说：**:contentReference[oaicite:0]{index=0}** 👍
-```
