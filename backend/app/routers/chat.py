@@ -28,19 +28,23 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 USER_ID = "default"  # MVP 阶段固定用户
 
 
+def _get_use_case(request: Request, db: AsyncSession) -> ChatUseCase:
+    """统一构造 ChatUseCase，注入 ai_service + analysis_graph"""
+    repo = MySQLChatRepository(db)
+    ai_service = request.app.state.ai_service
+    analysis_graph = getattr(request.app.state, "analysis_graph", None)
+    return ChatUseCase(repo, ai_service, analysis_graph)
+
+
 async def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
     async for event in event_gen:
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 @router.post("/sessions", status_code=201, response_model=SessionResponse)
-async def create_session(body: CreateSessionRequest, db: AsyncSession = Depends(get_db)):
+async def create_session(body: CreateSessionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """创建新会话"""
-    repo = MySQLChatRepository(db)
-    use_case = ChatUseCase(repo, db)  # ai_service 从 app.state 获取
-    from app.main import app
-    ai_service = app.state.ai_service
-    use_case = ChatUseCase(repo, ai_service)
+    use_case = _get_use_case(request, db)
     session = await use_case.create_session(USER_ID, body.title)
     await db.commit()
     return SessionResponse(
@@ -53,12 +57,9 @@ async def create_session(body: CreateSessionRequest, db: AsyncSession = Depends(
 
 
 @router.get("/sessions", response_model=SessionListResponse)
-async def list_sessions(db: AsyncSession = Depends(get_db)):
+async def list_sessions(request: Request, db: AsyncSession = Depends(get_db)):
     """列出用户的所有会话"""
-    repo = MySQLChatRepository(db)
-    from app.main import app
-    ai_service = app.state.ai_service
-    use_case = ChatUseCase(repo, ai_service)
+    use_case = _get_use_case(request, db)
     sessions = await use_case.list_sessions(USER_ID)
     return SessionListResponse(
         sessions=[
@@ -76,12 +77,9 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
-async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
+async def get_session(session_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """获取会话详情（含消息列表）"""
-    repo = MySQLChatRepository(db)
-    from app.main import app
-    ai_service = app.state.ai_service
-    use_case = ChatUseCase(repo, ai_service)
+    use_case = _get_use_case(request, db)
     session = await use_case.get_session(session_id)
     if not session:
         raise InvalidInputError("会话不存在")
@@ -107,12 +105,9 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_session(session_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """删除会话"""
-    repo = MySQLChatRepository(db)
-    from app.main import app
-    ai_service = app.state.ai_service
-    use_case = ChatUseCase(repo, ai_service)
+    use_case = _get_use_case(request, db)
     success = await use_case.delete_session(session_id)
     await db.commit()
     if not success:
@@ -126,9 +121,7 @@ async def stream_message(session_id: str, body: SendMessageRequest, request: Req
     if not body.content or not body.content.strip():
         raise InvalidInputError("请输入消息内容")
 
-    repo = MySQLChatRepository(db)
-    ai_service = request.app.state.ai_service
-    use_case = ChatUseCase(repo, ai_service)
+    use_case = _get_use_case(request, db)
 
     return StreamingResponse(
         _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type)),

@@ -10,6 +10,28 @@ from app.infrastructure.workflow.nodes.load import load_node
 
 logger = logging.getLogger(__name__)
 
+# 思维链步骤元数据：用于 ChatUseCase yield thinking SSE 事件
+THINKING_STEP_META = {
+    "classify": {
+        "label": "判断输入类型",
+        "running": "正在判断输入类型...",
+        "done": "判断输入类型完成",
+    },
+    "load": {
+        "label": "加载内容",
+        "running": "正在加载内容...",
+        "done": "内容加载完成",
+    },
+    "retrieve": {
+        "label": "搜索知识库",
+        "running": "正在搜索知识库...",
+        "done": "搜索知识库完成",
+    },
+}
+
+# 节点执行顺序
+NODE_ORDER = ["classify", "load", "retrieve"]
+
 
 def build_analysis_graph(session_factory=None):
     """

@@ -16,6 +16,7 @@ async def load_node(state: AnalysisState) -> dict:
     """
     input_type = state.get("input_type", "text")
     source = state.get("source", "")
+    thinking_done_msg = "内容加载完成"
 
     if input_type == "text":
         raw_text = source
@@ -24,16 +25,22 @@ async def load_node(state: AnalysisState) -> dict:
         from app.infrastructure.workflow.tools.web_scraper import scrape_url
         try:
             raw_text = await scrape_url(source)
+            thinking_done_msg = f"网页抓取完成，共 {len(raw_text)} 字"
         except Exception as e:
             logger.error("[load] URL爬取失败: %s, error=%s", source, e)
-            return {"raw_text": source, "error": f"URL内容获取失败: {str(e)}"}
+            return {
+                "raw_text": source,
+                "error": f"URL内容获取失败: {str(e)}",
+                "thinking_done_msg": "网页抓取失败，使用原始链接",
+            }
 
     elif input_type == "file":
         raw_text = f"[文件内容解析暂未支持] 原始输入: {source}"
+        thinking_done_msg = "文件解析暂未支持"
         logger.warning("[load] 文件类型暂不支持: %s", source)
 
     else:
         raw_text = source
 
     logger.info("[load] input_type=%s, raw_text长度=%d", input_type, len(raw_text))
-    return {"raw_text": raw_text}
+    return {"raw_text": raw_text, "thinking_done_msg": thinking_done_msg}

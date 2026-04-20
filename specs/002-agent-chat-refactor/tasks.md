@@ -51,16 +51,16 @@
 
 ### 后端实现
 
-- [ ] T013 [US1] 修改 LangGraph analysis_graph.py：在每个节点执行前后通过 callback yield thinking 事件 in `backend/app/infrastructure/workflow/graph/analysis_graph.py`
-- [ ] T014 [US1] 确保 ChatUseCase 支持多轮对话：从 DB 加载 session 历史消息，截断超过 10 轮的早期对话，拼接为 messages 数组传给 AIService in `backend/app/application/use_cases/chat_use_case.py`
+- [x] T013 [US1] 修改 LangGraph analysis_graph.py：在每个节点执行前后通过 callback yield thinking 事件 in `backend/app/infrastructure/workflow/graph/analysis_graph.py`
+- [x] T014 [US1] 确保 ChatUseCase 支持多轮对话：从 DB 加载 session 历史消息，截断超过 10 轮的早期对话，拼接为 messages 数组传给 AIService in `backend/app/application/use_cases/chat_use_case.py`
 
 ### 前端实现
 
-- [ ] T015 [P] [US1] 新增 chatStore（Zustand）：管理 messages 数组、currentSessionId、streaming 状态、thinking 步骤；提供 addMessage/appendContent/addThinkingStep/done 等动作 in `frontend/src/store/chatStore.ts`
-- [ ] T016 [P] [US1] 新增 chatService：createSession, listSessions, getSession, deleteSession, streamMessage（SSE 流式） in `frontend/src/services/chatService.ts`
-- [ ] T017 [P] [US1] 新增 MessageList 组件：渲染消息数组，用户消息右对齐、AI 消息左对齐，自动滚动到底部 in `frontend/src/components/chat/MessageList.tsx`
-- [ ] T018 [P] [US1] 新增 MessageBubble 组件：单条消息气泡，用户消息显示文本，AI 消息渲染 Markdown + 显示保存按钮（isDone 时） in `frontend/src/components/chat/MessageBubble.tsx`
-- [ ] T019 [US1] 改造 AnalysisPage：外层 flex 布局加侧边栏占位、主区域从单次结果改为 MessageList、保留欢迎屏（无消息时）、保留底部输入栏 + EventTypeSelector + AnalysisInput、用 chatStore 替代 analysisStore in `frontend/src/pages/AnalysisPage.tsx`
+- [x] T015 [P] [US1] 新增 chatStore（Zustand）：管理 messages 数组、currentSessionId、streaming 状态、thinking 步骤；提供 addMessage/appendContent/addThinkingStep/done 等动作 in `frontend/src/store/chatStore.ts`
+- [x] T016 [P] [US1] 新增 chatService：createSession, listSessions, getSession, deleteSession, streamMessage（SSE 流式） in `frontend/src/services/chatService.ts`
+- [x] T017 [P] [US1] 新增 MessageList 组件：渲染消息数组，用户消息右对齐、AI 消息左对齐，自动滚动到底部 in `frontend/src/components/chat/MessageList.tsx`
+- [x] T018 [P] [US1] 新增 MessageBubble 组件：单条消息气泡，用户消息显示文本，AI 消息渲染 Markdown + 显示保存按钮（isDone 时） in `frontend/src/components/chat/MessageBubble.tsx`
+- [x] T019 [US1] 改造 AnalysisPage：外层 flex 布局加侧边栏占位、主区域从单次结果改为 MessageList、保留欢迎屏（无消息时）、保留底部输入栏 + EventTypeSelector + AnalysisInput、用 chatStore 替代 analysisStore in `frontend/src/pages/AnalysisPage.tsx`
 
 **Checkpoint**: 打开页面→输入问题→看到流式回答→追问→验证消息堆叠和上下文
 
@@ -74,15 +74,15 @@
 
 ### 后端实现
 
-- [ ] T020 [P] [US2] 新增 LangGraph thinking 辅助模块：定义 yield_thinking(step, status, message) 工具函数，供各节点调用 in `backend/app/infrastructure/workflow/nodes/thinking.py`
-- [ ] T021 [US2] 修改 classify_node、load_node、retrieve_node：在每个节点入口 yield thinking(running) 事件，完成时 yield thinking(done) 事件 in `backend/app/infrastructure/workflow/nodes/classify.py`, `load.py`, `retrieve.py`
-- [ ] T022 [US2] ChatUseCase 中将 thinking 事件包装为 SSE 推送，并在 AI 回复完成后将 thinking_steps 持久化到 ChatMessage in `backend/app/application/use_cases/chat_use_case.py`
+- [x] T020 [P] [US2] 新增 LangGraph thinking 辅助模块：定义 yield_thinking(step, status, message) 工具函数，供各节点调用 in `backend/app/infrastructure/workflow/nodes/thinking.py`
+- [x] T021 [US2] 修改 classify_node、load_node、retrieve_node：在每个节点入口 yield thinking(running) 事件，完成时 yield thinking(done) 事件 in `backend/app/infrastructure/workflow/nodes/classify.py`, `load.py`, `retrieve.py`
+- [x] T022 [US2] ChatUseCase 中将 thinking 事件包装为 SSE 推送，并在 AI 回复完成后将 thinking_steps 持久化到 ChatMessage in `backend/app/application/use_cases/chat_use_case.py`
 
 ### 前端实现
 
-- [ ] T023 [P] [US2] 新增 ThinkingChain 组件：步骤列表（running 显示加载动画、done 显示勾、failed 显示叉）、分析完成后折叠只显示摘要 in `frontend/src/components/chat/ThinkingChain.tsx`
-- [ ] T024 [US2] chatStore 处理 thinking SSE 事件类型：收到时追加到当前 AI 消息的 thinkingSteps 数组 in `frontend/src/store/chatStore.ts`
-- [ ] T025 [US2] MessageBubble 中集成 ThinkingChain：在 AI 消息的 Markdown 内容上方展示思维链 in `frontend/src/components/chat/MessageBubble.tsx`
+- [x] T023 [P] [US2] 新增 ThinkingChain 组件：步骤列表（running 显示加载动画、done 显示勾、failed 显示叉）、分析完成后折叠只显示摘要 in `frontend/src/components/chat/ThinkingChain.tsx`
+- [x] T024 [US2] chatStore 处理 thinking SSE 事件类型：收到时追加到当前 AI 消息的 thinkingSteps 数组 in `frontend/src/store/chatStore.ts`
+- [x] T025 [US2] MessageBubble 中集成 ThinkingChain：在 AI 消息的 Markdown 内容上方展示思维链 in `frontend/src/components/chat/MessageBubble.tsx`
 
 **Checkpoint**: 输入问题→看到"正在判断..."、"正在搜索..."等步骤→完成后折叠→显示分析结果
 

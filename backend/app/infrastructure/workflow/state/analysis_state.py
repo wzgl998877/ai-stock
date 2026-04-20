@@ -8,7 +8,7 @@ class AnalysisState(TypedDict, total=False):
 
     Input:      source, event_type
     Working:    input_type, raw_text, search_results
-    Output:     error
+    Output:     error, thinking_done_msg
     """
 
     # === Input ===
@@ -22,3 +22,4 @@ class AnalysisState(TypedDict, total=False):
 
     # === Output ===
     error: Optional[str]                 # 错误信息（各节点内部捕获后填充）
+    thinking_done_msg: str               # 节点完成时的思维链描述（供 ChatUseCase 使用）

@@ -20,7 +20,7 @@ def create_retrieve_node(session_factory):
 
         if not raw_text or len(raw_text) < 5:
             logger.info("[retrieve] 输入文本过短，跳过检索")
-            return {"search_results": []}
+            return {"search_results": [], "thinking_done_msg": "输入过短，跳过知识库检索"}
 
         try:
             async with session_factory() as session:
@@ -45,10 +45,12 @@ def create_retrieve_node(session_factory):
                     })
 
                 logger.info("[retrieve] 检索到 %d 篇相关文章（总共 %d 篇）", len(results), total)
-                return {"search_results": results}
+                count = len(results)
+                done_msg = f"知识库检索完成，找到 {count} 篇相关文章" if count > 0 else "知识库检索完成，未找到相关文章"
+                return {"search_results": results, "thinking_done_msg": done_msg}
 
         except Exception as e:
             logger.error("[retrieve] 知识库检索失败: %s", e, exc_info=True)
-            return {"search_results": []}
+            return {"search_results": [], "thinking_done_msg": "知识库检索失败，已跳过"}
 
     return retrieve_node

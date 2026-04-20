@@ -1,22 +1,45 @@
-/** AnalysisPage — AI 事件分析主页面（Stripe 对话式布局） */
+/** AnalysisPage — AI 事件分析主页面（ChatGPT 对话式布局） */
 
-import React, { useState } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { Button, Modal, Input, Typography, message } from "antd";
-import { useAnalysis } from "../application/useAnalysis";
-import AnalysisResult from "../components/analysis/AnalysisResult";
+import MessageList from "../components/chat/MessageList";
 import AnalysisInput from "../components/analysis/AnalysisInput";
 import EventTypeSelector from "../components/analysis/EventTypeSelector";
 import IndustryTag from "../components/common/IndustryTag";
-import { EventType, AnalysisStatus } from "../domain/types";
+import { EventType } from "../domain/types";
+import type { SSEEvent } from "../domain/types";
+import { useChatStore } from "../store/chatStore";
+import * as chatService from "../services/chatService";
 import { saveArticle } from "../services/analysisService";
-import { useAnalysisStore } from "../store/analysisStore";
 
 const { Text } = Typography;
 
 const AnalysisPage: React.FC = () => {
   const [eventType, setEventType] = useState<EventType | null>(null);
-  const { status, result, analyze, stop, isStreaming, isDone } = useAnalysis();
-  const { title, summary, industries, reset } = useAnalysisStore();
+  const abortRef = useRef<AbortController | null>(null);
+  const [inputClearFlag, setInputClearFlag] = useState(false);
+
+  // chatStore
+  const {
+    currentSessionId,
+    messages,
+    streamingMessageId,
+    title,
+    summary,
+    industries,
+    setCurrentSessionId,
+    addMessage,
+    appendContent,
+    addThinkingStep,
+    setTitle,
+    setSummary,
+    setIndustries,
+    startStreaming,
+    doneStreaming,
+    resetMessages,
+    setSessions,
+    addSession,
+  } = useChatStore();
 
   // 保存相关状态
   const [editTitle, setEditTitle] = useState("");
@@ -24,15 +47,106 @@ const AnalysisPage: React.FC = () => {
   const [editIndustries, setEditIndustries] = useState<string[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [inputClearFlag, setInputClearFlag] = useState(false);
 
-  const handleSubmit = (question: string) => {
-    analyze(eventType ?? EventType.GEO_POLITICAL, question);
-  };
+  const isStreaming = streamingMessageId !== null;
+  const isIdle = messages.length === 0 && !isStreaming;
 
-  const isIdle = status === AnalysisStatus.IDLE && !result;
+  // === 提交消息 ===
+  const handleSubmit = useCallback(
+    async (question: string) => {
+      // 取消之前的请求
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-  // 打开保存确认弹窗
+      try {
+        // 1. 确保有会话
+        let sessionId = currentSessionId;
+        if (!sessionId) {
+          const session = await chatService.createSession();
+          sessionId = session.id;
+          setCurrentSessionId(sessionId);
+          addSession(session);
+          setSessions([session]);
+        }
+
+        // 2. 添加用户消息到 UI
+        const userMsgId = Date.now().toString();
+        addMessage({
+          id: userMsgId,
+          role: "user",
+          content: question,
+          thinking_steps: null,
+          event_type: eventType,
+          created_at: new Date().toISOString(),
+        });
+
+        // 3. 创建占位 AI 消息
+        const aiMsgId = (Date.now() + 1).toString();
+        addMessage({
+          id: aiMsgId,
+          role: "assistant",
+          content: "",
+          thinking_steps: [],
+          event_type: eventType,
+          created_at: new Date().toISOString(),
+        });
+        startStreaming(aiMsgId);
+
+        // 4. 流式发送
+        await chatService.streamMessage(
+          sessionId,
+          question,
+          eventType,
+          (event: SSEEvent) => {
+            switch (event.type) {
+              case "thinking":
+                addThinkingStep(event.data as import("../domain/types").ThinkingStepData);
+                break;
+              case "content":
+                appendContent(event.data as string);
+                break;
+              case "title":
+                setTitle(event.data as string);
+                break;
+              case "summary":
+                setSummary(event.data as string);
+                break;
+              case "industries":
+                setIndustries(event.data as string[]);
+                break;
+              case "error":
+                message.error(event.data as string);
+                doneStreaming();
+                break;
+              case "done":
+                doneStreaming();
+                break;
+            }
+          },
+          controller.signal
+        );
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+        message.error(err instanceof Error ? err.message : "分析失败");
+        doneStreaming();
+      }
+    },
+    [currentSessionId, eventType]
+  );
+
+  // === 停止 ===
+  const handleStop = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    doneStreaming();
+  }, [doneStreaming]);
+
+  // === 保存到知识库 ===
   const handleOpenSaveModal = () => {
     setEditTitle(title || "");
     setEditSummary(summary || "");
@@ -40,20 +154,18 @@ const AnalysisPage: React.FC = () => {
     setSaveModalOpen(true);
   };
 
-  // 执行保存
   const handleSave = async () => {
     if (editIndustries.length === 0) {
       message.warning("请至少保留1个行业标签");
       return;
     }
-
     setSaving(true);
     try {
-      const store = useAnalysisStore.getState();
+      const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
       await saveArticle({
         title: editTitle,
         summary: editSummary,
-        content: store.result,
+        content: lastAiMsg?.content || "",
         event_type: eventType ?? EventType.OTHER,
         raw_input: "",
         industry_codes: editIndustries,
@@ -62,8 +174,6 @@ const AnalysisPage: React.FC = () => {
       });
       message.success(`已保存，关联了${editIndustries.length}个行业`);
       setSaveModalOpen(false);
-      reset();
-      setInputClearFlag((v) => !v);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -71,9 +181,11 @@ const AnalysisPage: React.FC = () => {
     }
   };
 
-  // 不保存，重置
-  const handleDiscard = () => {
-    reset();
+  // === 新建对话 ===
+  const handleNewChat = () => {
+    handleStop();
+    setCurrentSessionId(null);
+    resetMessages();
     setInputClearFlag((v) => !v);
   };
 
@@ -81,18 +193,53 @@ const AnalysisPage: React.FC = () => {
     <div
       style={{
         display: "flex",
-        flexDirection: "column",
         height: "100vh",
         overflow: "hidden",
       }}
     >
-      {/* 可滚动内容区域 */}
+      {/* 侧边栏占位（Phase 6 实现 SessionSidebar） */}
+      <div
+        style={{
+          width: 260,
+          borderRight: "1px solid #e5edf5",
+          background: "#f8fafc",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ padding: "16px 16px 12px" }}>
+          <Button
+            block
+            onClick={handleNewChat}
+            style={{
+              borderRadius: 6,
+              fontWeight: 400,
+              border: "1px solid #e5edf5",
+              background: "#fff",
+            }}
+          >
+            + 新建对话
+          </Button>
+        </div>
+        <div
+          style={{
+            flex: 1,
+            padding: "0 16px",
+            overflowY: "auto",
+          }}
+        >
+          {/* 会话列表占位，Phase 6 实现 */}
+        </div>
+      </div>
+
+      {/* 主区域 */}
       <div
         style={{
           flex: 1,
-          overflowY: "auto",
           display: "flex",
           flexDirection: "column",
+          minWidth: 0,
         }}
       >
         {isIdle ? (
@@ -107,7 +254,6 @@ const AnalysisPage: React.FC = () => {
               padding: "0 32px",
             }}
           >
-            {/* 标题 */}
             <h1
               style={{
                 fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
@@ -121,91 +267,48 @@ const AnalysisPage: React.FC = () => {
                 textAlign: "center",
               }}
             >
-              你好，我是{' '}
+              你好，我是{" "}
               <span style={{ color: "#533afd", fontWeight: 400 }}>
                 AI 投研助手
               </span>
               ，有什么能帮你的吗？
             </h1>
 
-            {/* 输入框 */}
             <div style={{ width: 780 }}>
               <AnalysisInput
                 eventType={eventType}
-                disabled={isStreaming}
+                disabled={false}
                 onSubmit={handleSubmit}
                 forceClear={inputClearFlag}
               />
-              {/* 事件类型标签在输入框下方 */}
               <EventTypeSelector
                 value={eventType}
                 onChange={setEventType}
-                disabled={isStreaming}
+                disabled={false}
               />
             </div>
           </div>
         ) : (
-          /* 分析态：结果展示 */
-          <div
-            style={{
-              maxWidth: 860,
-              width: "100%",
-              margin: "0 auto",
-              padding: "24px 24px 100px",
-            }}
-          >
-            {/* 分析完成后：可编辑标题和摘要 */}
-            {isDone && title && (
-              <div style={{ marginBottom: 16 }}>
-                <Input
-                  value={title}
-                  onChange={(e) => useAnalysisStore.getState().setTitle(e.target.value)}
-                  bordered={false}
-                  placeholder="文章标题"
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 300,
-                    color: "#061b31",
-                    fontFeatureSettings: "'ss01' on",
-                    letterSpacing: "-0.22px",
-                    padding: "4px 0",
-                    borderBottom: "1px solid #e5edf5",
-                    marginBottom: 8,
-                  }}
-                />
-                <Input.TextArea
-                  value={summary}
-                  onChange={(e) => useAnalysisStore.getState().setSummary(e.target.value)}
-                  autoSize
-                  bordered={false}
-                  placeholder="文章摘要"
-                  style={{
-                    fontSize: 14,
-                    color: "#64748d",
-                    padding: "4px 0",
-                    borderBottom: "1px solid #e5edf5",
-                    resize: "none",
-                  }}
-                />
-              </div>
-            )}
+          <>
+            {/* 分析态：消息列表 */}
+            <MessageList />
 
-            <AnalysisResult onStop={stop} />
-
-            {/* 分析完成后：保存/丢弃按钮 */}
-            {isDone && (
+            {/* 分析完成后：保存/丢弃 */}
+            {!isStreaming && messages.length > 0 && (
               <div
                 style={{
+                  maxWidth: 860,
+                  width: "100%",
+                  margin: "0 auto",
+                  padding: "0 24px 8px",
                   display: "flex",
                   justifyContent: "flex-end",
                   gap: 12,
-                  marginTop: 16,
-                  paddingTop: 16,
-                  borderTop: "1px solid #e5edf5",
                 }}
               >
                 <Button
-                  onClick={handleDiscard}
+                  onClick={handleNewChat}
+                  size="small"
                   style={{
                     borderRadius: 4,
                     borderColor: "#e5edf5",
@@ -213,51 +316,49 @@ const AnalysisPage: React.FC = () => {
                     fontWeight: 400,
                   }}
                 >
-                  不保存
+                  新对话
                 </Button>
                 <Button
                   type="primary"
+                  size="small"
                   onClick={handleOpenSaveModal}
-                  style={{
-                    borderRadius: 4,
-                    fontWeight: 400,
-                  }}
+                  style={{ borderRadius: 4, fontWeight: 400 }}
                 >
                   保存到知识库
                 </Button>
               </div>
             )}
+          </>
+        )}
+
+        {/* 分析态：底部固定输入栏 */}
+        {!isIdle && (
+          <div
+            style={{
+              flexShrink: 0,
+              borderTop: "1px solid #e5edf5",
+              padding: "16px 32px 20px",
+              background: "#ffffff",
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            <div style={{ width: 780 }}>
+              <AnalysisInput
+                eventType={eventType}
+                disabled={isStreaming}
+                onSubmit={handleSubmit}
+                forceClear={inputClearFlag}
+              />
+              <EventTypeSelector
+                value={eventType}
+                onChange={setEventType}
+                disabled={isStreaming}
+              />
+            </div>
           </div>
         )}
       </div>
-
-      {/* 分析态：底部固定输入栏 */}
-      {!isIdle && (
-        <div
-          style={{
-            flexShrink: 0,
-            borderTop: "1px solid #e5edf5",
-            padding: "16px 32px 20px",
-            background: "#ffffff",
-            display: "flex",
-            justifyContent: "center",
-          }}
-        >
-          <div style={{ width: 780 }}>
-            <AnalysisInput
-              eventType={eventType}
-              disabled={isStreaming}
-              onSubmit={handleSubmit}
-              forceClear={inputClearFlag}
-            />
-            <EventTypeSelector
-              value={eventType}
-              onChange={setEventType}
-              disabled={isStreaming}
-            />
-          </div>
-        </div>
-      )}
 
       {/* 行业标签确认弹窗 */}
       <Modal
@@ -272,7 +373,14 @@ const AnalysisPage: React.FC = () => {
         cancelButtonProps={{ style: { borderRadius: 4 } }}
       >
         <div style={{ marginBottom: 16 }}>
-          <Text style={{ fontSize: 13, color: "#273951", marginBottom: 6, display: "block" }}>
+          <Text
+            style={{
+              fontSize: 13,
+              color: "#273951",
+              marginBottom: 6,
+              display: "block",
+            }}
+          >
             文章标题
           </Text>
           <Input
@@ -283,7 +391,14 @@ const AnalysisPage: React.FC = () => {
           />
         </div>
         <div style={{ marginBottom: 16 }}>
-          <Text style={{ fontSize: 13, color: "#273951", marginBottom: 6, display: "block" }}>
+          <Text
+            style={{
+              fontSize: 13,
+              color: "#273951",
+              marginBottom: 6,
+              display: "block",
+            }}
+          >
             文章摘要
           </Text>
           <Input.TextArea
@@ -295,7 +410,14 @@ const AnalysisPage: React.FC = () => {
           />
         </div>
         <div>
-          <Text style={{ fontSize: 13, color: "#273951", marginBottom: 6, display: "block" }}>
+          <Text
+            style={{
+              fontSize: 13,
+              color: "#273951",
+              marginBottom: 6,
+              display: "block",
+            }}
+          >
             关联行业标签（至少1个）
           </Text>
           <IndustryTag
@@ -308,7 +430,14 @@ const AnalysisPage: React.FC = () => {
             }}
           />
           {editIndustries.length === 0 && (
-            <Text style={{ fontSize: 12, color: "#ea2261", marginTop: 8, display: "block" }}>
+            <Text
+              style={{
+                fontSize: 12,
+                color: "#ea2261",
+                marginTop: 8,
+                display: "block",
+              }}
+            >
               请至少保留1个行业标签
             </Text>
           )}

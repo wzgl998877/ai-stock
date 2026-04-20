@@ -11,6 +11,8 @@ URL_PATTERN = re.compile(r"^https?://\S+$", re.IGNORECASE)
 
 FILE_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".csv", ".xlsx"}
 
+TYPE_LABELS = {"url": "网页链接", "file": "文件", "text": "文本"}
+
 
 def classify_node(state: AnalysisState) -> dict:
     """
@@ -31,4 +33,8 @@ def classify_node(state: AnalysisState) -> dict:
         input_type = "text"
 
     logger.info("[classify] input_type=%s, source前50字=%s", input_type, source[:50])
-    return {"input_type": input_type}
+
+    return {
+        "input_type": input_type,
+        "thinking_done_msg": f"判断输入类型: {TYPE_LABELS.get(input_type, input_type)}",
+    }
