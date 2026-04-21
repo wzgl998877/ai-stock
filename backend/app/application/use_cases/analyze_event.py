@@ -89,8 +89,9 @@ class AnalyzeEventUseCase:
         for attempt in range(1, self.max_retries + 2):
             try:
                 async for chunk in self.ai_service.stream_chat(system_prompt, user_message):
-                    full_content += chunk
-                    yield {"type": "content", "data": chunk}
+                    if chunk.type == "content":
+                        full_content += chunk.text
+                        yield {"type": "content", "data": chunk.text}
                 break
 
             except Exception as e:

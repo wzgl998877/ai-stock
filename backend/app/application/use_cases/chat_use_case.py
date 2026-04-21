@@ -176,11 +176,17 @@ class ChatUseCase:
 
         # 5. 流式调用 LLM
         full_content = ""
+        reasoning_text = ""
 
         try:
             async for chunk in self.ai_service.stream_chat("", "", history_messages=messages):
-                full_content += chunk
-                yield {"type": "content", "data": chunk}
+                if chunk.type == "reasoning":
+                    # 模型推理思考过程 → reasoning SSE 事件（前端单独展示）
+                    reasoning_text += chunk.text
+                    yield {"type": "reasoning", "data": chunk.text}
+                elif chunk.type == "content":
+                    full_content += chunk.text
+                    yield {"type": "content", "data": chunk.text}
         except Exception as e:
             logger.error("ChatUseCase AI 调用失败: %s", e, exc_info=True)
             # 确保 reasoning 的 done 事件

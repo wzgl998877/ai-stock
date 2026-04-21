@@ -91,7 +91,7 @@ export interface PaginatedResponse<T> {
 }
 
 // === SSE 事件类型 ===
-export type SSEEventType = "thinking" | "content" | "title" | "summary" | "industries" | "error" | "done";
+export type SSEEventType = "thinking" | "reasoning" | "content" | "title" | "summary" | "industries" | "error" | "done";
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -119,6 +119,7 @@ export interface ChatMessageType {
   id: string;
   role: "user" | "assistant";
   content: string;
+  reasoning: string;                              // 模型推理思考过程
   thinking_steps: ThinkingStepData[] | null;
   event_type: string | null;
   created_at: string;

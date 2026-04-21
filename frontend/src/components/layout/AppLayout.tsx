@@ -81,6 +81,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         id: m.id,
         role: m.role,
         content: m.content,
+        reasoning: m.reasoning || "",
         thinking_steps: m.thinking_steps,
         event_type: m.event_type,
         created_at: m.created_at,

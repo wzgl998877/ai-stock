@@ -17,7 +17,8 @@
       "Bash(D:/tool/node/npx.cmd tsc:*)",
       "Bash(test:*)",
       "Bash(curl:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node_modules/.bin/tsc.cmd:*)"
     ]
   }
 }

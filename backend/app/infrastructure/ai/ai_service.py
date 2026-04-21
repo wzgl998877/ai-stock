@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import AsyncGenerator, Union
+from typing import AsyncGenerator, NamedTuple
 
 import httpx
 
@@ -11,8 +11,14 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+class StreamChunk(NamedTuple):
+    """流式输出块：区分正式回答和推理思考"""
+    type: str   # "content" = 正式回答, "reasoning" = 推理思考
+    text: str
+
+
 class AIService:
-    """统一 AI 服务抽象层，支持 OpenAI/DeepSeek 等兼容接口"""
+    """统一 AI 服务抽象层，支持 OpenAI/DeepSeek/GLM 等兼容接口"""
 
     def __init__(self):
         self.api_key = settings.openai_api_key
@@ -26,13 +32,15 @@ class AIService:
         system_prompt: str,
         user_message: str,
         history_messages: list[dict] | None = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[StreamChunk, None]:
         """
-        流式调用 LLM，逐块 yield 文本内容。
+        流式调用 LLM，逐块 yield StreamChunk。
 
         支持两种调用方式：
         1. 兼容旧接口：system_prompt + user_message（无 history_messages）
         2. 多轮对话：传入 history_messages 完整消息列表
+
+        返回 StreamChunk，type 为 "content"（正式回答）或 "reasoning"（推理思考）。
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -57,8 +65,6 @@ class AIService:
         }
 
         logger.info("AI 流式调用开始: url=%s, model=%s, messages数=%d", url, self.model, len(messages))
-        logger.info("AI system_prompt: %s", system_prompt[:500])
-        logger.info("AI user_message: %s", user_message[:300])
         chunk_count = 0
 
         try:
@@ -75,11 +81,9 @@ class AIService:
                         line = line.strip()
                         if not line:
                             continue
-                        # 打印前 10 行原始数据，方便排查格式问题
                         if raw_line_count <= 10:
                             logger.info("SSE raw line %d: %s", raw_line_count, line[:300])
                         if not line.startswith("data: "):
-                            # 非 SSE 格式行，可能是错误 JSON
                             try:
                                 err_obj = json.loads(line)
                                 if err_obj.get("code") or err_obj.get("error"):
@@ -89,18 +93,26 @@ class AIService:
                             except json.JSONDecodeError:
                                 pass
                             continue
-                        data = line[6:]  # strip "data: " prefix
+                        data = line[6:]
                         if data == "[DONE]":
                             break
                         try:
                             chunk = json.loads(data)
-                            # 兼容不同 API 返回格式：choices[0].delta.content 或 choices[0].message.content
                             choice = chunk.get("choices", [{}])[0]
                             delta = choice.get("delta", {}) or choice.get("message", {})
+
+                            # GLM 等推理模型：reasoning_content = 思考过程
+                            reasoning = delta.get("reasoning_content", "")
+                            if reasoning:
+                                chunk_count += 1
+                                yield StreamChunk("reasoning", reasoning)
+
+                            # 正式回答内容
                             content = delta.get("content", "")
                             if content:
                                 chunk_count += 1
-                                yield content
+                                yield StreamChunk("content", content)
+
                         except json.JSONDecodeError:
                             logger.warning("JSON 解析失败: %s", data[:200])
                             continue
@@ -113,10 +125,7 @@ class AIService:
     async def generate_title_and_summary(
         self, system_prompt: str, user_message: str,
     ) -> tuple[str, str]:
-        """
-        非流式调用 LLM，生成标题和摘要。
-        仅作为降级方案使用（正常流程从流式输出中提取）。
-        """
+        """非流式调用 LLM，生成标题和摘要（降级方案）"""
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -139,7 +148,7 @@ class AIService:
                 raise RuntimeError(f"AI API error: {response.status_code}")
             result = response.json()
             content = result["choices"][0]["message"]["content"]
-            return content, content  # 简化：返回相同内容，由调用方解析
+            return content, content
 
     async def tool_call(
         self,
@@ -147,12 +156,7 @@ class AIService:
         tools: list[dict] | None = None,
         tool_choice: str = "auto",
     ) -> dict:
-        """
-        非流式调用 LLM，支持 function calling / tools。
-
-        Returns:
-            dict: message 对象，包含 content 和/或 tool_calls
-        """
+        """非流式调用 LLM，支持 function calling / tools"""
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",

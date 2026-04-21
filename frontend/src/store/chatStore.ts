@@ -29,6 +29,7 @@ interface ChatState {
   setMessages: (messages: ChatMessageType[]) => void;
   addMessage: (message: ChatMessageType) => void;
   appendContent: (content: string) => void;
+  appendReasoning: (text: string) => void;
   addThinkingStep: (step: ThinkingStepData) => void;
   setTitle: (title: string) => void;
   setSummary: (summary: string) => void;
@@ -97,6 +98,15 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: state.messages.map((msg) =>
         msg.id === state.streamingMessageId
           ? { ...msg, content: msg.content + content }
+          : msg
+      ),
+    })),
+
+  appendReasoning: (text) =>
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === state.streamingMessageId
+          ? { ...msg, reasoning: msg.reasoning + text }
           : msg
       ),
     })),

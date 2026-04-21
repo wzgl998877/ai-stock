@@ -30,6 +30,7 @@ const AnalysisPage: React.FC = () => {
     setCurrentSessionId,
     addMessage,
     appendContent,
+    appendReasoning,
     addThinkingStep,
     setTitle,
     setSummary,
@@ -78,6 +79,7 @@ const AnalysisPage: React.FC = () => {
           id: userMsgId,
           role: "user",
           content: question,
+          reasoning: "",
           thinking_steps: null,
           event_type: eventType,
           created_at: new Date().toISOString(),
@@ -89,6 +91,7 @@ const AnalysisPage: React.FC = () => {
           id: aiMsgId,
           role: "assistant",
           content: "",
+          reasoning: "",
           thinking_steps: [],
           event_type: eventType,
           created_at: new Date().toISOString(),
@@ -104,6 +107,9 @@ const AnalysisPage: React.FC = () => {
             switch (event.type) {
               case "thinking":
                 addThinkingStep(event.data as import("../domain/types").ThinkingStepData);
+                break;
+              case "reasoning":
+                appendReasoning(event.data as string);
                 break;
               case "content":
                 appendContent(event.data as string);
