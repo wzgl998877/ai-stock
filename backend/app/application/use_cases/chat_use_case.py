@@ -75,13 +75,16 @@ class ChatUseCase:
         )
         await self.chat_repo.add_message(user_msg)
 
-        # 2. LangGraph 预处理 — 内联以便实时 yield thinking 事件
+        # 2. 判断是否为追问（有历史 assistant 回复则跳过 LangGraph 预处理）
+        existing_messages = await self.chat_repo.list_messages(session_id)
+        is_follow_up = any(m.role == "assistant" for m in existing_messages[:-1]) if len(existing_messages) > 1 else False
+
         raw_text = content
         search_results: list[dict] = []
         web_search_results: list[dict] = []
         thinking_steps: list[dict] = []
 
-        if self.analysis_graph:
+        if self.analysis_graph and not is_follow_up:
             from app.infrastructure.workflow.graph.analysis_graph import THINKING_STEP_META, NODE_ORDER
 
             try:
@@ -104,7 +107,15 @@ class ChatUseCase:
                     yield {"type": "thinking", "data": running_evt}
 
                 # 使用 astream 获取节点级更新，实时 yield thinking
+                # 根据条件边的实际路由决定下一个 running 事件，避免跳过的节点残留 running 状态
                 accumulated: dict = {}
+
+                # 实际执行路径：agent_classify 后根据 need_search 决定是否经过 web_search
+                EXECUTION_PATHS = [
+                    ["agent_classify", "web_search", "load", "retrieve"],  # need_search=True
+                    ["agent_classify", "load", "retrieve"],                # need_search=False
+                ]
+
                 async for update in self.analysis_graph.astream(
                     {"source": content, "event_type": effective_event_type},
                     stream_mode="updates",
@@ -122,19 +133,28 @@ class ChatUseCase:
                         thinking_steps.append(done_evt)
                         yield {"type": "thinking", "data": done_evt}
 
-                        # 下一个节点的 running 事件
-                        if node_name in graph_nodes:
-                            idx = graph_nodes.index(node_name)
-                            if idx + 1 < len(graph_nodes):
-                                next_node = graph_nodes[idx + 1]
-                                next_meta = THINKING_STEP_META.get(next_node, {})
-                                running_evt = {
-                                    "step": next_node,
-                                    "status": "running",
-                                    "message": next_meta.get("running", f"正在{next_node}..."),
-                                }
-                                thinking_steps.append(running_evt)
-                                yield {"type": "thinking", "data": running_evt}
+                        # 确定下一个实际执行的节点
+                        next_node = None
+                        if node_name == "agent_classify":
+                            # 根据条件边结果决定下一个节点
+                            need_search = accumulated.get("need_search", False)
+                            next_node = "web_search" if need_search else "load"
+                        elif node_name == "web_search":
+                            next_node = "load"
+                        elif node_name == "load":
+                            if "retrieve" in all_nodes:
+                                next_node = "retrieve"
+
+                        # 发出下一个节点的 running 事件
+                        if next_node and next_node in all_nodes:
+                            next_meta = THINKING_STEP_META.get(next_node, {})
+                            running_evt = {
+                                "step": next_node,
+                                "status": "running",
+                                "message": next_meta.get("running", f"正在{next_node}..."),
+                            }
+                            thinking_steps.append(running_evt)
+                            yield {"type": "thinking", "data": running_evt}
 
                 raw_text = accumulated.get("raw_text", content)
                 search_results = accumulated.get("search_results", [])
@@ -145,7 +165,8 @@ class ChatUseCase:
                 raw_text = content
 
         # 3. 构建 messages 数组（多轮对话 + 增强上下文）
-        history = await self.chat_repo.list_messages(session_id)
+        # 追问时复用已有的 existing_messages，首轮需要重新查询（LangGraph 后数据有更新）
+        history = existing_messages if is_follow_up else await self.chat_repo.list_messages(session_id)
         messages = self._build_messages(history, effective_event_type, raw_text, search_results, web_search_results)
 
         # 4. thinking: 正在分析...
@@ -162,6 +183,10 @@ class ChatUseCase:
                 yield {"type": "content", "data": chunk}
         except Exception as e:
             logger.error("ChatUseCase AI 调用失败: %s", e, exc_info=True)
+            # 确保 reasoning 的 done 事件
+            reasoning_done = {"step": "reasoning", "status": "failed", "message": "分析失败"}
+            thinking_steps.append(reasoning_done)
+            yield {"type": "thinking", "data": reasoning_done}
             yield {"type": "error", "data": f"AI 分析失败: {str(e)}"}
             return
 
@@ -206,7 +231,7 @@ class ChatUseCase:
         search_results: list[dict] | None = None,
         web_search_results: list[dict] | None = None,
     ) -> list[dict]:
-        """将历史消息拼接为 OpenAI messages 数组，支持 LangGraph 增强上下文"""
+        """将历史消息拼接为 OpenAI messages 数组，支持多轮对话上下文"""
         effective_type = event_type or "other"
         builder = PROMPT_BUILDERS.get(EventType(effective_type), general.build_prompt)
 
@@ -224,35 +249,60 @@ class ChatUseCase:
         if not messages:
             return messages
 
-        # 使用增强后的内容构建 system prompt
+        # 判断是否为追问（历史中已有 assistant 回复）
+        has_prior_response = any(m.role == "assistant" for m in recent[:-1]) if len(recent) > 1 else False
+
+        # 当前用户输入
         user_content = raw_text or messages[-1].get("content", "")
 
-        # 拼接所有外部上下文
-        context_parts = []
-        if web_search_results:
-            context_parts.append("[互联网搜索结果]")
-            for i, r in enumerate(web_search_results, 1):
-                context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
-            context_parts.append("")
+        if has_prior_response:
+            # 追问模式：使用对话式 system prompt，保持上下文连贯
+            context_parts = []
+            if web_search_results:
+                context_parts.append("[本轮互联网搜索结果]")
+                for i, r in enumerate(web_search_results, 1):
+                    context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
+                context_parts.append("")
 
-        if search_results:
-            context_parts.append("[历史相关分析参考]")
-            for i, r in enumerate(search_results, 1):
-                created = r.get("created_at", "")[:10]
-                context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
-            context_parts.append("")
+            if search_results:
+                context_parts.append("[历史相关分析参考]")
+                for i, r in enumerate(search_results, 1):
+                    created = r.get("created_at", "")[:10]
+                    context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
+                context_parts.append("")
 
-        if context_parts:
-            context_parts.append(f"用户输入: {user_content}")
-            system_prompt = builder("\n".join(context_parts))
+            system_content = "你是一位专业的A股市场分析师。用户正在基于之前的分析进行追问。请根据之前的对话上下文直接回答用户的问题，保持上下文连贯。不要重新做完整分析，而是针对追问的具体内容给出专业回答。如果追问涉及数据来源或细节，请根据你之前回答的内容来回应。所有股票相关内容仅供学习研究参考，不构成投资建议。"
+            if context_parts:
+                system_content += "\n\n" + "\n".join(context_parts)
+
+            messages.insert(0, {"role": "system", "content": system_content})
         else:
-            system_prompt = builder(user_content)
+            # 首轮：使用完整的分析型 system prompt
+            context_parts = []
+            if web_search_results:
+                context_parts.append("[互联网搜索结果]")
+                for i, r in enumerate(web_search_results, 1):
+                    context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
+                context_parts.append("")
 
-        messages.insert(0, {"role": "system", "content": system_prompt})
+            if search_results:
+                context_parts.append("[历史相关分析参考]")
+                for i, r in enumerate(search_results, 1):
+                    created = r.get("created_at", "")[:10]
+                    context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
+                context_parts.append("")
 
-        # 如果 URL 爬取了内容，在最后一条用户消息前插入页面内容
-        if raw_text and messages[-1].get("role") == "user" and raw_text != messages[-1]["content"]:
-            context_msg = {"role": "system", "content": f"[页面内容]\n{raw_text[:5000]}"}
-            messages.insert(-1, context_msg)
+            if context_parts:
+                context_parts.append(f"用户输入: {user_content}")
+                system_prompt = builder("\n".join(context_parts))
+            else:
+                system_prompt = builder(user_content)
+
+            messages.insert(0, {"role": "system", "content": system_prompt})
+
+            # 如果 URL 爬取了内容，在最后一条用户消息前插入页面内容
+            if raw_text and messages[-1].get("role") == "user" and raw_text != messages[-1]["content"]:
+                context_msg = {"role": "system", "content": f"[页面内容]\n{raw_text[:5000]}"}
+                messages.insert(-1, context_msg)
 
         return messages

@@ -54,7 +54,7 @@ export async function streamMessage(
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const baseURL = import.meta.env.VITE_API_BASE_URL;
+  const baseURL = import.meta.env.VITE_API_BASE_URL || "";
   const response = await fetch(`${baseURL}${BASE}/sessions/${sessionId}/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

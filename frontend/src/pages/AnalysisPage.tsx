@@ -3,7 +3,6 @@
 import React, { useState, useCallback, useRef } from "react";
 import { Button, Modal, Input, Typography, message } from "antd";
 import MessageList from "../components/chat/MessageList";
-import SessionSidebar from "../components/chat/SessionSidebar";
 import AnalysisInput from "../components/analysis/AnalysisInput";
 import EventTypeSelector from "../components/analysis/EventTypeSelector";
 import IndustryTag from "../components/common/IndustryTag";
@@ -39,8 +38,6 @@ const AnalysisPage: React.FC = () => {
     doneStreaming,
     resetMessages,
     addSession,
-    switchSession,
-    loadHistory,
     setSessions,
   } = useChatStore();
 
@@ -184,7 +181,7 @@ const AnalysisPage: React.FC = () => {
     }
   };
 
-  // === 新建对话 ===
+  // === 新建对话（从页面按钮触发） ===
   const handleNewChat = () => {
     handleStop();
     setCurrentSessionId(null);
@@ -192,168 +189,131 @@ const AnalysisPage: React.FC = () => {
     setInputClearFlag((v) => !v);
   };
 
-  // === 切换会话 ===
-  const handleSelectSession = useCallback(
-    async (sessionId: string) => {
-      if (sessionId === currentSessionId) return;
-      handleStop();
-      switchSession(sessionId);
-
-      try {
-        const detail = await chatService.getSession(sessionId);
-        const loadedMessages: import("../domain/types").ChatMessageType[] = (detail.messages || []).map((m: any) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          thinking_steps: m.thinking_steps,
-          event_type: m.event_type,
-          created_at: m.created_at,
-        }));
-        loadHistory(loadedMessages);
-      } catch (err) {
-        message.error("加载会话失败");
-      }
-    },
-    [currentSessionId]
-  );
-
   return (
     <div
       style={{
         display: "flex",
+        flexDirection: "column",
         height: "100vh",
         overflow: "hidden",
       }}
     >
-      {/* 侧边栏 */}
-      <SessionSidebar onNewChat={handleNewChat} onSelectSession={handleSelectSession} />
-
-      {/* 主区域 */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
-        }}
-      >
-        {isIdle ? (
-          /* 空闲态：居中欢迎 */
-          <div
+      {isIdle ? (
+        /* 空闲态：居中欢迎 */
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 32px",
+          }}
+        >
+          <h1
             style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "0 32px",
+              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+              fontWeight: 300,
+              fontSize: 30,
+              color: "#061b31",
+              letterSpacing: "-0.6px",
+              fontFeatureSettings: "'ss01' on",
+              margin: 0,
+              marginBottom: 40,
+              textAlign: "center",
             }}
           >
-            <h1
+            你好，我是{" "}
+            <span style={{ color: "#533afd", fontWeight: 400 }}>
+              AI 投研助手
+            </span>
+            ，有什么能帮你的吗？
+          </h1>
+
+          <div style={{ width: 780 }}>
+            <AnalysisInput
+              eventType={eventType}
+              disabled={false}
+              onSubmit={handleSubmit}
+              forceClear={inputClearFlag}
+            />
+            <EventTypeSelector
+              value={eventType}
+              onChange={setEventType}
+              disabled={false}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* 分析态：消息列表 */}
+          <MessageList />
+
+          {/* 分析完成后：保存/丢弃 */}
+          {!isStreaming && messages.length > 0 && (
+            <div
               style={{
-                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-                fontWeight: 300,
-                fontSize: 30,
-                color: "#061b31",
-                letterSpacing: "-0.6px",
-                fontFeatureSettings: "'ss01' on",
-                margin: 0,
-                marginBottom: 40,
-                textAlign: "center",
+                maxWidth: 860,
+                width: "100%",
+                margin: "0 auto",
+                padding: "0 24px 8px",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 12,
               }}
             >
-              你好，我是{" "}
-              <span style={{ color: "#533afd", fontWeight: 400 }}>
-                AI 投研助手
-              </span>
-              ，有什么能帮你的吗？
-            </h1>
-
-            <div style={{ width: 780 }}>
-              <AnalysisInput
-                eventType={eventType}
-                disabled={false}
-                onSubmit={handleSubmit}
-                forceClear={inputClearFlag}
-              />
-              <EventTypeSelector
-                value={eventType}
-                onChange={setEventType}
-                disabled={false}
-              />
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* 分析态：消息列表 */}
-            <MessageList />
-
-            {/* 分析完成后：保存/丢弃 */}
-            {!isStreaming && messages.length > 0 && (
-              <div
+              <Button
+                onClick={handleNewChat}
+                size="small"
                 style={{
-                  maxWidth: 860,
-                  width: "100%",
-                  margin: "0 auto",
-                  padding: "0 24px 8px",
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 12,
+                  borderRadius: 4,
+                  borderColor: "#e5edf5",
+                  color: "#64748d",
+                  fontWeight: 400,
                 }}
               >
-                <Button
-                  onClick={handleNewChat}
-                  size="small"
-                  style={{
-                    borderRadius: 4,
-                    borderColor: "#e5edf5",
-                    color: "#64748d",
-                    fontWeight: 400,
-                  }}
-                >
-                  新对话
-                </Button>
-                <Button
-                  type="primary"
-                  size="small"
-                  onClick={handleOpenSaveModal}
-                  style={{ borderRadius: 4, fontWeight: 400 }}
-                >
-                  保存到知识库
-                </Button>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* 分析态：底部固定输入栏 */}
-        {!isIdle && (
-          <div
-            style={{
-              flexShrink: 0,
-              borderTop: "1px solid #e5edf5",
-              padding: "16px 32px 20px",
-              background: "#ffffff",
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            <div style={{ width: 780 }}>
-              <AnalysisInput
-                eventType={eventType}
-                disabled={isStreaming}
-                onSubmit={handleSubmit}
-                forceClear={inputClearFlag}
-              />
-              <EventTypeSelector
-                value={eventType}
-                onChange={setEventType}
-                disabled={isStreaming}
-              />
+                新对话
+              </Button>
+              <Button
+                type="primary"
+                size="small"
+                onClick={handleOpenSaveModal}
+                style={{ borderRadius: 4, fontWeight: 400 }}
+              >
+                保存到知识库
+              </Button>
             </div>
+          )}
+        </>
+      )}
+
+      {/* 分析态：底部固定输入栏 */}
+      {!isIdle && (
+        <div
+          style={{
+            flexShrink: 0,
+            borderTop: "1px solid #e5edf5",
+            padding: "16px 32px 20px",
+            background: "#ffffff",
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ width: 780 }}>
+            <AnalysisInput
+              eventType={eventType}
+              disabled={isStreaming}
+              onSubmit={handleSubmit}
+              forceClear={inputClearFlag}
+            />
+            <EventTypeSelector
+              value={eventType}
+              onChange={setEventType}
+              disabled={isStreaming}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 行业标签确认弹窗 */}
       <Modal

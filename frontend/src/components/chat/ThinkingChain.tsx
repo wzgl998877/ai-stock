@@ -2,14 +2,14 @@
 
 import React, { useState } from "react";
 import { Typography } from "antd";
-import { LoadingOutlined, CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
+import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
 import type { ThinkingStepData } from "../../domain/types";
 
 const { Text } = Typography;
 
 interface Props {
   steps: ThinkingStepData[];
-  /** 是否已完成（所有步骤都 done/failed） */
+  /** 是否已完成（非流式状态） */
   completed?: boolean;
 }
 
@@ -18,12 +18,20 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
 
   if (steps.length === 0) return null;
 
-  // 已完成时默认折叠，显示摘要行
-  const isAllDone = steps.every((s) => s.status === "done" || s.status === "failed");
+  // 如果已完成（非流式），将所有 running 状态视为 done
+  const normalizedSteps = completed
+    ? steps.map((s) =>
+        s.status === "running" ? { ...s, status: "done" as const } : s
+      )
+    : steps;
 
-  // 折叠态：显示一行摘要
-  if (collapsed || (completed && isAllDone && !collapsed)) {
-    const doneCount = steps.filter((s) => s.status === "done").length;
+  const isAllDone = normalizedSteps.every(
+    (s) => s.status === "done" || s.status === "failed"
+  );
+
+  // 已完成时默认折叠，显示摘要行
+  if (collapsed || (completed && isAllDone)) {
+    const doneCount = normalizedSteps.filter((s) => s.status === "done").length;
     return (
       <div
         onClick={() => setCollapsed(false)}
@@ -43,7 +51,7 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
       >
         <CheckCircleFilled style={{ fontSize: 12 }} />
         <span>
-          完成 {doneCount}/{steps.length} 个步骤
+          完成 {doneCount}/{normalizedSteps.length} 个步骤
         </span>
         <span style={{ color: "#94a3b8", marginLeft: 4 }}>&#9662; 展开</span>
       </div>
@@ -75,7 +83,7 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
           &#9652; 折叠
         </div>
       )}
-      {steps.map((step, i) => (
+      {normalizedSteps.map((step, i) => (
         <div
           key={i}
           style={{
@@ -92,9 +100,6 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
                 : "#64748d",
           }}
         >
-          {step.status === "running" && (
-            <LoadingOutlined style={{ fontSize: 10, color: "#533afd" }} />
-          )}
           {step.status === "done" && (
             <CheckCircleFilled style={{ fontSize: 10, color: "#16a34a" }} />
           )}

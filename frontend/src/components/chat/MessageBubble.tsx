@@ -38,13 +38,10 @@ const MessageBubble: React.FC<Props> = ({ message, isStreaming }) => {
   }
 
   // AI 消息：左对齐
-  const isThinkingDone =
-    !isStreaming &&
-    !!message.thinking_steps &&
-    message.thinking_steps.length > 0 &&
-    message.thinking_steps.every((s) => s.status === "done" || s.status === "failed")
-      ? true
-      : undefined;
+  // 非流式状态（分析完成或从历史加载）时，思维链标记为已完成
+  const isThinkingDone = !isStreaming && !!message.thinking_steps && message.thinking_steps.length > 0
+    ? true
+    : undefined;
 
   return (
     <div style={{ display: "flex", justifyContent: "flex-start" }}>
