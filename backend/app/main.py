@@ -30,6 +30,17 @@ async def lifespan(app: FastAPI):
         logger.warning("LangGraph 工作流初始化失败，将降级运行: %s", e)
         app.state.analysis_graph = None
 
+    # 初始化个股分析工作流
+    try:
+        from app.infrastructure.workflow.graph.stock_analysis_graph import build_stock_analysis_graph
+
+        stock_graph = build_stock_analysis_graph(ai_service=app.state.ai_service)
+        app.state.stock_analysis_graph = stock_graph
+        logger.info("LangGraph 个股分析工作流初始化成功")
+    except Exception as e:
+        logger.warning("LangGraph 个股分析工作流初始化失败: %s", e)
+        app.state.stock_analysis_graph = None
+
     yield
     # Shutdown
 

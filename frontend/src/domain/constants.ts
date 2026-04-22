@@ -73,3 +73,49 @@ export const SIMILARITY_DEBOUNCE_MS = 1000;
 
 // === 默认分页大小 ===
 export const DEFAULT_PAGE_SIZE = 20;
+
+// === Agent 中文显示名映射 ===
+export const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  market_analyst: "技术面分析",
+  fundamentals_analyst: "基本面分析",
+  news_analyst: "新闻分析",
+  sentiment_analyst: "情绪分析",
+  bull_researcher: "看多论证",
+  bear_researcher: "看空论证",
+  research_manager: "研究管理器",
+  trader: "交易决策",
+  risky_debator: "激进风险观点",
+  safe_debator: "保守风险观点",
+  neutral_debator: "中立风险观点",
+  risk_judge: "风险裁决",
+};
+
+export const AGENT_PHASE_MAPPING: Record<string, string> = {
+  market_analyst: "analysts",
+  fundamentals_analyst: "analysts",
+  news_analyst: "analysts",
+  sentiment_analyst: "analysts",
+  bull_researcher: "debate",
+  bear_researcher: "debate",
+  research_manager: "debate",
+  trader: "trader",
+  risky_debator: "risk",
+  safe_debator: "risk",
+  neutral_debator: "risk",
+  risk_judge: "risk",
+};
+
+export const ANALYSIS_PHASE_LABELS: Record<string, string> = {
+  analysts: "分析师阶段",
+  debate: "投资辩论",
+  trader: "交易决策",
+  risk: "风险评估",
+};
+
+export const ANALYSIS_MODE_OPTIONS = [
+  { value: "quick", label: "快速分析", desc: "仅技术面+基本面，约1分钟" },
+  { value: "full", label: "深度分析", desc: "4位分析师+辩论+风险评估，约3-5分钟" },
+];
+
+export const DEFAULT_DEBATE_ROUNDS = 2;
+export const DEFAULT_RISK_DEBATE_ROUNDS = 2;

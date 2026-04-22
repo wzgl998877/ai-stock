@@ -6,6 +6,8 @@ from typing import Optional, List
 
 class CreateSessionRequest(BaseModel):
     title: Optional[str] = None
+    event_type: Optional[str] = None
+    config: Optional[dict] = None  # 个股分析配置参数
 
 
 class SessionResponse(BaseModel):
@@ -23,7 +25,8 @@ class SessionListResponse(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=2, max_length=5000)
-    event_type: Optional[str] = None  # 四个按钮选择的值
+    event_type: Optional[str] = None  # 事件类型或 stock_analysis
+    config: Optional[dict] = None  # 个股分析配置参数
 
 
 class MessageResponse(BaseModel):

@@ -50,7 +50,13 @@ async def _sse_stream(event_gen: AsyncGenerator, db: AsyncSession) -> AsyncGener
 async def create_session(body: CreateSessionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """创建新会话"""
     use_case = _get_use_case(request, db)
-    session = await use_case.create_session(USER_ID, body.title)
+    # 支持个股分析会话
+    session_type = getattr(body, 'session_type', 'event_analysis')
+    config = getattr(body, 'config', None)
+    event_type = body.event_type
+    if event_type == "stock_analysis":
+        session_type = "stock_analysis"
+    session = await use_case.create_session(USER_ID, body.title, event_type, session_type, config)
     await db.commit()
     return SessionResponse(
         id=session.session_id,
@@ -128,8 +134,11 @@ async def stream_message(session_id: str, body: SendMessageRequest, request: Req
 
     use_case = _get_use_case(request, db)
 
+    # 获取可选的 config（个股分析配置）
+    config = getattr(body, 'config', None)
+
     return StreamingResponse(
-        _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type), db),
+        _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type, config), db),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

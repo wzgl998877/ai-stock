@@ -5,6 +5,7 @@ import { Layout, Menu, Typography, Button, Popconfirm, message } from "antd";
 import {
   ExperimentOutlined,
   StockOutlined,
+  BarChartOutlined,
   RadarChartOutlined,
   BookOutlined,
   PlusOutlined,
@@ -219,13 +220,18 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       type: "divider" as const,
     },
     {
+      key: "/stock-analysis",
+      icon: <StockOutlined />,
+      label: "个股分析",
+    },
+    {
       key: "/knowledge",
       icon: <BookOutlined />,
       label: "知识库",
     },
     {
       key: "/market",
-      icon: <StockOutlined />,
+      icon: <BarChartOutlined />,
       label: "行情数据",
       disabled: true,
     },

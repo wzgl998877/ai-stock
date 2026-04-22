@@ -41,12 +41,15 @@ class ChatUseCase:
         self.analysis_graph = analysis_graph
         self.parser = AnalysisParser()
 
-    async def create_session(self, user_id: str, title: str | None = None, event_type: str | None = None) -> ChatSession:
+    async def create_session(self, user_id: str, title: str | None = None, event_type: str | None = None,
+                             session_type: str = "event_analysis", config: dict | None = None) -> ChatSession:
         session = ChatSession(
             session_id=uuid.uuid4().hex,
             user_id=user_id,
             title=title,
             event_type=event_type,
+            session_type=session_type,
+            config=config,
         )
         return await self.chat_repo.create_session(session)
 
@@ -60,11 +63,15 @@ class ChatUseCase:
         return await self.chat_repo.delete_session(session_id)
 
     async def stream_chat(
-        self, session_id: str, content: str, event_type: str | None = None
+        self, session_id: str, content: str, event_type: str | None = None,
+        config: dict | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         在指定会话中发送消息，SSE 流式返回。
-        流程：保存用户消息 → LangGraph 预处理(thinking 实时推送) → 多轮对话 → LLM 流式推理 → 解析 → 持久化
+
+        流程：
+        - event_type='stock_analysis' → 委托给 StockAnalysisUseCase
+        - 其他 → LangGraph 预处理 → 多轮对话 → LLM 流式推理 → 解析 → 持久化
         """
         t_start = time.time()
         session = await self.chat_repo.get_session(session_id)
@@ -73,6 +80,24 @@ class ChatUseCase:
             return
 
         effective_event_type = event_type or session.event_type or "other"
+
+        # 个股深度分析 → 委托给 StockAnalysisUseCase
+        if effective_event_type == "stock_analysis":
+            from app.application.use_cases.stock_analysis_use_case import StockAnalysisUseCase
+            from app.application.dtos.stock_analysis_dto import StockAnalysisConfigDTO
+
+            stock_config = StockAnalysisConfigDTO(
+                stock_code=config.get("stock_code", "") if config else "",
+                stock_name=config.get("stock_name", "") if config else "",
+                analysis_mode=config.get("analysis_mode", "full") if config else "full",
+            )
+            stock_use_case = StockAnalysisUseCase(
+                self.chat_repo, self.ai_service,
+                getattr(self, '_stock_analysis_graph', None),
+            )
+            async for event in stock_use_case.execute(session_id, stock_config):
+                yield event
+            return
 
         # 1. 保存用户消息
         t1 = time.time()

@@ -157,3 +157,86 @@ export enum AnalysisStatus {
   DONE = "done",
   ERROR = "error",
 }
+
+// === 个股分析 Agent 类型 ===
+export enum AgentType {
+  MARKET_ANALYST = "market_analyst",
+  FUNDAMENTALS_ANALYST = "fundamentals_analyst",
+  NEWS_ANALYST = "news_analyst",
+  SENTIMENT_ANALYST = "sentiment_analyst",
+  BULL_RESEARCHER = "bull_researcher",
+  BEAR_RESEARCHER = "bear_researcher",
+  RESEARCH_MANAGER = "research_manager",
+  TRADER = "trader",
+  RISKY_DEBATOR = "risky_debator",
+  SAFE_DEBATOR = "safe_debator",
+  NEUTRAL_DEBATOR = "neutral_debator",
+  RISK_JUDGE = "risk_judge",
+}
+
+export enum AnalysisPhase {
+  ANALYSTS = "analysts",
+  DEBATE = "debate",
+  TRADER = "trader",
+  RISK = "risk",
+  DONE = "done",
+}
+
+export enum AnalysisMode {
+  QUICK = "quick",
+  FULL = "full",
+}
+
+export interface StockAnalysisConfig {
+  stock_code: string;
+  stock_name: string;
+  analysis_mode: AnalysisMode;
+  debate_rounds: number;
+  risk_debate_rounds: number;
+}
+
+export interface AgentStatusEvent {
+  agent: string;
+  phase: string;
+  status: "running" | "done" | "failed";
+}
+
+export interface DebateEvent {
+  speaker: string;
+  round: number;
+  content: string;
+}
+
+export interface AgentReportEvent {
+  agent: string;
+  summary: string;
+}
+
+export interface DecisionEvent {
+  action: string;
+  target_price: number;
+  confidence: number;
+  risk_score: number;
+  reasoning: string;
+}
+
+export interface StockValidationResult {
+  valid: boolean;
+  stock_code: string;
+  stock_name: string;
+  market: string;
+  message: string;
+}
+
+// 扩展 SSE 事件类型
+export type StockSSEEventType =
+  | SSEEventType
+  | "agent_status"
+  | "agent_report"
+  | "debate"
+  | "decision";
+
+export interface StockSSEEvent {
+  type: StockSSEEventType;
+  data: string | string[] | ThinkingStepData | AgentStatusEvent | AgentReportEvent | DebateEvent | DecisionEvent;
+}

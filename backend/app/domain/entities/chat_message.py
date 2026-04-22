@@ -11,6 +11,7 @@ class ChatMessage:
     content: str
     thinking_steps: Optional[List[dict]] = None  # 思维链步骤数组
     event_type: Optional[str] = None  # 本条分析的事件类型
+    agent_data: Optional[dict] = None  # 多Agent中间数据(Agent状态/进度等)
     create_time: Optional[datetime] = None
     update_time: Optional[datetime] = None
     deleted: str = "0"

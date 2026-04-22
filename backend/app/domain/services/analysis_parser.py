@@ -143,3 +143,47 @@ class AnalysisParser:
 
         # 最多5层
         return rows[:5]
+
+    def parse_stock_analysis(self, analysis_data: dict) -> AnalysisParseResult:
+        """解析多Agent个股分析的结构化数据，生成标题和摘要"""
+        result = AnalysisParseResult()
+
+        stock_name = analysis_data.get("stock_name", "")
+        decision = analysis_data.get("decision", {})
+        action = decision.get("action", "")
+
+        # 生成标题：股票名 + 操作方向
+        if stock_name:
+            result.title = f"{stock_name}{'看多' if action == '买入' else '看空' if action == '卖出' else '分析'}报告"
+            if len(result.title) > 15:
+                result.title = result.title[:15]
+
+        # 生成摘要：从各Agent报告中提取关键信息
+        summaries = []
+        agents = analysis_data.get("agents", {})
+        for agent_key in ["market", "fundamentals", "news", "sentiment"]:
+            agent_data = agents.get(agent_key, {})
+            summary = agent_data.get("summary", "")
+            if summary:
+                summaries.append(summary)
+
+        if summaries:
+            combined = "；".join(summaries[:3])
+            result.summary = combined[:80] if len(combined) > 80 else combined
+        elif action:
+            result.summary = f"建议{action}，置信度{decision.get('confidence', 0)*100:.0f}%"
+
+        # 从分析数据中提取行业
+        industries = analysis_data.get("industries", [])
+        if industries:
+            result.industry_names = industries
+
+        # 从基本面报告中尝试提取行业
+        if not result.industry_names:
+            fundamentals = agents.get("fundamentals", {}).get("summary", "")
+            for industry in ["电力设备", "食品饮料", "医药生物", "银行", "非银金融",
+                           "电子", "计算机", "通信", "汽车", "有色金属", "基础化工"]:
+                if industry in fundamentals:
+                    result.industry_names.append(industry)
+
+        return result

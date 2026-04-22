@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     # === 相似检测 ===
     similarity_threshold: float = 0.3
 
+    # === 个股分析 ===
+    stock_analysis_timeout: int = 300  # 个股分析超时（秒）
+    debate_rounds: int = 2  # 投资辩论默认轮次
+    risk_debate_rounds: int = 2  # 风险辩论默认轮次
+    max_tool_calls: int = 3  # 分析师最大工具调用次数
+    stock_cache_ttl: int = 300  # 股票数据缓存时间（秒）
+    llm_deep_model: str = ""  # 深度思考模型（为空则用 llm_model）
+
     # === 搜索 ===
     tavily_api_key: str = ""
 

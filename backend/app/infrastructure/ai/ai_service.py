@@ -15,6 +15,7 @@ class StreamChunk(NamedTuple):
     """流式输出块：区分正式回答和推理思考"""
     type: str   # "content" = 正式回答, "reasoning" = 推理思考
     text: str
+    agent_id: str = ""  # 可选：标识产出该块的Agent
 
 
 class AIService:
@@ -32,6 +33,9 @@ class AIService:
         system_prompt: str,
         user_message: str,
         history_messages: list[dict] | None = None,
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
     ) -> AsyncGenerator[StreamChunk, None]:
         """
         流式调用 LLM，逐块 yield StreamChunk。
@@ -56,15 +60,16 @@ class AIService:
                 {"role": "user", "content": user_message},
             ]
 
+        use_model = model or self.model
         payload = {
-            "model": self.model,
+            "model": use_model,
             "messages": messages,
             "stream": True,
-            "temperature": 0.7,
-            "max_tokens": 4096,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
 
-        logger.info("AI 流式调用开始: url=%s, model=%s, messages数=%d", url, self.model, len(messages))
+        logger.info("AI 流式调用开始: url=%s, model=%s, messages数=%d", url, use_model, len(messages))
         chunk_count = 0
 
         try:
@@ -155,6 +160,9 @@ class AIService:
         messages: list[dict],
         tools: list[dict] | None = None,
         tool_choice: str = "auto",
+        model: str | None = None,
+        temperature: float = 0,
+        max_tokens: int = 256,
     ) -> dict:
         """非流式调用 LLM，支持 function calling / tools"""
         url = f"{self.base_url}/chat/completions"
@@ -162,18 +170,19 @@ class AIService:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        use_model = model or self.model
         payload: dict = {
-            "model": self.model,
+            "model": use_model,
             "messages": messages,
             "stream": False,
-            "temperature": 0,
-            "max_tokens": 256,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
 
-        logger.info("AI tool_call: url=%s, model=%s, tools=%d", url, self.model, len(tools or []))
+        logger.info("AI tool_call: url=%s, model=%s, tools=%d", url, use_model, len(tools or []))
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(url, json=payload, headers=headers)
@@ -183,3 +192,60 @@ class AIService:
                 raise RuntimeError(f"AI API error: {response.status_code} - {error_body}")
             result = response.json()
             return result["choices"][0]["message"]
+
+    async def stream_chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        tool_choice: str = "auto",
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """流式调用 LLM，支持 function calling + 流式输出"""
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        use_model = model or self.model
+        payload: dict = {
+            "model": use_model,
+            "messages": messages,
+            "stream": True,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+
+        logger.info("AI stream_chat_with_tools: url=%s, model=%s, tools=%d", url, use_model, len(tools or []))
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
+                if response.status_code != 200:
+                    error_body = await response.aread()
+                    raise RuntimeError(f"AI API error: {response.status_code} - {error_body[:200]}")
+
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        choice = chunk.get("choices", [{}])[0]
+                        delta = choice.get("delta", {}) or choice.get("message", {})
+
+                        reasoning = delta.get("reasoning_content", "")
+                        if reasoning:
+                            yield StreamChunk("reasoning", reasoning)
+
+                        content = delta.get("content", "")
+                        if content:
+                            yield StreamChunk("content", content)
+                    except json.JSONDecodeError:
+                        continue

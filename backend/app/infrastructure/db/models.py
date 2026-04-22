@@ -144,6 +144,8 @@ class AnalysisArticle(AuditMixin, Base):
     )
     raw_input: Mapped[str] = mapped_column(String(500), nullable=False)
     chain_table: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    article_type: Mapped[str] = mapped_column(String(20), nullable=False, default="event")
+    analysis_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     user_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("t_user.user_id"), nullable=False
     )
@@ -158,11 +160,8 @@ class AnalysisArticle(AuditMixin, Base):
 
     __table_args__ = (
         Index("idx_user_id", "user_id"),
+        Index("idx_article_type", "article_type"),
     )
-
-
-# ---------------------------------------------------------------------------
-# 6. t_article_industry
 # ---------------------------------------------------------------------------
 
 class ArticleIndustry(AuditMixin, Base):
@@ -247,6 +246,8 @@ class ChatSession(AuditMixin, Base):
     )
     title: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    session_type: Mapped[str] = mapped_column(String(20), nullable=False, default="event_analysis")
+    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     messages = relationship(
         "ChatMessage", backref="session", lazy="selectin", order_by="ChatMessage.create_time"
@@ -254,11 +255,8 @@ class ChatSession(AuditMixin, Base):
 
     __table_args__ = (
         Index("idx_user_id", "user_id"),
+        Index("idx_session_type", "session_type"),
     )
-
-
-# ---------------------------------------------------------------------------
-# 10. t_chat_message
 # ---------------------------------------------------------------------------
 
 class ChatMessage(AuditMixin, Base):
@@ -274,6 +272,7 @@ class ChatMessage(AuditMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     thinking_steps: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    agent_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("idx_session_id", "session_id"),

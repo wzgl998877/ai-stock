@@ -1,0 +1,109 @@
+import { create } from "zustand";
+import { AnalysisMode, type AgentStatusEvent, type DebateEvent, type DecisionEvent } from "../domain/types";
+
+interface StockAnalysisState {
+  // 输入状态
+  stockCode: string;
+  stockName: string;
+  analysisMode: AnalysisMode;
+  validationLoading: boolean;
+  validationValid: boolean;
+
+  // 分析状态
+  analysisState: "idle" | "running" | "done" | "error";
+  currentPhase: string;
+  agentStatuses: Record<string, string>;  // agent -> pending/running/done/failed
+  agentReports: Record<string, string>;   // agent -> summary
+  debates: DebateEvent[];
+  decision: DecisionEvent | null;
+  content: string;
+
+  // 结果
+  title: string;
+  summary: string;
+  industries: string[];
+  error: string;
+
+  // Actions
+  setStock: (code: string, name: string) => void;
+  setMode: (mode: AnalysisMode) => void;
+  setValidation: (loading: boolean, valid: boolean) => void;
+  startAnalysis: () => void;
+  updateAgentStatus: (event: AgentStatusEvent) => void;
+  addAgentReport: (agent: string, summary: string) => void;
+  addDebate: (event: DebateEvent) => void;
+  setDecision: (decision: DecisionEvent) => void;
+  appendContent: (text: string) => void;
+  setTitle: (title: string) => void;
+  setSummary: (summary: string) => void;
+  setIndustries: (industries: string[]) => void;
+  setError: (error: string) => void;
+  reset: () => void;
+}
+
+const initialState = {
+  stockCode: "",
+  stockName: "",
+  analysisMode: AnalysisMode.FULL,
+  validationLoading: false,
+  validationValid: false,
+  analysisState: "idle" as const,
+  currentPhase: "",
+  agentStatuses: {},
+  agentReports: {},
+  debates: [],
+  decision: null,
+  content: "",
+  title: "",
+  summary: "",
+  industries: [],
+  error: "",
+};
+
+export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
+  ...initialState,
+
+  setStock: (code, name) => set({ stockCode: code, stockName: name, validationValid: !!code }),
+  setMode: (mode) => set({ analysisMode: mode }),
+  setValidation: (loading, valid) => set({ validationLoading: loading, validationValid: valid }),
+
+  startAnalysis: () =>
+    set({
+      analysisState: "running",
+      currentPhase: "analysts",
+      agentStatuses: {},
+      agentReports: {},
+      debates: [],
+      decision: null,
+      content: "",
+      title: "",
+      summary: "",
+      industries: [],
+      error: "",
+    }),
+
+  updateAgentStatus: (event) =>
+    set((state) => ({
+      agentStatuses: { ...state.agentStatuses, [event.agent]: event.status },
+      currentPhase: event.phase || state.currentPhase,
+    })),
+
+  addAgentReport: (agent, summary) =>
+    set((state) => ({
+      agentReports: { ...state.agentReports, [agent]: summary },
+    })),
+
+  addDebate: (event) =>
+    set((state) => ({
+      debates: [...state.debates, event],
+    })),
+
+  setDecision: (decision) => set({ decision }),
+  appendContent: (text) => set((state) => ({ content: state.content + text })),
+  setTitle: (title) => set({ title }),
+  setSummary: (summary) => set({ summary }),
+  setIndustries: (industries) => set({ industries }),
+  setError: (error) => set({ analysisState: "error", error }),
+
+  reset: () => set(initialState),
+}));

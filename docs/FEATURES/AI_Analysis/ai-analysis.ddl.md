@@ -228,3 +228,45 @@ ALTER TABLE t_chat_message ADD INDEX idx_session_id (session_id);
 ```
 
 ---
+
+## 11. 个股多Agent深度分析 — 字段扩展迁移
+
+> 功能分支: `003-stock-analysis` | 变更方式: ALTER 新增字段（向后兼容，现有数据不受影响）
+
+### 11.1 `t_analysis_article` 新增字段
+
+```sql
+-- 区分文章类型: event=事件分析(原有), stock_analysis=个股深度分析(新增)
+ALTER TABLE t_analysis_article ADD COLUMN article_type VARCHAR(20) NOT NULL DEFAULT 'event'
+    COMMENT '文章类型: event=事件分析, stock_analysis=个股深度分析';
+
+-- 存储多Agent分析的结构化数据(各Agent报告/辩论记录/最终决策等)
+ALTER TABLE t_analysis_article ADD COLUMN analysis_data JSON
+    COMMENT '多Agent分析结构化数据';
+
+-- 索引: 按文章类型查询(如"查所有个股分析文章")
+ALTER TABLE t_analysis_article ADD INDEX idx_article_type (article_type);
+```
+
+### 11.2 `t_chat_session` 新增字段
+
+```sql
+-- 区分会话类型: event_analysis=事件分析(原有), stock_analysis=个股分析(新增)
+ALTER TABLE t_chat_session ADD COLUMN session_type VARCHAR(20) NOT NULL DEFAULT 'event_analysis'
+    COMMENT '会话类型: event_analysis=事件分析, stock_analysis=个股分析';
+
+-- 存储分析配置参数(股票代码/分析模式/辩论轮次等)
+ALTER TABLE t_chat_session ADD COLUMN config JSON
+    COMMENT '分析配置参数(股票代码/模式/轮次等)';
+
+-- 索引: 按会话类型查询
+ALTER TABLE t_chat_session ADD INDEX idx_session_type (session_type);
+```
+
+### 11.3 `t_chat_message` 新增字段
+
+```sql
+-- 存储多Agent中间数据(当前哪个Agent在工作/各Agent状态等)
+ALTER TABLE t_chat_message ADD COLUMN agent_data JSON
+    COMMENT '多Agent中间数据(Agent状态/进度等)';
+```

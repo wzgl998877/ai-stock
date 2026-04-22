@@ -98,3 +98,75 @@ async def check_similarity(body: SimilarityRequestDTO):
     """检测相似历史文章"""
     # TODO: 实现 DetectSimilarUseCase
     return {"similar_articles": []}
+
+
+@router.get("/validate-stock")
+async def validate_stock(keyword: str):
+    """验证股票代码/名称，返回股票信息"""
+    if not keyword or not keyword.strip():
+        return {"valid": False, "message": "请输入股票代码或名称"}
+
+    try:
+        import akshare as ak
+        # 尝试通过AKShare搜索股票
+        df = ak.stock_zh_a_spot_em()
+        # 按代码或名称搜索
+        matches = df[df["代码"].str.contains(keyword) | df["名称"].str.contains(keyword)]
+        if matches.empty:
+            return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
+
+        row = matches.iloc[0]
+        code = str(row["代码"])
+        name = str(row["名称"])
+        # 判断市场
+        market = "sh" if code.startswith(("6", "9")) else "sz"
+
+        return {
+            "valid": True,
+            "stock_code": code,
+            "stock_name": name,
+            "market": market,
+        }
+    except ImportError:
+        return {"valid": False, "message": "数据源不可用"}
+    except Exception as e:
+        logger.error("验证股票失败: %s", e)
+        return {"valid": False, "message": f"查询失败: {str(e)}"}
+
+
+@router.get("/stock-recent")
+async def check_recent_analysis(stock_code: str, minutes: int = 5, db: AsyncSession = Depends(get_db)):
+    """检查某只股票近期是否有分析"""
+    from datetime import datetime, timedelta
+    from sqlalchemy import select, and_
+    from app.infrastructure.db.models import AnalysisArticle, ArticleStock
+
+    cutoff = datetime.now() - timedelta(minutes=minutes)
+
+    stmt = (
+        select(AnalysisArticle, ArticleStock)
+        .join(ArticleStock, AnalysisArticle.article_id == ArticleStock.article_id)
+        .where(
+            and_(
+                ArticleStock.stock_code == stock_code,
+                AnalysisArticle.article_type == "stock_analysis",
+                AnalysisArticle.create_time >= cutoff,
+                AnalysisArticle.deleted == "0",
+            )
+        )
+        .order_by(AnalysisArticle.create_time.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    row = result.first()
+
+    if row:
+        article, stock_ref = row
+        return {
+            "has_recent": True,
+            "article_id": article.article_id,
+            "title": article.title,
+            "created_at": article.create_time.isoformat() if article.create_time else "",
+        }
+
+    return {"has_recent": False}
