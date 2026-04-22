@@ -36,9 +36,14 @@ def _get_use_case(request: Request, db: AsyncSession) -> ChatUseCase:
     return ChatUseCase(repo, ai_service, analysis_graph)
 
 
-async def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
-    async for event in event_gen:
-        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+async def _sse_stream(event_gen: AsyncGenerator, db: AsyncSession) -> AsyncGenerator[str, None]:
+    """SSE 流式输出"""
+    try:
+        async for event in event_gen:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.post("/sessions", status_code=201, response_model=SessionResponse)
@@ -124,7 +129,7 @@ async def stream_message(session_id: str, body: SendMessageRequest, request: Req
     use_case = _get_use_case(request, db)
 
     return StreamingResponse(
-        _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type)),
+        _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type), db),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

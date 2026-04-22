@@ -45,37 +45,14 @@ const KnowledgePage: React.FC = () => {
     {
       key: "timeline",
       label: "时间线",
-      children: (
-        <TimelineView articles={articles} loading={loading} onDelete={handleDelete} />
-      ),
     },
     {
       key: "industry",
       label: "行业",
-      children: (
-        <IndustryView
-          industries={industries}
-          articles={articles}
-          selectedIndustry={selectedIndustry}
-          loading={loading}
-          onSelectIndustry={(code) => setSelectedIndustry(code)}
-          onDelete={handleDelete}
-        />
-      ),
     },
     {
       key: "stock",
       label: "股票",
-      children: (
-        <StockView
-          stocks={stocks}
-          articles={articles}
-          selectedStock={selectedStock}
-          loading={loading}
-          onSelectStock={(code) => setSelectedStock(code)}
-          onDelete={handleDelete}
-        />
-      ),
     },
   ];
 
@@ -148,7 +125,33 @@ const KnowledgePage: React.FC = () => {
               去分析页面生成并保存第一篇分析报告
             </Text>
           </div>
-        ) : null}
+        ) : (
+          <>
+            {view === "timeline" && (
+              <TimelineView articles={articles} loading={loading} onDelete={handleDelete} />
+            )}
+            {view === "industry" && (
+              <IndustryView
+                industries={industries}
+                articles={articles}
+                selectedIndustry={selectedIndustry}
+                loading={loading}
+                onSelectIndustry={(code) => setSelectedIndustry(code)}
+                onDelete={handleDelete}
+              />
+            )}
+            {view === "stock" && (
+              <StockView
+                stocks={stocks}
+                articles={articles}
+                selectedStock={selectedStock}
+                loading={loading}
+                onSelectStock={(code) => setSelectedStock(code)}
+                onDelete={handleDelete}
+              />
+            )}
+          </>
+        )}
       </div>
 
       {/* 分页 */}

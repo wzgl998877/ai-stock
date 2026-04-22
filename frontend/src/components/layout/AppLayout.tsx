@@ -36,7 +36,12 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     streamingMessageId,
   } = useChatStore();
 
-  const [openKeys, setOpenKeys] = useState<string[]>([]);
+  const [openKeys, setOpenKeys] = useState<string[]>(["analysis-group"]);
+  const [showAllSessions, setShowAllSessions] = useState(false);
+
+  // 默认只展示5条会话
+  const MAX_SESSIONS_PREVIEW = 5;
+  const displayedSessions = showAllSessions ? sessions : sessions.slice(0, MAX_SESSIONS_PREVIEW);
 
   // 加载会话列表
   const loadSessions = useCallback(async () => {
@@ -143,7 +148,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           disabled: false,
           style: { height: 32, lineHeight: "32px" },
         },
-        ...sessions.map((session) => ({
+        ...displayedSessions.map((session) => ({
           key: `session-${session.id}`,
           label: (
             <div
@@ -187,6 +192,27 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
           ),
         })),
+        // "查看更多" / "收起"
+        ...(sessions.length > MAX_SESSIONS_PREVIEW
+          ? [{
+              key: "toggle-sessions",
+              label: (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAllSessions(!showAllSessions);
+                  }}
+                  style={{ fontSize: 12, color: "#533afd", cursor: "pointer" }}
+                >
+                  {showAllSessions
+                    ? `收起`
+                    : `查看更多 (${sessions.length - MAX_SESSIONS_PREVIEW}条)`}
+                </span>
+              ),
+              disabled: false,
+              style: { height: 28, lineHeight: "28px" },
+            }]
+          : []),
       ],
     },
     {
@@ -281,7 +307,13 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           mode="inline"
           selectedKeys={selectedKeys}
           openKeys={openKeys}
-          onOpenChange={(keys) => setOpenKeys(keys)}
+          onOpenChange={(keys) => {
+            setOpenKeys(keys);
+            // 点击"AI 事件分析"标题展开时，同时导航到 /analysis
+            if (keys.includes("analysis-group") && location.pathname !== "/analysis") {
+              navigate("/analysis");
+            }
+          }}
           items={menuItems}
           onClick={({ key }) => {
             if (key.startsWith("session-")) {

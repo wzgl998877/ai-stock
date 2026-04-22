@@ -1,6 +1,7 @@
 """ChatUseCase — 对话式分析用例，支持多轮对话和思维链"""
 
 import logging
+import time
 import uuid
 from typing import AsyncGenerator
 
@@ -23,6 +24,13 @@ PROMPT_BUILDERS = {
 }
 
 MAX_HISTORY_ROUNDS = 10  # 最多保留最近 10 轮对话
+
+# --- 多轮对话上下文压缩参数 ---
+# 1 轮 = 1 user + 1 assistant，最近 FULL_KEEP_ROUNDS 轮完整保留
+FULL_KEEP_ROUNDS = 1
+# 更早的 assistant 消息截断到此字符数（≈200 tokens）
+EARLIER_ASSISTANT_MAX_CHARS = 400
+# user 消息始终完整保留（通常很短）
 
 
 class ChatUseCase:
@@ -58,6 +66,7 @@ class ChatUseCase:
         在指定会话中发送消息，SSE 流式返回。
         流程：保存用户消息 → LangGraph 预处理(thinking 实时推送) → 多轮对话 → LLM 流式推理 → 解析 → 持久化
         """
+        t_start = time.time()
         session = await self.chat_repo.get_session(session_id)
         if not session:
             yield {"type": "error", "data": "会话不存在"}
@@ -66,6 +75,7 @@ class ChatUseCase:
         effective_event_type = event_type or session.event_type or "other"
 
         # 1. 保存用户消息
+        t1 = time.time()
         user_msg = ChatMessage(
             message_id=uuid.uuid4().hex,
             session_id=session_id,
@@ -74,10 +84,15 @@ class ChatUseCase:
             event_type=event_type,
         )
         await self.chat_repo.add_message(user_msg)
+        logger.info("[耗时] 1.保存用户消息: %.2fs", time.time() - t1)
 
         # 2. 判断是否为追问（有历史 assistant 回复则跳过 LangGraph 预处理）
+        t2 = time.time()
         existing_messages = await self.chat_repo.list_messages(session_id)
         is_follow_up = any(m.role == "assistant" for m in existing_messages[:-1]) if len(existing_messages) > 1 else False
+        logger.info("[耗时] 2.查询历史消息: %.2fs, count=%d, is_follow_up=%s, roles=%s",
+                     time.time() - t2, len(existing_messages), is_follow_up,
+                     [m.role for m in existing_messages])
 
         raw_text = content
         search_results: list[dict] = []
@@ -87,6 +102,7 @@ class ChatUseCase:
         if self.analysis_graph and not is_follow_up:
             from app.infrastructure.workflow.graph.analysis_graph import THINKING_STEP_META, NODE_ORDER
 
+            t_graph = time.time()
             try:
                 # 确定图中实际节点
                 try:
@@ -159,6 +175,7 @@ class ChatUseCase:
                 raw_text = accumulated.get("raw_text", content)
                 search_results = accumulated.get("search_results", [])
                 web_search_results = accumulated.get("web_search_results", [])
+                logger.info("[耗时] 3.LangGraph预处理: %.2fs", time.time() - t_graph)
 
             except Exception as e:
                 logger.warning("LangGraph 预处理失败，降级使用原始输入: %s", e)
@@ -166,8 +183,12 @@ class ChatUseCase:
 
         # 3. 构建 messages 数组（多轮对话 + 增强上下文）
         # 追问时复用已有的 existing_messages，首轮需要重新查询（LangGraph 后数据有更新）
+        t3 = time.time()
         history = existing_messages if is_follow_up else await self.chat_repo.list_messages(session_id)
         messages = self._build_messages(history, effective_event_type, raw_text, search_results, web_search_results)
+        logger.info("[耗时] 4.构建messages: %.2fs, history_count=%d, built_messages=%d, msg_roles=%s",
+                     time.time() - t3, len(history), len(messages),
+                     [m.get("role") for m in messages])
 
         # 4. thinking: 正在分析...
         reasoning_event = {"step": "reasoning", "status": "running", "message": "正在分析..."}
@@ -175,6 +196,7 @@ class ChatUseCase:
         yield {"type": "thinking", "data": reasoning_event}
 
         # 5. 流式调用 LLM
+        t_llm = time.time()
         full_content = ""
         reasoning_text = ""
 
@@ -201,10 +223,14 @@ class ChatUseCase:
         thinking_steps.append(reasoning_done)
         yield {"type": "thinking", "data": reasoning_done}
 
+        logger.info("[耗时] 5.LLM流式推理: %.2fs, content_len=%d, reasoning_len=%d",
+                     time.time() - t_llm, len(full_content), len(reasoning_text))
+
         # 6. 解析结果
         parse_result = self.parser.parse(full_content, effective_event_type)
 
         # 7. 保存 AI 消息
+        t_save = time.time()
         ai_msg = ChatMessage(
             message_id=uuid.uuid4().hex,
             session_id=session_id,
@@ -214,6 +240,10 @@ class ChatUseCase:
             event_type=effective_event_type,
         )
         await self.chat_repo.add_message(ai_msg)
+
+        # 立即提交，确保客户端收到 done 之前数据已持久化
+        await self.chat_repo.session.commit()
+        logger.info("[耗时] 6.保存AI消息+commit: %.2fs", time.time() - t_save)
 
         # 8. 推送结构化数据
         if parse_result.title:
@@ -229,6 +259,8 @@ class ChatUseCase:
 
         yield {"type": "done", "data": ""}
 
+        logger.info("[耗时] === 总耗时: %.2fs ===", time.time() - t_start)
+
     def _build_messages(
         self,
         history: list[ChatMessage],
@@ -237,13 +269,23 @@ class ChatUseCase:
         search_results: list[dict] | None = None,
         web_search_results: list[dict] | None = None,
     ) -> list[dict]:
-        """将历史消息拼接为 OpenAI messages 数组，支持多轮对话上下文"""
+        """
+        将历史消息拼接为 OpenAI messages 数组。
+
+        上下文压缩策略（混合方案）：
+        - 首轮：完整分析型 system prompt
+        - 追问轮：
+          - 最近 1 轮（user + assistant）完整保留
+          - 更早的 assistant 消息截断到 ~400 字（保留结论，去掉冗长分析）
+          - 更早的 user 消息完整保留（通常很短）
+          - 用对话式 system prompt 替代六章节模板
+        """
         effective_type = event_type or "other"
         builder = PROMPT_BUILDERS.get(EventType(effective_type), general.build_prompt)
 
         messages: list[dict] = []
 
-        # 截断历史（保留最近 N 轮，1 轮 = 1 user + 1 assistant）
+        # 截断历史（最多 MAX_HISTORY_ROUNDS 轮）
         recent = history[-(MAX_HISTORY_ROUNDS * 2):]
 
         for msg in recent:
@@ -262,35 +304,44 @@ class ChatUseCase:
         user_content = raw_text or messages[-1].get("content", "")
 
         if has_prior_response:
-            # 追问模式：使用对话式 system prompt，保持上下文连贯
+            # === 追问模式 ===
+            # 压缩更早的 assistant 消息，保留最近 FULL_KEEP_ROUNDS 轮完整
+            self._compress_older_assistant(messages, keep_rounds=FULL_KEEP_ROUNDS)
+
+            # 对话式 system prompt
+            system_content = (
+                "你是一位专业的A股市场分析师。用户正在基于之前的分析进行追问。"
+                "请根据之前的对话上下文直接回答用户的问题，保持上下文连贯。"
+                "不要重新做完整分析，而是针对追问的具体内容给出专业回答。"
+                "如果追问涉及数据来源或细节，请根据你之前回答的内容来回应。"
+                "所有股票相关内容仅供学习研究参考，不构成投资建议。"
+            )
+
+            # 附加本轮搜索上下文（如果有）
             context_parts = []
             if web_search_results:
                 context_parts.append("[本轮互联网搜索结果]")
                 for i, r in enumerate(web_search_results, 1):
                     context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
                 context_parts.append("")
-
             if search_results:
                 context_parts.append("[历史相关分析参考]")
                 for i, r in enumerate(search_results, 1):
                     created = r.get("created_at", "")[:10]
                     context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
                 context_parts.append("")
-
-            system_content = "你是一位专业的A股市场分析师。用户正在基于之前的分析进行追问。请根据之前的对话上下文直接回答用户的问题，保持上下文连贯。不要重新做完整分析，而是针对追问的具体内容给出专业回答。如果追问涉及数据来源或细节，请根据你之前回答的内容来回应。所有股票相关内容仅供学习研究参考，不构成投资建议。"
             if context_parts:
                 system_content += "\n\n" + "\n".join(context_parts)
 
             messages.insert(0, {"role": "system", "content": system_content})
         else:
-            # 首轮：使用完整的分析型 system prompt
+            # === 首轮：完整分析型 system prompt ===
             context_parts = []
             if web_search_results:
                 context_parts.append("[互联网搜索结果]")
                 for i, r in enumerate(web_search_results, 1):
                     context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
                 context_parts.append("")
-
             if search_results:
                 context_parts.append("[历史相关分析参考]")
                 for i, r in enumerate(search_results, 1):
@@ -312,3 +363,33 @@ class ChatUseCase:
                 messages.insert(-1, context_msg)
 
         return messages
+
+    @staticmethod
+    def _compress_older_assistant(messages: list[dict], keep_rounds: int = 1) -> None:
+        """
+        原地压缩较早的 assistant 消息，保留最近 keep_rounds 轮不动。
+
+        策略：从末尾倒数，保留最后 keep_rounds 个 (user, assistant) 对，
+        更早的 assistant 消息截断到 EARLIER_ASSISTANT_MAX_CHARS 字符。
+        user 消息不动（通常很短）。
+        """
+        # 从后往前找第 keep_rounds 个 assistant 的位置
+        assistant_count = 0
+        cutoff_idx = len(messages)  # 此索引之后的消息完整保留
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "assistant":
+                assistant_count += 1
+                if assistant_count > keep_rounds:
+                    cutoff_idx = i
+                    break
+
+        # 截断 cutoff_idx 之前的所有 assistant 消息
+        for i in range(cutoff_idx):
+            if messages[i].get("role") == "assistant":
+                original = messages[i]["content"]
+                if len(original) > EARLIER_ASSISTANT_MAX_CHARS:
+                    truncated = original[:EARLIER_ASSISTANT_MAX_CHARS].rstrip()
+                    messages[i] = {
+                        "role": "assistant",
+                        "content": truncated + "\n...(完整分析见上方，此处仅保留摘要前段)",
+                    }

@@ -18,7 +18,12 @@
       "Bash(test:*)",
       "Bash(curl:*)",
       "Bash(ls:*)",
-      "Bash(node_modules/.bin/tsc.cmd:*)"
+      "Bash(node_modules/.bin/tsc.cmd:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(python3:*)",
+      "Bash(echo 创建会话: $SESSION:*)",
+      "Bash(echo session_id: $SID:*)"
     ]
   }
 }

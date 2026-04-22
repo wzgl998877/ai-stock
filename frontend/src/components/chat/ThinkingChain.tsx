@@ -1,8 +1,8 @@
-/** ThinkingChain — 思维链步骤列表，分析完成后可折叠 */
+/** ThinkingChain — 思维链步骤列表，独立区块展示，分析完成后可折叠 */
 
 import React, { useState } from "react";
 import { Typography } from "antd";
-import { CheckCircleFilled, CloseCircleFilled } from "@ant-design/icons";
+import { CheckCircleFilled, CloseCircleFilled, LoadingOutlined } from "@ant-design/icons";
 import type { ThinkingStepData } from "../../domain/types";
 
 const { Text } = Typography;
@@ -14,7 +14,8 @@ interface Props {
 }
 
 const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  // 用户是否主动展开（覆盖默认折叠行为）
+  const [expanded, setExpanded] = useState(false);
 
   if (steps.length === 0) return null;
 
@@ -29,31 +30,33 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
     (s) => s.status === "done" || s.status === "failed"
   );
 
-  // 已完成时默认折叠，显示摘要行
-  if (collapsed || (completed && isAllDone)) {
+  // 已完成且未主动展开时，显示折叠摘要
+  const showCollapsed = completed && isAllDone && !expanded;
+
+  if (showCollapsed) {
     const doneCount = normalizedSteps.filter((s) => s.status === "done").length;
     return (
       <div
-        onClick={() => setCollapsed(false)}
+        onClick={() => setExpanded(true)}
         style={{
-          marginBottom: 12,
-          padding: "6px 12px",
+          padding: "10px 16px",
           background: "#f0fdf4",
-          borderRadius: 6,
+          borderRadius: 8,
           border: "1px solid #bbf7d0",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          fontSize: 12,
+          gap: 8,
+          fontSize: 14,
           color: "#16a34a",
+          fontWeight: 500,
         }}
       >
-        <CheckCircleFilled style={{ fontSize: 12 }} />
+        <CheckCircleFilled style={{ fontSize: 14 }} />
         <span>
           完成 {doneCount}/{normalizedSteps.length} 个步骤
         </span>
-        <span style={{ color: "#94a3b8", marginLeft: 4 }}>&#9662; 展开</span>
+        <span style={{ color: "#94a3b8", marginLeft: 4, fontSize: 12 }}>&#9662; 展开</span>
       </div>
     );
   }
@@ -61,37 +64,36 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
   return (
     <div
       style={{
-        marginBottom: 12,
-        padding: "8px 12px",
+        padding: "12px 16px",
         background: "#f8fafc",
-        borderRadius: 6,
+        borderRadius: 8,
         border: "1px solid #e5edf5",
       }}
     >
-      {isAllDone && (
-        <div
-          onClick={() => setCollapsed(true)}
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            cursor: "pointer",
-            marginBottom: 4,
-            fontSize: 11,
-            color: "#94a3b8",
-          }}
-        >
-          &#9652; 折叠
-        </div>
-      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 14, color: "#273951", fontWeight: 600 }}>分析步骤</span>
+        {isAllDone && (
+          <span
+            onClick={() => setExpanded(false)}
+            style={{
+              fontSize: 12,
+              color: "#94a3b8",
+              cursor: "pointer",
+            }}
+          >
+            &#9652; 折叠
+          </span>
+        )}
+      </div>
       {normalizedSteps.map((step, i) => (
         <div
           key={i}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-            lineHeight: "22px",
+            gap: 8,
+            fontSize: 14,
+            lineHeight: "26px",
             color:
               step.status === "done"
                 ? "#16a34a"
@@ -101,14 +103,17 @@ const ThinkingChain: React.FC<Props> = ({ steps, completed }) => {
           }}
         >
           {step.status === "done" && (
-            <CheckCircleFilled style={{ fontSize: 10, color: "#16a34a" }} />
+            <CheckCircleFilled style={{ fontSize: 13, color: "#16a34a" }} />
           )}
           {step.status === "failed" && (
-            <CloseCircleFilled style={{ fontSize: 10, color: "#ea2261" }} />
+            <CloseCircleFilled style={{ fontSize: 13, color: "#ea2261" }} />
+          )}
+          {step.status === "running" && (
+            <LoadingOutlined style={{ fontSize: 13, color: "#64748d" }} />
           )}
           <Text
             style={{
-              fontSize: 12,
+              fontSize: 14,
               color:
                 step.status === "done"
                   ? "#16a34a"

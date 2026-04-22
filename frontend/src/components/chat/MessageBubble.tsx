@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Typography, Spin } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessageType } from "../../domain/types";
 import ThinkingChain from "./ThinkingChain";
 
@@ -14,34 +15,34 @@ interface Props {
   isStreaming?: boolean;
 }
 
-/** 推理思考过程 — 可折叠展示 */
+/** 推理思考过程 — 独立区块，可折叠 */
 const ReasoningBox: React.FC<{ text: string; streaming?: boolean }> = ({ text, streaming }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   if (!text) return null;
 
-  // 流式中默认展开，完成后默认折叠
-  if (collapsed || (!streaming && text.length > 100)) {
+  // 默认行为：流式中展开，完成后折叠（除非用户主动展开）
+  const showCollapsed = !streaming && text.length > 100 && !expanded;
+
+  if (showCollapsed) {
     const preview = text.length > 80 ? text.slice(0, 80) + "..." : text;
     return (
       <div
-        onClick={() => setCollapsed(false)}
+        onClick={() => setExpanded(true)}
         style={{
-          marginBottom: 12,
-          padding: "8px 12px",
+          padding: "10px 16px",
           background: "#faf5ff",
-          borderRadius: 6,
+          borderRadius: 8,
           border: "1px solid #e9d5ff",
           cursor: "pointer",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: collapsed ? 0 : 4 }}>
-          <span style={{ fontSize: 12, color: "#7c3aed", fontWeight: 500 }}>思考过程</span>
-          <span style={{ fontSize: 10, color: "#a78bfa" }}>&#9662; 展开</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+          {streaming && <LoadingOutlined style={{ fontSize: 13, color: "#7c3aed" }} />}
+          <span style={{ fontSize: 14, color: "#7c3aed", fontWeight: 600 }}>思考过程</span>
+          <span style={{ fontSize: 12, color: "#a78bfa" }}>&#9662; 展开</span>
         </div>
-        {collapsed && (
-          <Text style={{ fontSize: 12, color: "#7c3aed", opacity: 0.7 }}>{preview}</Text>
-        )}
+        <Text style={{ fontSize: 13, color: "#7c3aed", opacity: 0.7 }}>{preview}</Text>
       </div>
     );
   }
@@ -49,24 +50,23 @@ const ReasoningBox: React.FC<{ text: string; streaming?: boolean }> = ({ text, s
   return (
     <div
       style={{
-        marginBottom: 12,
-        padding: "10px 12px",
+        padding: "12px 16px",
         background: "#faf5ff",
-        borderRadius: 6,
+        borderRadius: 8,
         border: "1px solid #e9d5ff",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {streaming && <LoadingOutlined style={{ fontSize: 10, color: "#7c3aed" }} />}
-          <span style={{ fontSize: 12, color: "#7c3aed", fontWeight: 500 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {streaming && <LoadingOutlined style={{ fontSize: 13, color: "#7c3aed" }} />}
+          <span style={{ fontSize: 14, color: "#7c3aed", fontWeight: 600 }}>
             {streaming ? "思考中..." : "思考过程"}
           </span>
         </div>
-        {!streaming && (
+        {!streaming && text.length > 100 && (
           <span
-            onClick={() => setCollapsed(true)}
-            style={{ fontSize: 10, color: "#a78bfa", cursor: "pointer" }}
+            onClick={() => setExpanded(false)}
+            style={{ fontSize: 12, color: "#a78bfa", cursor: "pointer" }}
           >
             &#9652; 折叠
           </span>
@@ -74,10 +74,10 @@ const ReasoningBox: React.FC<{ text: string; streaming?: boolean }> = ({ text, s
       </div>
       <div
         style={{
-          fontSize: 12,
-          lineHeight: 1.7,
+          fontSize: 13,
+          lineHeight: 1.8,
           color: "#6b21a8",
-          maxHeight: streaming ? 120 : 200,
+          maxHeight: streaming ? 160 : 300,
           overflowY: "auto",
         }}
       >
@@ -110,72 +110,84 @@ const MessageBubble: React.FC<Props> = ({ message, isStreaming }) => {
     );
   }
 
-  // AI 消息：左对齐
+  // AI 消息：拆分为独立区块
   const isThinkingDone = !isStreaming && !!message.thinking_steps && message.thinking_steps.length > 0
     ? true
     : undefined;
 
+  const hasThinkingSteps = message.thinking_steps && message.thinking_steps.length > 0;
+  const hasReasoning = message.reasoning || (isStreaming && !message.content);
+  const hasContent = !!message.content;
+
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <div
-        style={{
-          background: "#ffffff",
-          border: "1px solid #e5edf5",
-          borderRadius: 8,
-          padding: 24,
-          width: "100%",
-          boxShadow: "rgba(23,23,23,0.06) 0px 3px 6px",
-        }}
-      >
-        {/* 思维链步骤 */}
-        {message.thinking_steps && message.thinking_steps.length > 0 && (
-          <ThinkingChain
-            steps={message.thinking_steps}
-            completed={isThinkingDone}
-          />
-        )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* 区块1：思维链步骤（独立卡片） */}
+      {hasThinkingSteps && (
+        <ThinkingChain
+          steps={message.thinking_steps!}
+          completed={isThinkingDone}
+        />
+      )}
 
-        {/* 推理思考过程（GLM/DeepSeek 等推理模型） */}
-        {(message.reasoning || (isStreaming && !message.content)) && (
-          <ReasoningBox
-            text={message.reasoning || ""}
-            streaming={isStreaming && !message.content}
-          />
-        )}
+      {/* 区块2：推理思考过程（独立卡片） */}
+      {hasReasoning && (
+        <ReasoningBox
+          text={message.reasoning || ""}
+          streaming={isStreaming && !message.content}
+        />
+      )}
 
-        {/* 正文内容 */}
-        {message.content ? (
+      {/* 区块3：正文结果（独立卡片） */}
+      {hasContent ? (
+        <div
+          style={{
+            background: "#ffffff",
+            border: "1px solid #e5edf5",
+            borderRadius: 8,
+            padding: 24,
+            boxShadow: "rgba(23,23,23,0.06) 0px 3px 6px",
+          }}
+        >
           <div className="markdown-body">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
-        ) : isStreaming && !message.reasoning ? (
-          <div style={{ textAlign: "center", padding: "24px 0" }}>
-            <Spin
-              indicator={
-                <LoadingOutlined style={{ color: "#533afd", fontSize: 24 }} spin />
-              }
-            />
-          </div>
-        ) : null}
 
-        {/* 流式进行中提示 */}
-        {isStreaming && message.content && (
-          <div
-            style={{
-              marginTop: 16,
-              paddingTop: 12,
-              borderTop: "1px solid #e5edf5",
-            }}
-          >
-            <Text
-              className="streaming-pulse"
-              style={{ fontSize: 12, color: "#533afd" }}
+          {/* 流式进行中提示 */}
+          {isStreaming && (
+            <div
+              style={{
+                marginTop: 16,
+                paddingTop: 12,
+                borderTop: "1px solid #e5edf5",
+              }}
             >
-              分析进行中...
-            </Text>
-          </div>
-        )}
-      </div>
+              <Text
+                className="streaming-pulse"
+                style={{ fontSize: 12, color: "#533afd" }}
+              >
+                分析进行中...
+              </Text>
+            </div>
+          )}
+        </div>
+      ) : isStreaming && !message.reasoning ? (
+        <div
+          style={{
+            background: "#ffffff",
+            border: "1px solid #e5edf5",
+            borderRadius: 8,
+            padding: 24,
+            boxShadow: "rgba(23,23,23,0.06) 0px 3px 6px",
+            textAlign: "center",
+          }}
+        >
+          <Spin
+            indicator={
+              <LoadingOutlined style={{ color: "#533afd", fontSize: 24 }} spin />
+            }
+          />
+        </div>
+      ) : null}
     </div>
   );
 };
