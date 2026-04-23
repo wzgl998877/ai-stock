@@ -88,7 +88,7 @@ class StockAnalysisUseCase:
             accumulated = {}
 
             async def _run_graph():
-                nonlocal accumulated
+                nonlocal accumulated, full_content
                 async for update in self.stock_analysis_graph.astream(
                     {
                         "stock_code": stock_code,

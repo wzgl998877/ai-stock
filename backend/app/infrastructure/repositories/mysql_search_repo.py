@@ -23,7 +23,7 @@ class MySQLSearchRepository(SearchRepository):
         self, query: str, user_id: str, page: int = 1, page_size: int = 20,
     ) -> Tuple[List[Article], int]:
         match_clause = text(
-            "MATCH(a.title, a.summary, a.content) AGAINST(:q IN BOOLEAN MODE)"
+            "MATCH(t_analysis_article.title, t_analysis_article.summary, t_analysis_article.content) AGAINST(:q IN BOOLEAN MODE)"
         )
 
         count_stmt = (
@@ -68,7 +68,7 @@ class MySQLSearchRepository(SearchRepository):
         self, query: str, industry_code: str, user_id: str, page: int = 1, page_size: int = 20,
     ) -> Tuple[List[Article], int]:
         match_clause = text(
-            "MATCH(a.title, a.summary, a.content) AGAINST(:q IN BOOLEAN MODE)"
+            "MATCH(t_analysis_article.title, t_analysis_article.summary, t_analysis_article.content) AGAINST(:q IN BOOLEAN MODE)"
         )
         # TODO: implement with JOIN
         return await self.search(query, user_id, page, page_size)

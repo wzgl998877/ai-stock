@@ -114,8 +114,16 @@ class AIService:
                             break
                         try:
                             chunk = json.loads(data)
-                            choice = chunk.get("choices", [{}])[0]
+                            # 防御：chunk 可能不是 dict，或 choices 为空
+                            if not isinstance(chunk, dict):
+                                continue
+                            choices = chunk.get("choices")
+                            if not choices or not isinstance(choices, list):
+                                continue
+                            choice = choices[0] if len(choices) > 0 else {}
                             delta = choice.get("delta", {}) or choice.get("message", {})
+                            if not isinstance(delta, dict):
+                                continue
 
                             # GLM 等推理模型：reasoning_content = 思考过程
                             reasoning = delta.get("reasoning_content", "")
@@ -129,8 +137,8 @@ class AIService:
                                 chunk_count += 1
                                 yield StreamChunk("content", content)
 
-                        except json.JSONDecodeError:
-                            logger.warning("JSON 解析失败: %s", data[:200])
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+                            logger.warning("SSE chunk 解析跳过: %s, data=%s", e, data[:200])
                             continue
 
             logger.info("AI 流式调用完成: 共 %d 个有效 chunk", chunk_count)
@@ -248,8 +256,15 @@ class AIService:
                         break
                     try:
                         chunk = json.loads(data)
-                        choice = chunk.get("choices", [{}])[0]
+                        if not isinstance(chunk, dict):
+                            continue
+                        choices = chunk.get("choices")
+                        if not choices or not isinstance(choices, list):
+                            continue
+                        choice = choices[0] if len(choices) > 0 else {}
                         delta = choice.get("delta", {}) or choice.get("message", {})
+                        if not isinstance(delta, dict):
+                            continue
 
                         reasoning = delta.get("reasoning_content", "")
                         if reasoning:
@@ -258,5 +273,5 @@ class AIService:
                         content = delta.get("content", "")
                         if content:
                             yield StreamChunk("content", content)
-                    except json.JSONDecodeError:
+                    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
