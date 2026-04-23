@@ -108,17 +108,25 @@ async def validate_stock(keyword: str):
 
     try:
         import akshare as ak
-        # 尝试通过AKShare搜索股票
+
+        # 主数据源：东方财富实时行情（含价格等详细信息）
         df = ak.stock_zh_a_spot_em()
-        # 按代码或名称搜索
-        matches = df[df["代码"].str.contains(keyword) | df["名称"].str.contains(keyword)]
+        matches = df[df["代码"].str.contains(keyword, na=False) | df["名称"].str.contains(keyword, na=False)]
+
+        if matches.empty:
+            # 降级数据源：轻量级股票代码名称列表（不走实时行情接口）
+            logger.info("主数据源未匹配，尝试降级数据源 stock_info_a_code_name")
+            df = ak.stock_info_a_code_name()
+            matches = df[df["code"].str.contains(keyword, na=False) | df["name"].str.contains(keyword, na=False)]
+
         if matches.empty:
             return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
 
         row = matches.iloc[0]
-        code = str(row["代码"])
-        name = str(row["名称"])
-        # 判断市场
+        # 兼容两种数据源的列名差异
+        code = str(row.get("代码", row.get("code", "")))
+        name = str(row.get("名称", row.get("name", "")))
+        # 判断市场：6/9开头为上交所，其余为深交所
         market = "sh" if code.startswith(("6", "9")) else "sz"
 
         return {
@@ -130,8 +138,29 @@ async def validate_stock(keyword: str):
     except ImportError:
         return {"valid": False, "message": "数据源不可用"}
     except Exception as e:
-        logger.error("验证股票失败: %s", e)
-        return {"valid": False, "message": f"查询失败: {str(e)}"}
+        # 主数据源失败时，尝试降级到轻量级数据源
+        logger.warning("主数据源失败，尝试降级: %s", e)
+        try:
+            import akshare as ak
+            df = ak.stock_info_a_code_name()
+            matches = df[df["code"].str.contains(keyword, na=False) | df["name"].str.contains(keyword, na=False)]
+            if matches.empty:
+                return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
+
+            row = matches.iloc[0]
+            code = str(row["code"])
+            name = str(row["name"])
+            market = "sh" if code.startswith(("6", "9")) else "sz"
+
+            return {
+                "valid": True,
+                "stock_code": code,
+                "stock_name": name,
+                "market": market,
+            }
+        except Exception as fallback_e:
+            logger.error("降级数据源也失败: %s", fallback_e)
+            return {"valid": False, "message": f"查询失败: {str(fallback_e)}"}
 
 
 @router.get("/stock-recent")
