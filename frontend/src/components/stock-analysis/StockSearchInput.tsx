@@ -1,7 +1,7 @@
 /** StockSearchInput -- 股票搜索输入框（带防抖验证） */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { AutoComplete, Typography, Space, Tag } from "antd";
+import { AutoComplete, Typography, Tag } from "antd";
 import { SearchOutlined, StockOutlined } from "@ant-design/icons";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
 import * as stockAnalysisService from "../../services/stockAnalysisService";
@@ -52,44 +52,25 @@ const StockSearchInput: React.FC = () => {
         if (controller.signal.aborted) return;
 
         if (result.valid) {
-          setOptions([
-            {
-              value: `${result.stock_code}|${result.stock_name}`,
-              label: (
-                <Space>
-                  <StockOutlined style={{ color: "#533afd" }} />
-                  <span style={{ fontWeight: 400, color: "#061b31" }}>
-                    {result.stock_name}
-                  </span>
-                  <Tag
-                    style={{
-                      fontSize: 11,
-                      lineHeight: "16px",
-                      padding: "0 4px",
-                      borderRadius: 4,
-                      background: "#f0efff",
-                      color: "#533afd",
-                      border: "1px solid #d6d9fc",
-                    }}
-                  >
-                    {result.stock_code}
-                  </Tag>
-                  <Text style={{ fontSize: 11, color: "#94a3b8" }}>
-                    {result.market}
-                  </Text>
-                </Space>
-              ),
-            },
-          ]);
+          // 与「从下拉选中」一致：验证通过即写入 store，避免仅 validationValid 为 true
+          // 而 stockCode/stockName 仍为空，导致「开始分析」可点却不发请求。
+          setStock(result.stock_code, result.stock_name);
+          setKeyword(result.stock_name);
+          setSelected(true);
+          setOptions([]);
           setValidation(false, true);
         } else {
           setOptions([]);
           setValidation(false, false);
+          setStock("", "");
+          setSelected(false);
         }
       } catch {
         if (!controller.signal.aborted) {
           setOptions([]);
           setValidation(false, false);
+          setStock("", "");
+          setSelected(false);
         }
       }
     };
@@ -101,7 +82,7 @@ const StockSearchInput: React.FC = () => {
         abortRef.current.abort();
       }
     };
-  }, [debouncedKeyword, selected, setValidation]);
+  }, [debouncedKeyword, selected, setValidation, setStock]);
 
   const handleSelect = useCallback(
     (val: string) => {

@@ -214,7 +214,11 @@ const StockAnalysisPage: React.FC = () => {
         <Button
           type="primary"
           size="large"
-          disabled={!store.validationValid}
+          disabled={
+            !store.stockCode ||
+            !store.stockName ||
+            store.validationLoading
+          }
           onClick={handleStart}
           icon={<PlayCircleOutlined />}
           style={{
