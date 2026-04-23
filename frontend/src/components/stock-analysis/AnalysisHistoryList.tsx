@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { List, Typography, Tag, Empty, Spin } from "antd";
-import { ClockCircleOutlined, HistoryOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import * as knowledgeService from "../../services/knowledgeService";
 

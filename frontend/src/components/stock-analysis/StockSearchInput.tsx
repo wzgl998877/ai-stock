@@ -1,4 +1,4 @@
-/** StockSearchInput -- 股票搜索输入框（带防抖验证） */
+/** StockSearchInput -- 股票搜索输入框（带防抖 + 候选列表） */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AutoComplete, Typography, Tag } from "antd";
@@ -20,7 +20,7 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 const StockSearchInput: React.FC = () => {
-  const { setStock, setValidation, validationLoading, validationValid, stockCode, stockName } =
+  const { setStock, setValidation, validationLoading, stockCode, stockName } =
     useStockAnalysisStore();
 
   const [keyword, setKeyword] = useState("");
@@ -30,14 +30,13 @@ const StockSearchInput: React.FC = () => {
 
   const debouncedKeyword = useDebounce(keyword, 300);
 
-  // 防抖后发起验证请求
+  // 防抖后发起搜索请求
   useEffect(() => {
     if (!debouncedKeyword.trim() || selected) {
       return;
     }
 
-    const doValidate = async () => {
-      // 取消上一次请求
+    const doSearch = async () => {
       if (abortRef.current) {
         abortRef.current.abort();
       }
@@ -51,19 +50,53 @@ const StockSearchInput: React.FC = () => {
         );
         if (controller.signal.aborted) return;
 
-        if (result.valid) {
-          // 与「从下拉选中」一致：验证通过即写入 store，避免仅 validationValid 为 true
-          // 而 stockCode/stockName 仍为空，导致「开始分析」可点却不发请求。
+        if (!result.valid) {
+          setOptions([]);
+          setValidation(false, false);
+          setStock("", "");
+          setSelected(false);
+          return;
+        }
+
+        // 多个候选：展示下拉列表
+        if (result.multiple && result.candidates && result.candidates.length > 0) {
+          setOptions(
+            result.candidates.map((c) => ({
+              value: `${c.code}|${c.name}`,
+              label: (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>
+                    <Text style={{ fontSize: 13, color: "#061b31", marginRight: 8 }}>{c.name}</Text>
+                    <Text style={{ fontSize: 12, color: "#94a3b8" }}>{c.code}</Text>
+                  </span>
+                  <Tag
+                    style={{
+                      fontSize: 10,
+                      borderRadius: 3,
+                      margin: 0,
+                      background: c.market === "sh" ? "#f0fdf4" : "#eff6ff",
+                      color: c.market === "sh" ? "#15be53" : "#3b82f6",
+                      border: "none",
+                    }}
+                  >
+                    {c.market === "sh" ? "沪" : "深"}
+                  </Tag>
+                </div>
+              ),
+            }))
+          );
+          setValidation(false, false);
+          setStock("", "");
+          return;
+        }
+
+        // 唯一匹配：直接选中
+        if (result.stock_code && result.stock_name) {
           setStock(result.stock_code, result.stock_name);
           setKeyword(result.stock_name);
           setSelected(true);
           setOptions([]);
           setValidation(false, true);
-        } else {
-          setOptions([]);
-          setValidation(false, false);
-          setStock("", "");
-          setSelected(false);
         }
       } catch {
         if (!controller.signal.aborted) {
@@ -75,7 +108,7 @@ const StockSearchInput: React.FC = () => {
       }
     };
 
-    doValidate();
+    doSearch();
 
     return () => {
       if (abortRef.current) {
@@ -91,8 +124,9 @@ const StockSearchInput: React.FC = () => {
       setKeyword(name);
       setSelected(true);
       setOptions([]);
+      setValidation(false, true);
     },
-    [setStock]
+    [setStock, setValidation]
   );
 
   const handleSearch = (val: string) => {
@@ -115,7 +149,7 @@ const StockSearchInput: React.FC = () => {
         placeholder="输入股票代码或名称，如 600519 或 贵州茅台"
         suffixIcon={validationLoading ? undefined : <SearchOutlined style={{ color: "#94a3b8" }} />}
         notFoundContent={
-          keyword.trim() && !validationLoading && !validationValid && !selected ? (
+          keyword.trim() && !validationLoading && !selected ? (
             <Text style={{ fontSize: 12, color: "#94a3b8" }}>未找到匹配的股票</Text>
           ) : null
         }

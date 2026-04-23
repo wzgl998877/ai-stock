@@ -81,6 +81,7 @@ class AIService:
                         raise RuntimeError(f"AI API error: {response.status_code} - {error_body[:200]}")
 
                     raw_line_count = 0
+                    first_data_line_found = False
                     async for line in response.aiter_lines():
                         raw_line_count += 1
                         line = line.strip()
@@ -88,6 +89,14 @@ class AIService:
                             continue
                         if raw_line_count <= 10:
                             logger.info("SSE raw line %d: %s", raw_line_count, line[:300])
+
+                        # 检测非 SSE 响应（如 HTML 错误页面）
+                        if not first_data_line_found and raw_line_count == 1:
+                            if line.startswith("<!") or line.startswith("<html") or line.startswith("<HTML"):
+                                error_body = await response.aread()
+                                logger.error("AI API 返回非 SSE 响应（HTML）: %s", error_body[:500])
+                                raise RuntimeError(f"AI API 返回了 HTML 页面而非 SSE 流，请检查 base_url 配置。当前 URL: {url}")
+
                         if not line.startswith("data: "):
                             try:
                                 err_obj = json.loads(line)
@@ -98,6 +107,8 @@ class AIService:
                             except json.JSONDecodeError:
                                 pass
                             continue
+
+                        first_data_line_found = True
                         data = line[6:]
                         if data == "[DONE]":
                             break

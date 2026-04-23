@@ -1,14 +1,13 @@
 /** StockAnalysisPage -- 个股分析主页面（含可视化+历史+快速模式） */
 
-import React, { useCallback, useRef, useState, useEffect } from "react";
-import { Button, Typography, Card, Steps, Tag, Spin, Alert, Space, Row, Col, Divider, Badge, Tooltip } from "antd";
+import React, { useCallback, useRef, useState } from "react";
+import { Button, Typography, Card, Steps, Spin, Alert, Space, Divider, Badge } from "antd";
 import {
   PlayCircleOutlined,
   RedoOutlined,
   StockOutlined,
   HistoryOutlined,
   SwapOutlined,
-  ThunderboltOutlined,
 } from "@ant-design/icons";
 import StockSearchInput from "../components/stock-analysis/StockSearchInput";
 import AnalysisModeSelector from "../components/stock-analysis/AnalysisModeSelector";
@@ -21,7 +20,6 @@ import AnalysisComparison from "../components/stock-analysis/AnalysisComparison"
 import { useStockAnalysisStore } from "../store/stockAnalysisStore";
 import * as stockAnalysisService from "../services/stockAnalysisService";
 import {
-  AGENT_DISPLAY_NAMES,
   ANALYSIS_PHASE_LABELS,
 } from "../domain/constants";
 import { AnalysisMode } from "../domain/types";
@@ -36,7 +34,7 @@ const StockAnalysisPage: React.FC = () => {
   const store = useStockAnalysisStore();
   const abortRef = useRef<AbortController | null>(null);
   const [comparisonOpen, setComparisonOpen] = useState(false);
-  const [historyItems, setHistoryItems] = useState<any[]>([]);
+  const [historyItems] = useState<any[]>([]);
 
   const isIdle = store.analysisState === "idle";
   const isRunning = store.analysisState === "running";

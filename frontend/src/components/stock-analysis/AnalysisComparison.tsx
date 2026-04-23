@@ -40,13 +40,6 @@ const AnalysisComparison: React.FC<AnalysisComparisonProps> = ({ open, onClose, 
   const leftDecision = left.analysis_data?.decision || {};
   const rightDecision = right.analysis_data?.decision || {};
 
-  const highlightDiff = (leftVal: any, rightVal: any, text: string) => {
-    if (leftVal !== rightVal && leftVal !== undefined && rightVal !== undefined) {
-      return <span style={{ background: "#fef3c7", padding: "0 4px", borderRadius: 2 }}>{text}</span>;
-    }
-    return text;
-  };
-
   const columns: ColumnsType<{ field: string; left: any; right: any }> = [
     { title: "对比项", dataIndex: "field", key: "field", width: 100, render: (t: string) => <Text style={{ fontSize: 12, color: "#64748d" }}>{t}</Text> },
     {

@@ -1,7 +1,10 @@
 """AI 分析路由 — SSE 流式 + 保存 + 相似检测"""
 
+import asyncio
 import json
 import logging
+import re
+import time
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Request, Depends
@@ -25,6 +28,42 @@ from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepos
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+
+
+# === 股票列表缓存 ===
+_stock_list_cache: list[dict] | None = None
+_stock_list_cache_time: float = 0
+_STOCK_LIST_CACHE_TTL = 4 * 3600  # 4小时
+
+
+def _get_stock_list_sync() -> list[dict]:
+    """同步获取A股股票列表（仅代码+名称），优先走缓存"""
+    global _stock_list_cache, _stock_list_cache_time
+
+    now = time.time()
+    if _stock_list_cache is not None and (now - _stock_list_cache_time) < _STOCK_LIST_CACHE_TTL:
+        return _stock_list_cache
+
+    try:
+        import akshare as ak
+        # 轻量级接口：只返回代码和名称，不拉实时行情
+        df = ak.stock_info_a_code_name()
+        stocks = []
+        for _, row in df.iterrows():
+            code = str(row.get("code", "")).strip()
+            name = str(row.get("name", "")).strip()
+            if code and name:
+                market = "sh" if code.startswith(("6", "9")) else "sz"
+                stocks.append({"code": code, "name": name, "market": market})
+        _stock_list_cache = stocks
+        _stock_list_cache_time = now
+        logger.info("股票列表缓存刷新，共 %d 条", len(stocks))
+        return stocks
+    except Exception as e:
+        logger.error("获取股票列表失败: %s", e)
+        if _stock_list_cache is not None:
+            return _stock_list_cache  # 降级使用过期缓存
+        return []
 
 
 def _get_use_case(request: Request) -> AnalyzeEventUseCase:
@@ -102,65 +141,59 @@ async def check_similarity(body: SimilarityRequestDTO):
 
 @router.get("/validate-stock")
 async def validate_stock(keyword: str):
-    """验证股票代码/名称，返回股票信息"""
+    """验证股票代码/名称，返回匹配的股票列表（支持自动补全）"""
     if not keyword or not keyword.strip():
         return {"valid": False, "message": "请输入股票代码或名称"}
 
-    try:
-        import akshare as ak
+    keyword = keyword.strip()
+    # 转义正则特殊字符
+    safe_keyword = re.escape(keyword)
+    pattern = re.compile(safe_keyword, re.IGNORECASE)
 
-        # 主数据源：东方财富实时行情（含价格等详细信息）
-        df = ak.stock_zh_a_spot_em()
-        matches = df[df["代码"].str.contains(keyword, na=False) | df["名称"].str.contains(keyword, na=False)]
+    # 异步获取股票列表（缓存+to_thread）
+    stocks = await asyncio.to_thread(_get_stock_list_sync)
+    if not stocks:
+        return {"valid": False, "message": "数据源暂时不可用，请稍后重试"}
 
-        if matches.empty:
-            # 降级数据源：轻量级股票代码名称列表（不走实时行情接口）
-            logger.info("主数据源未匹配，尝试降级数据源 stock_info_a_code_name")
-            df = ak.stock_info_a_code_name()
-            matches = df[df["code"].str.contains(keyword, na=False) | df["name"].str.contains(keyword, na=False)]
-
-        if matches.empty:
-            return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
-
-        row = matches.iloc[0]
-        # 兼容两种数据源的列名差异
-        code = str(row.get("代码", row.get("code", "")))
-        name = str(row.get("名称", row.get("name", "")))
-        # 判断市场：6/9开头为上交所，其余为深交所
-        market = "sh" if code.startswith(("6", "9")) else "sz"
-
+    # 精确匹配优先：代码完全匹配
+    exact_code = [s for s in stocks if s["code"] == keyword]
+    if exact_code:
+        hit = exact_code[0]
         return {
             "valid": True,
-            "stock_code": code,
-            "stock_name": name,
-            "market": market,
+            "stock_code": hit["code"],
+            "stock_name": hit["name"],
+            "market": hit["market"],
         }
-    except ImportError:
-        return {"valid": False, "message": "数据源不可用"}
-    except Exception as e:
-        # 主数据源失败时，尝试降级到轻量级数据源
-        logger.warning("主数据源失败，尝试降级: %s", e)
-        try:
-            import akshare as ak
-            df = ak.stock_info_a_code_name()
-            matches = df[df["code"].str.contains(keyword, na=False) | df["name"].str.contains(keyword, na=False)]
-            if matches.empty:
-                return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
 
-            row = matches.iloc[0]
-            code = str(row["code"])
-            name = str(row["name"])
-            market = "sh" if code.startswith(("6", "9")) else "sz"
+    # 模糊匹配：代码前缀或名称包含
+    matches = []
+    for s in stocks:
+        if pattern.search(s["code"]) or pattern.search(s["name"]):
+            matches.append(s)
+        if len(matches) >= 10:
+            break
 
-            return {
-                "valid": True,
-                "stock_code": code,
-                "stock_name": name,
-                "market": market,
-            }
-        except Exception as fallback_e:
-            logger.error("降级数据源也失败: %s", fallback_e)
-            return {"valid": False, "message": f"查询失败: {str(fallback_e)}"}
+    if not matches:
+        return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
+
+    # 只有一个匹配时直接返回
+    if len(matches) == 1:
+        hit = matches[0]
+        return {
+            "valid": True,
+            "stock_code": hit["code"],
+            "stock_name": hit["name"],
+            "market": hit["market"],
+        }
+
+    # 多个匹配时返回候选列表
+    return {
+        "valid": True,
+        "multiple": True,
+        "candidates": matches,
+        "message": f"找到 {len(matches)} 个匹配结果",
+    }
 
 
 @router.get("/stock-recent")

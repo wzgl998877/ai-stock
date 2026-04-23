@@ -220,12 +220,20 @@ export interface DecisionEvent {
   reasoning: string;
 }
 
+export interface StockCandidate {
+  code: string;
+  name: string;
+  market: string;
+}
+
 export interface StockValidationResult {
   valid: boolean;
-  stock_code: string;
-  stock_name: string;
-  market: string;
-  message: string;
+  stock_code?: string;
+  stock_name?: string;
+  market?: string;
+  multiple?: boolean;
+  candidates?: StockCandidate[];
+  message?: string;
 }
 
 // 扩展 SSE 事件类型

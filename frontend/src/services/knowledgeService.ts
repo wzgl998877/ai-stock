@@ -10,6 +10,7 @@ export async function getArticles(params: {
   view?: string;
   industry?: string;
   stock_code?: string;
+  article_type?: string;
   page?: number;
   page_size?: number;
 }): Promise<ArticleListResponseDTO> {

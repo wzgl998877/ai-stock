@@ -1,9 +1,8 @@
 import React from "react";
-import { Timeline, Typography, Spin } from "antd";
-import { CheckCircleFilled, LoadingOutlined, CloseCircleFilled, StockOutlined, SwapOutlined, DollarOutlined, SafetyCertificateOutlined } from "@ant-design/icons";
+import { Timeline, Typography } from "antd";
+import { LoadingOutlined, StockOutlined, SwapOutlined, DollarOutlined, SafetyCertificateOutlined } from "@ant-design/icons";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
-import { AGENT_DISPLAY_NAMES, AGENT_PHASE_MAPPING, ANALYSIS_PHASE_LABELS } from "../../domain/constants";
-import { AgentType } from "../../domain/types";
+import { AGENT_DISPLAY_NAMES, ANALYSIS_PHASE_LABELS } from "../../domain/constants";
 
 const { Text } = Typography;
 

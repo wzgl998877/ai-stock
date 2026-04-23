@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """工作流 Prompt 管理
 
 事件分析主 Prompt 仍在 infrastructure/ai/prompts/ 目录。

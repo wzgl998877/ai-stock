@@ -1,7 +1,8 @@
-"""金融数据工具集 — 基于 AKShare 的A股数据获取工具（含 BaoStock 降级 + 超时重试）"""
+"""金融数据工具集 — 基于 AKShare 的A股数据获取工具（含 BaoStock 降级 + 超时重试 + 缓存）"""
 
 import json
 import logging
+import time
 from typing import Any
 
 from langchain_core.tools import tool
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 # 超时重试配置
 MAX_RETRIES = 2
 RETRY_DELAY = 1  # 秒
+
+# === 行情缓存（避免每次拉全市场数据） ===
+_spot_cache: dict | None = None
+_spot_cache_time: float = 0
+_SPOT_CACHE_TTL = 300  # 5分钟缓存
 
 
 def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
@@ -23,9 +29,25 @@ def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
             last_error = e
             if attempt < retries:
                 logger.warning("[重试] %s 第%d次失败: %s，%ds后重试", func.__name__, attempt + 1, e, delay)
-                import time
-                time.sleep(delay)
+                import time as _time
+                _time.sleep(delay)
     raise last_error
+
+
+def _get_spot_df():
+    """获取全市场行情 DataFrame（带缓存，5分钟TTL）"""
+    global _spot_cache, _spot_cache_time
+
+    now = time.time()
+    if _spot_cache is not None and (now - _spot_cache_time) < _SPOT_CACHE_TTL:
+        return _spot_cache
+
+    import akshare as ak
+    df = ak.stock_zh_a_spot_em()
+    _spot_cache = df
+    _spot_cache_time = now
+    logger.info("[行情缓存] 刷新，共 %d 条", len(df))
+    return df
 
 
 # === 工具函数实现 ===
@@ -35,33 +57,38 @@ def _fetch_stock_quote(stock_code: str) -> str:
     try:
         import akshare as ak
 
-        df = ak.stock_zh_a_spot_em()
-        row = df[df["代码"] == stock_code]
-        if row.empty:
-            return f"未找到股票代码 {stock_code} 的行情数据"
-
-        r = row.iloc[0]
-        result = {
-            "代码": str(r.get("代码", "")),
-            "名称": str(r.get("名称", "")),
-            "最新价": str(r.get("最新价", "")),
-            "涨跌幅": str(r.get("涨跌幅", "")),
-            "涨跌额": str(r.get("涨跌额", "")),
-            "成交量": str(r.get("成交量", "")),
-            "成交额": str(r.get("成交额", "")),
-            "振幅": str(r.get("振幅", "")),
-            "最高": str(r.get("最高", "")),
-            "最低": str(r.get("最低", "")),
-            "今开": str(r.get("今开", "")),
-            "昨收": str(r.get("昨收", "")),
-            "量比": str(r.get("量比", "")),
-            "换手率": str(r.get("换手率", "")),
-            "市盈率-动态": str(r.get("市盈率-动态", "")),
-            "市净率": str(r.get("市净率", "")),
-            "总市值": str(r.get("总市值", "")),
-            "流通市值": str(r.get("流通市值", "")),
-        }
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        # 优先使用缓存的全市场行情
+        try:
+            df = _get_spot_df()
+            row = df[df["代码"] == stock_code]
+            if not row.empty:
+                r = row.iloc[0]
+                result = {
+                    "代码": str(r.get("代码", "")),
+                    "名称": str(r.get("名称", "")),
+                    "最新价": str(r.get("最新价", "")),
+                    "涨跌幅": str(r.get("涨跌幅", "")),
+                    "涨跌额": str(r.get("涨跌额", "")),
+                    "成交量": str(r.get("成交量", "")),
+                    "成交额": str(r.get("成交额", "")),
+                    "振幅": str(r.get("振幅", "")),
+                    "最高": str(r.get("最高", "")),
+                    "最低": str(r.get("最低", "")),
+                    "今开": str(r.get("今开", "")),
+                    "昨收": str(r.get("昨收", "")),
+                    "量比": str(r.get("量比", "")),
+                    "换手率": str(r.get("换手率", "")),
+                    "市盈率-动态": str(r.get("市盈率-动态", "")),
+                    "市净率": str(r.get("市净率", "")),
+                    "总市值": str(r.get("总市值", "")),
+                    "流通市值": str(r.get("流通市值", "")),
+                }
+                return json.dumps(result, ensure_ascii=False, indent=2)
+        except Exception as cache_err:
+            logger.warning("[fetch_stock_quote] 缓存读取失败，降级到直接查询: %s", cache_err)
+            # 清除坏缓存
+            global _spot_cache
+            _spot_cache = None
     except ImportError:
         return "AKShare 未安装，无法获取行情数据"
     except Exception as e:

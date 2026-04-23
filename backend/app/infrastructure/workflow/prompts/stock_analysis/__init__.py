@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """股票分析Agent Prompt模板包"""
 
 from .market_analyst import SYSTEM_PROMPT as MARKET_ANALYST_SYSTEM, USER_TEMPLATE as MARKET_ANALYST_USER

@@ -1,6 +1,6 @@
 import React from "react";
 import { Timeline, Typography, Card, Tag } from "antd";
-import { ArrowUpOutlined, ArrowDownOutlined, FireOutlined, SafetyCertificateOutlined, BalanceOutlined } from "@ant-design/icons";
+import { ArrowUpOutlined, ArrowDownOutlined, FireOutlined, SafetyCertificateOutlined, TeamOutlined } from "@ant-design/icons";
 import { AGENT_DISPLAY_NAMES } from "../../domain/constants";
 import type { DebateEvent } from "../../domain/types";
 
@@ -11,7 +11,7 @@ const SPEAKER_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg:
   bear_researcher: { icon: <ArrowDownOutlined />, color: "#ea2261", bg: "#fff1f2", border: "#fecdd3" },
   risky_debator: { icon: <FireOutlined />, color: "#f59e0b", bg: "#fffbeb", border: "#fde68a" },
   safe_debator: { icon: <SafetyCertificateOutlined />, color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
-  neutral_debator: { icon: <BalanceOutlined />, color: "#a855f7", bg: "#faf5ff", border: "#d8b4fe" },
+  neutral_debator: { icon: <TeamOutlined />, color: "#a855f7", bg: "#faf5ff", border: "#d8b4fe" },
 };
 
 interface DebateTimelineProps {
@@ -36,7 +36,7 @@ const DebateTimeline: React.FC<DebateTimelineProps> = ({ debates, showRiskDebate
         <div style={{ marginBottom: riskDebates.length > 0 ? 16 : 0 }}>
           <Text style={{ fontSize: 11, color: "#64748d", display: "block", marginBottom: 8 }}>看多 vs 看空</Text>
           <Timeline
-            items={investmentDebates.map((debate, idx) => {
+            items={investmentDebates.map((debate) => {
               const config = SPEAKER_CONFIG[debate.speaker] || { icon: null, color: "#64748d", bg: "#f8fafc", border: "#e5edf5" };
               return {
                 color: debate.speaker === "bull_researcher" ? "green" : "red",

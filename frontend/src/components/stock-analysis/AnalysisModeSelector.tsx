@@ -5,7 +5,6 @@ import { Radio, Typography, Space, Tooltip } from "antd";
 import { BulbOutlined, ThunderboltOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import { ANALYSIS_MODE_OPTIONS } from "../../domain/constants";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
-import { AnalysisMode } from "../../domain/types";
 
 const { Text } = Typography;
 

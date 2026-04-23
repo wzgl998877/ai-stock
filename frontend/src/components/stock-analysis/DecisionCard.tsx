@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, Typography, Tag, Progress, Statistic, Row, Col, Alert } from "antd";
-import { CheckCircleOutlined, ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from "@ant-design/icons";
+import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from "@ant-design/icons";
 import type { DecisionEvent } from "../../domain/types";
 
 const { Text, Paragraph } = Typography;
