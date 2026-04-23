@@ -29,11 +29,12 @@ USER_ID = "default"  # MVP 阶段固定用户
 
 
 def _get_use_case(request: Request, db: AsyncSession) -> ChatUseCase:
-    """统一构造 ChatUseCase，注入 ai_service + analysis_graph"""
+    """统一构造 ChatUseCase，注入 ai_service + analysis_graph + stock_analysis_graph"""
     repo = MySQLChatRepository(db)
     ai_service = request.app.state.ai_service
     analysis_graph = getattr(request.app.state, "analysis_graph", None)
-    return ChatUseCase(repo, ai_service, analysis_graph)
+    stock_analysis_graph = getattr(request.app.state, "stock_analysis_graph", None)
+    return ChatUseCase(repo, ai_service, analysis_graph, stock_analysis_graph)
 
 
 async def _sse_stream(event_gen: AsyncGenerator, db: AsyncSession) -> AsyncGenerator[str, None]:

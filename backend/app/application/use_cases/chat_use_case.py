@@ -35,10 +35,11 @@ EARLIER_ASSISTANT_MAX_CHARS = 400
 
 class ChatUseCase:
 
-    def __init__(self, chat_repo: ChatRepository, ai_service: AIService, analysis_graph=None):
+    def __init__(self, chat_repo: ChatRepository, ai_service: AIService, analysis_graph=None, stock_analysis_graph=None):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
         self.analysis_graph = analysis_graph
+        self.stock_analysis_graph = stock_analysis_graph
         self.parser = AnalysisParser()
 
     async def create_session(self, user_id: str, title: str | None = None, event_type: str | None = None,
@@ -93,7 +94,7 @@ class ChatUseCase:
             )
             stock_use_case = StockAnalysisUseCase(
                 self.chat_repo, self.ai_service,
-                getattr(self, '_stock_analysis_graph', None),
+                self.stock_analysis_graph,
             )
             async for event in stock_use_case.execute(session_id, stock_config):
                 yield event

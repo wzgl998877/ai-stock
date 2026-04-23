@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     log_max_bytes: int = 10 * 1024 * 1024  # 10MB
     log_backup_count: int = 10
 
+    # === 服务 ===
+    host: str = "0.0.0.0"
+    port: int = 8000
+
     # === 应用 ===
     cors_origins: List[str] = ["http://localhost:5173"]
     analysis_timeout: int = 120
