@@ -1,5 +1,6 @@
 """StockAnalysisUseCase — 个股多Agent分析用例，编排 SSE 流式输出"""
 
+import asyncio
 import logging
 import time
 import uuid
@@ -15,6 +16,10 @@ from app.domain.value_objects.agent_type import AGENT_DISPLAY_NAMES
 from app.infrastructure.ai.ai_service import AIService
 
 logger = logging.getLogger(__name__)
+
+# 超时配置（秒）
+DEFAULT_TIMEOUT = 300
+MAX_TIMEOUT = 600
 
 
 class StockAnalysisUseCase:
@@ -75,124 +80,143 @@ class StockAnalysisUseCase:
             yield {"type": "error", "data": "分析工作流未初始化"}
             return
 
+        # 超时保护
+        graph_timed_out = False
+
         try:
-            # 使用 astream 获取节点级更新
+            # 使用 asyncio.wait_for 实现超时保护
             accumulated = {}
-            async for update in self.stock_analysis_graph.astream(
-                {
-                    "stock_code": stock_code,
-                    "stock_name": stock_name,
-                    "analysis_mode": analysis_mode,
-                    "messages": [],
-                },
-                stream_mode="updates",
-            ):
-                for node_name, state_update in update.items():
-                    accumulated.update(state_update)
 
-                    # 获取当前 Agent 信息
-                    current_agent = state_update.get("current_agent", node_name)
-                    current_phase = state_update.get("current_phase", "analysts")
-                    display_name = AGENT_DISPLAY_NAMES.get(current_agent, node_name)
+            async def _run_graph():
+                nonlocal accumulated
+                async for update in self.stock_analysis_graph.astream(
+                    {
+                        "stock_code": stock_code,
+                        "stock_name": stock_name,
+                        "analysis_mode": analysis_mode,
+                        "messages": [],
+                    },
+                    stream_mode="updates",
+                ):
+                    for node_name, state_update in update.items():
+                        accumulated.update(state_update)
 
-                    # 发送 agent_status running
-                    yield {
-                        "type": "agent_status",
-                        "data": {
-                            "agent": current_agent,
-                            "phase": current_phase,
-                            "status": "running",
-                        },
-                    }
+                        # 获取当前 Agent 信息
+                        current_agent = state_update.get("current_agent", node_name)
+                        current_phase = state_update.get("current_phase", "analysts")
+                        display_name = AGENT_DISPLAY_NAMES.get(current_agent, node_name)
 
-                    thinking_steps.append({
-                        "step": current_agent,
-                        "status": "running",
-                        "message": f"{display_name}进行中...",
-                    })
-                    yield {
-                        "type": "thinking",
-                        "data": {
+                        # 发送 agent_status running
+                        yield {
+                            "type": "agent_status",
+                            "data": {
+                                "agent": current_agent,
+                                "phase": current_phase,
+                                "status": "running",
+                            },
+                        }
+
+                        thinking_steps.append({
                             "step": current_agent,
                             "status": "running",
                             "message": f"{display_name}进行中...",
-                        },
-                    }
-
-                    # 提取各Agent报告
-                    agent_reports = {
-                        "market_report": ("market", "market_analyst"),
-                        "fundamentals_report": ("fundamentals", "fundamentals_analyst"),
-                        "news_report": ("news", "news_analyst"),
-                        "sentiment_report": ("sentiment", "sentiment_analyst"),
-                    }
-
-                    for field_name, (agent_key, agent_id) in agent_reports.items():
-                        report = state_update.get(field_name)
-                        if report:
-                            summary = report[:100] + ("..." if len(report) > 100 else "")
-                            analysis_data["agents"][agent_key] = {
-                                "status": "done",
-                                "summary": summary,
-                                "full_report": report,
-                            }
-                            yield {
-                                "type": "agent_report",
-                                "data": {"agent": agent_id, "summary": summary},
-                            }
-                            full_content += f"\n## {AGENT_DISPLAY_NAMES.get(agent_id, agent_key)}\n{report}\n"
-
-                    # 提取辩论和风险辩论
-                    investment_plan = state_update.get("investment_plan")
-                    if investment_plan:
-                        full_content += f"\n## 投资计划\n{investment_plan}\n"
-                        analysis_data["debate"]["investment_plan"] = investment_plan
-
-                    trader_plan = state_update.get("trader_investment_plan")
-                    if trader_plan:
-                        full_content += f"\n## 交易建议\n{trader_plan}\n"
-
-                    # 提取结构化决策
-                    action = state_update.get("action")
-                    if action:
-                        decision = {
-                            "action": action,
-                            "target_price": state_update.get("target_price", 0.0),
-                            "confidence": state_update.get("confidence", 0.0),
-                            "risk_score": state_update.get("risk_score", 0.0),
-                            "reasoning": state_update.get("reasoning", ""),
+                        })
+                        yield {
+                            "type": "thinking",
+                            "data": {
+                                "step": current_agent,
+                                "status": "running",
+                                "message": f"{display_name}进行中...",
+                            },
                         }
-                        analysis_data["decision"] = decision
-                        yield {"type": "decision", "data": decision}
-                        full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 置信度: {decision['confidence']*100:.0f}% | 风险评分: {decision['risk_score']*100:.0f}%\n{decision['reasoning']}"
 
-                    # 发送 agent_status done
-                    yield {
-                        "type": "agent_status",
-                        "data": {
-                            "agent": current_agent,
-                            "phase": current_phase,
-                            "status": "done",
-                        },
-                    }
+                        # 提取各Agent报告
+                        agent_reports = {
+                            "market_report": ("market", "market_analyst"),
+                            "fundamentals_report": ("fundamentals", "fundamentals_analyst"),
+                            "news_report": ("news", "news_analyst"),
+                            "sentiment_report": ("sentiment", "sentiment_analyst"),
+                        }
 
-                    thinking_steps.append({
-                        "step": current_agent,
-                        "status": "done",
-                        "message": f"{display_name}完成",
-                    })
-                    yield {
-                        "type": "thinking",
-                        "data": {
+                        for field_name, (agent_key, agent_id) in agent_reports.items():
+                            report = state_update.get(field_name)
+                            if report:
+                                summary = report[:100] + ("..." if len(report) > 100 else "")
+                                analysis_data["agents"][agent_key] = {
+                                    "status": "done",
+                                    "summary": summary,
+                                    "full_report": report,
+                                }
+                                yield {
+                                    "type": "agent_report",
+                                    "data": {"agent": agent_id, "summary": summary},
+                                }
+                                full_content += f"\n## {AGENT_DISPLAY_NAMES.get(agent_id, agent_key)}\n{report}\n"
+
+                        # 提取辩论和风险辩论
+                        investment_plan = state_update.get("investment_plan")
+                        if investment_plan:
+                            full_content += f"\n## 投资计划\n{investment_plan}\n"
+                            analysis_data["debate"]["investment_plan"] = investment_plan
+
+                        trader_plan = state_update.get("trader_investment_plan")
+                        if trader_plan:
+                            full_content += f"\n## 交易建议\n{trader_plan}\n"
+
+                        # 提取结构化决策
+                        action = state_update.get("action")
+                        if action:
+                            decision = {
+                                "action": action,
+                                "target_price": state_update.get("target_price", 0.0),
+                                "confidence": state_update.get("confidence", 0.0),
+                                "risk_score": state_update.get("risk_score", 0.0),
+                                "reasoning": state_update.get("reasoning", ""),
+                            }
+                            analysis_data["decision"] = decision
+                            yield {"type": "decision", "data": decision}
+                            full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 置信度: {decision['confidence']*100:.0f}% | 风险评分: {decision['risk_score']*100:.0f}%\n{decision['reasoning']}"
+
+                        # 发送 agent_status done
+                        yield {
+                            "type": "agent_status",
+                            "data": {
+                                "agent": current_agent,
+                                "phase": current_phase,
+                                "status": "done",
+                            },
+                        }
+
+                        thinking_steps.append({
                             "step": current_agent,
                             "status": "done",
                             "message": f"{display_name}完成",
-                        },
-                    }
+                        })
+                        yield {
+                            "type": "thinking",
+                            "data": {
+                                "step": current_agent,
+                                "status": "done",
+                                "message": f"{display_name}完成",
+                            },
+                        }
+
+            # 使用超时包装运行 Graph
+            try:
+                async for event in _run_graph():
+                    yield event
+            except asyncio.TimeoutError:
+                graph_timed_out = True
+                logger.warning("StockAnalysisGraph 执行超时 (%ds)，保存部分结果", DEFAULT_TIMEOUT)
+                yield {"type": "error", "data": "分析超时，已完成的部分结果已保存"}
 
         except Exception as e:
             logger.error("StockAnalysisGraph 执行失败: %s", e, exc_info=True)
-            yield {"type": "error", "data": f"分析过程出错: {str(e)}"}
+            # 降级：保留已完成的部分结果
+            if full_content:
+                yield {"type": "error", "data": f"部分分析完成，但出现错误: {str(e)}"}
+            else:
+                yield {"type": "error", "data": f"分析过程出错: {str(e)}"}
 
         # 3. 生成标题和摘要
         parse_result = self.parser.parse_stock_analysis(analysis_data)

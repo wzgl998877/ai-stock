@@ -1,12 +1,18 @@
 /** AnalysisModeSelector -- 分析模式选择器 */
 
 import React from "react";
-import { Radio, Typography, Space } from "antd";
-import { BulbOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Radio, Typography, Space, Tooltip } from "antd";
+import { BulbOutlined, ThunderboltOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import { ANALYSIS_MODE_OPTIONS } from "../../domain/constants";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
+import { AnalysisMode } from "../../domain/types";
 
 const { Text } = Typography;
+
+const MODE_TOOLTIPS: Record<string, string> = {
+  quick: "仅运行技术面+基本面分析师，不包含辩论和风险评估环节",
+  full: "运行4位分析师 + 看多看空辩论 + 交易决策 + 风险评估辩论",
+};
 
 const AnalysisModeSelector: React.FC = () => {
   const { analysisMode, setMode } = useStockAnalysisStore();
@@ -47,7 +53,10 @@ const AnalysisModeSelector: React.FC = () => {
               ) : (
                 <BulbOutlined style={{ marginRight: 4 }} />
               )}
-              {opt.label}
+              {opt.value === "quick" ? "快速分析" : "深度分析"}
+              <Tooltip title={MODE_TOOLTIPS[opt.value] || ""}>
+                <QuestionCircleOutlined style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }} />
+              </Tooltip>
             </Text>
             <Text
               style={{
@@ -56,7 +65,7 @@ const AnalysisModeSelector: React.FC = () => {
                 lineHeight: "16px",
               }}
             >
-              {opt.desc}
+              {opt.value === "quick" ? "仅技术面+基本面，约30-60秒" : "4位分析师+辩论+风险评估，约3-5分钟"}
             </Text>
           </Space>
         </Radio.Button>

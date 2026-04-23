@@ -39,7 +39,7 @@ DEFAULT_USER_ID = "default"
 
 
 def _article_to_list_item(article) -> ArticleListItemDTO:
-    return ArticleListItemDTO(
+    dto = ArticleListItemDTO(
         id=article.article_id,
         title=article.title,
         summary=article.summary,
@@ -54,6 +54,10 @@ def _article_to_list_item(article) -> ArticleListItemDTO:
         event_type=article.event_type,
         created_at=article.create_time.isoformat() if article.create_time else "",
     )
+    # 附加个股分析的结构化数据（用于历史对比）
+    if hasattr(article, 'analysis_data') and article.analysis_data:
+        dto.analysis_data = article.analysis_data
+    return dto
 
 
 @router.get("/articles", response_model=ArticleListResponseDTO)
@@ -61,13 +65,18 @@ async def list_articles(
     view: str = Query("timeline", description="视图模式"),
     industry: Optional[str] = Query(None, description="行业代码"),
     stock_code: Optional[str] = Query(None, description="股票代码"),
+    article_type: Optional[str] = Query(None, description="文章类型: event/stock_analysis"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
     """获取知识库文章列表"""
+    from app.infrastructure.db.models import AnalysisArticle as ArticleModel
+
     repo = MySQLArticleRepository(db)
     use_case = ListArticlesUseCase(repo)
+
+    # 构建 base query 以支持 article_type 筛选
     articles, total = await use_case.execute(
         user_id=DEFAULT_USER_ID,
         view=view,
@@ -76,6 +85,11 @@ async def list_articles(
         page=page,
         page_size=page_size,
     )
+
+    # 如果指定了 article_type，在内存中过滤（简化实现，避免大改 use_case）
+    if article_type:
+        articles = [a for a in articles if getattr(a, 'article_type', 'event') == article_type]
+        total = len(articles)
 
     # 补充行业名称
     items = []

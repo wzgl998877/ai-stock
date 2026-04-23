@@ -1,4 +1,4 @@
-"""金融数据工具集 — 基于 AKShare 的A股数据获取工具"""
+"""金融数据工具集 — 基于 AKShare 的A股数据获取工具（含 BaoStock 降级 + 超时重试）"""
 
 import json
 import logging
@@ -7,6 +7,25 @@ from typing import Any
 from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
+
+# 超时重试配置
+MAX_RETRIES = 2
+RETRY_DELAY = 1  # 秒
+
+
+def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
+    """带重试的函数调用"""
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            return func(*args)
+        except Exception as e:
+            last_error = e
+            if attempt < retries:
+                logger.warning("[重试] %s 第%d次失败: %s，%ds后重试", func.__name__, attempt + 1, e, delay)
+                import time
+                time.sleep(delay)
+    raise last_error
 
 
 # === 工具函数实现 ===
@@ -46,8 +65,54 @@ def _fetch_stock_quote(stock_code: str) -> str:
     except ImportError:
         return "AKShare 未安装，无法获取行情数据"
     except Exception as e:
-        logger.error("[fetch_stock_quote] 获取行情数据失败: %s", e)
-        return f"获取行情数据失败: {e}"
+        logger.error("[fetch_stock_quote] AKShare获取行情数据失败: %s，尝试BaoStock降级", e)
+        # BaoStock 降级
+        try:
+            import baostock as bs
+            lg = bs.login()
+            if lg.error_code != '0':
+                return f"获取行情数据失败(AKShare: {e}; BaoStock登录失败)"
+
+            # BaoStock 需要带市场前缀
+            prefix = "sh" if stock_code.startswith(("6", "9")) else "sz"
+            rs = bs.query_history_k_data_plus(
+                f"{prefix}.{stock_code}",
+                "date,code,open,high,low,close,volume,amount,turn,pctChg",
+                start_date="", end_date="",
+                frequency="d", adjustflag="2"
+            )
+
+            if rs.error_code != '0':
+                bs.logout()
+                return f"获取行情数据失败(AKShare: {e}; BaoStock查询失败: {rs.error_msg})"
+
+            rows = []
+            while (rs.error_code == '0') and rs.next():
+                rows.append(rs.get_row_data())
+
+            bs.logout()
+
+            if not rows:
+                return f"未找到股票代码 {stock_code} 的行情数据(AKShare: {e}; BaoStock无数据)"
+
+            last_row = rows[-1]
+            result = {
+                "代码": stock_code,
+                "名称": f"{stock_code}(BaoStock)",
+                "最新价": last_row[5] if len(last_row) > 5 else "",
+                "今开": last_row[2] if len(last_row) > 2 else "",
+                "最高": last_row[3] if len(last_row) > 3 else "",
+                "最低": last_row[4] if len(last_row) > 4 else "",
+                "成交量": last_row[6] if len(last_row) > 6 else "",
+                "涨跌幅": last_row[9] if len(last_row) > 9 else "",
+                "换手率": last_row[8] if len(last_row) > 8 else "",
+                "数据来源": "BaoStock(降级)",
+            }
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        except ImportError:
+            return f"获取行情数据失败: AKShare报错({e})，BaoStock未安装"
+        except Exception as e2:
+            return f"获取行情数据失败: AKShare({e})，BaoStock({e2})"
 
 
 def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60) -> str:

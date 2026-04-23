@@ -88,12 +88,12 @@
 
 ### 用户故事 2 前端实现
 
-- [ ] T032 [US2] 创建Agent进度面板组件 `frontend/src/components/stock-analysis/AgentProgressPanel.tsx` — 垂直时间线展示所有Agent，按阶段分组（分析师→辩论→交易→风险）。每个Agent显示：图标+中文名称+状态指示器（pending=灰色、running=蓝色旋转、done=绿色勾、failed=红色叉）。自动高亮当前运行中的Agent并滚动到可视区域。使用 Ant Design Steps/Timeline 组件，遵循 DESIGN.md 卡片化布局
-- [ ] T033 [P] [US2] 创建Agent报告卡片组件 `frontend/src/components/stock-analysis/AgentReportCard.tsx` — Ant Design Card 展示单个Agent分析结果：Agent图标+名称、摘要文本（≤100字）、可展开的完整报告区域、数据源标签、时间戳。支持流式状态：Agent运行中显示骨架屏，完成时过渡为完整内容。按Agent类型分色（技术面=蓝色、基本面=绿色、新闻=橙色、情绪=紫色）
-- [ ] T034 [P] [US2] 创建辩论时间线组件 `frontend/src/components/stock-analysis/DebateTimeline.tsx` — Ant Design Timeline 展示看多/看空辩论轮次和风险辩论轮次。每条记录：发言者头像（看多=绿色↑、看空=红色↓、激进=火焰、保守=盾牌、中立=天平）、轮次编号、论据内容。支持流式：新论据出现时带动画。辩论轮次结束后展示"投资裁决"卡片含研究管理器结论
-- [ ] T035 [P] [US2] 创建决策卡片组件 `frontend/src/components/stock-analysis/DecisionCard.tsx` — 醒目卡片展示最终结构化决策：操作方向徽章（买入=绿色、持有=蓝色、卖出=红色）、目标价、置信度进度条（0-100%）、风险评分进度条（0-100%，颜色渐变绿色→红色）、决策理由文本、"不构成投资建议"免责声明。使用 Ant Design Progress + Statistic 组件
-- [ ] T036 [US2] 扩展个股分析状态管理 `frontend/src/store/stockAnalysisStore.ts` — 新增细粒度流式状态：contentBlocks（{agent, type, text} 数组用于流式文本组装）、phaseProgress（各阶段完成百分比）。新增动作：updateStreamingContent(agent, text) 用于增量文本渲染
-- [ ] T037 [US2] 集成可视化组件到个股分析页面 `frontend/src/pages/StockAnalysisPage.tsx` — 替换基础流式展示为：左侧面板（AgentProgressPanel，固定位置）、右侧面板（可滚动区域含各已完成Agent的 AgentReportCard、辩论阶段的 DebateTimeline、分析完成后的 DecisionCard）。布局：Ant Design Row/Col 分栏，左侧面板280px固定，右侧面板弹性宽度。在活跃Agent的报告卡片中实时显示流式文本，带打字光标动画
+- [x] T032 [US2] 创建Agent进度面板组件 `frontend/src/components/stock-analysis/AgentProgressPanel.tsx` — 垂直时间线展示所有Agent，按阶段分组（分析师→辩论→交易→风险）。每个Agent显示：图标+中文名称+状态指示器（pending=灰色、running=蓝色旋转、done=绿色勾、failed=红色叉）。自动高亮当前运行中的Agent并滚动到可视区域。使用 Ant Design Steps/Timeline 组件，遵循 DESIGN.md 卡片化布局
+- [x] T033 [P] [US2] 创建Agent报告卡片组件 `frontend/src/components/stock-analysis/AgentReportCard.tsx` — Ant Design Card 展示单个Agent分析结果：Agent图标+名称、摘要文本（≤100字）、可展开的完整报告区域、数据源标签、时间戳。支持流式状态：Agent运行中显示骨架屏，完成时过渡为完整内容。按Agent类型分色（技术面=蓝色、基本面=绿色、新闻=橙色、情绪=紫色）
+- [x] T034 [P] [US2] 创建辩论时间线组件 `frontend/src/components/stock-analysis/DebateTimeline.tsx` — Ant Design Timeline 展示看多/看空辩论轮次和风险辩论轮次。每条记录：发言者头像（看多=绿色↑、看空=红色↓、激进=火焰、保守=盾牌、中立=天平）、轮次编号、论据内容。支持流式：新论据出现时带动画。辩论轮次结束后展示"投资裁决"卡片含研究管理器结论
+- [x] T035 [P] [US2] 创建决策卡片组件 `frontend/src/components/stock-analysis/DecisionCard.tsx` — 醒目卡片展示最终结构化决策：操作方向徽章（买入=绿色、持有=蓝色、卖出=红色）、目标价、置信度进度条（0-100%）、风险评分进度条（0-100%，颜色渐变绿色→红色）、决策理由文本、"不构成投资建议"免责声明。使用 Ant Design Progress + Statistic 组件
+- [x] T036 [US2] 扩展个股分析状态管理 `frontend/src/store/stockAnalysisStore.ts` — 新增细粒度流式状态：contentBlocks（{agent, type, text} 数组用于流式文本组装）、phaseProgress（各阶段完成百分比）。新增动作：updateStreamingContent(agent, text) 用于增量文本渲染
+- [x] T037 [US2] 集成可视化组件到个股分析页面 `frontend/src/pages/StockAnalysisPage.tsx` — 替换基础流式展示为：左侧面板（AgentProgressPanel，固定位置）、右侧面板（可滚动区域含各已完成Agent的 AgentReportCard、辩论阶段的 DebateTimeline、分析完成后的 DecisionCard）。布局：Ant Design Row/Col 分栏，左侧面板280px固定，右侧面板弹性宽度。在活跃Agent的报告卡片中实时显示流式文本，带打字光标动画
 
 **检查点**: 分析过程可视化完整 — Agent进度实时展示，中间结果立即可见，辩论过程动态呈现
 
@@ -107,13 +107,13 @@
 
 ### 用户故事 3 后端实现
 
-- [ ] T038 [US3] 扩展知识库文章列表端点 `backend/app/routers/knowledge.py` 和 `backend/app/application/use_cases/manage_article.py` — 支持查询参数：`article_type=stock_analysis`、`stock_code={code}` 筛选。列表响应中返回 `analysis_data.decision`（action、target_price、confidence、risk_score）用于对比展示，无需返回完整内容。有当前价格时添加 current_price 字段（用于目标价偏离度展示）
+- [x] T038 [US3] 扩展知识库文章列表端点 `backend/app/routers/knowledge.py` 和 `backend/app/application/use_cases/manage_article.py` — 支持查询参数：`article_type=stock_analysis`、`stock_code={code}` 筛选。列表响应中返回 `analysis_data.decision`（action、target_price、confidence、risk_score）用于对比展示，无需返回完整内容。有当前价格时添加 current_price 字段（用于目标价偏离度展示）
 
 ### 用户故事 3 前端实现
 
-- [ ] T039 [US3] 创建分析历史列表组件 `frontend/src/components/stock-analysis/AnalysisHistoryList.tsx` — Ant Design List 展示选定股票的历史分析记录：每项显示日期、操作方向徽章、目标价、置信度、风险评分。按时间倒序排列。支持点击查看完整报告。空状态显示"暂无分析记录"（遵循 DESIGN.md）。通过 knowledgeService 加载（article_type=stock_analysis&stock_code={code}）
-- [ ] T040 [US3] 创建分析对比组件 `frontend/src/components/stock-analysis/AnalysisComparison.tsx` — Ant Design Modal/Drawer 并排对比两次分析：对比表格含日期、操作方向、目标价、置信度、风险评分、决策理由摘要行。高亮差异（如操作方向从买入→持有）。有当前价格时展示与目标价的实际偏离度（对应 spec 验收场景3）
-- [ ] T041 [US3] 集成历史功能到个股分析页面 `frontend/src/pages/StockAnalysisPage.tsx` — 在分析区域下方新增"历史分析"标签/区域展示 AnalysisHistoryList（当前股票）。有≥2条分析时显示"对比分析"按钮打开 AnalysisComparison。新分析完成后自动刷新列表。点击历史记录项跳转到知识库文章详情
+- [x] T039 [US3] 创建分析历史列表组件 `frontend/src/components/stock-analysis/AnalysisHistoryList.tsx` — Ant Design List 展示选定股票的历史分析记录：每项显示日期、操作方向徽章、目标价、置信度、风险评分。按时间倒序排列。支持点击查看完整报告。空状态显示"暂无分析记录"（遵循 DESIGN.md）。通过 knowledgeService 加载（article_type=stock_analysis&stock_code={code}）
+- [x] T040 [US3] 创建分析对比组件 `frontend/src/components/stock-analysis/AnalysisComparison.tsx` — Ant Design Modal/Drawer 并排对比两次分析：对比表格含日期、操作方向、目标价、置信度、风险评分、决策理由摘要行。高亮差异（如操作方向从买入→持有）。有当前价格时展示与目标价的实际偏离度（对应 spec 验收场景3）
+- [x] T041 [US3] 集成历史功能到个股分析页面 `frontend/src/pages/StockAnalysisPage.tsx` — 在分析区域下方新增"历史分析"标签/区域展示 AnalysisHistoryList（当前股票）。有≥2条分析时显示"对比分析"按钮打开 AnalysisComparison。新分析完成后自动刷新列表。点击历史记录项跳转到知识库文章详情
 
 **检查点**: 历史分析可查看、可对比，辅助用户复盘
 
@@ -129,9 +129,9 @@
 
 ### 用户故事 4 前端实现
 
-- [ ] T042 [US4] 增强分析模式选择器 `frontend/src/components/stock-analysis/AnalysisModeSelector.tsx` — 更新快速模式描述含时间估算（"约30-60秒"），新增 tooltip 解释快速模式范围（仅技术面+基本面，无辩论环节）。调整按钮文案："快速分析" vs "深度分析"
-- [ ] T043 [US4] 更新个股分析页面适配快速模式显示 `frontend/src/pages/StockAnalysisPage.tsx` — 当 analysisMode='quick' 时：仅显示2个Agent卡片（技术面+基本面），隐藏 AgentProgressPanel 的辩论/风险阶段，显示简化版决策卡片（无辩论/风险上下文），展示"快速分析报告"徽章。快速分析自动保存到知识库
-- [ ] T044 [US4] 更新状态管理适配快速模式 `frontend/src/store/stockAnalysisStore.ts` — 新增 quickAnalysisResult 状态存储简化结果（market_summary、fundamentals_summary、brief_advice）。处理快速模式 SSE 事件（更少的 agent_status，无辩论事件，简化决策）
+- [x] T042 [US4] 增强分析模式选择器 `frontend/src/components/stock-analysis/AnalysisModeSelector.tsx` — 更新快速模式描述含时间估算（"约30-60秒"），新增 tooltip 解释快速模式范围（仅技术面+基本面，无辩论环节）。调整按钮文案："快速分析" vs "深度分析"
+- [x] T043 [US4] 更新个股分析页面适配快速模式显示 `frontend/src/pages/StockAnalysisPage.tsx` — 当 analysisMode='quick' 时：仅显示2个Agent卡片（技术面+基本面），隐藏 AgentProgressPanel 的辩论/风险阶段，显示简化版决策卡片（无辩论/风险上下文），展示"快速分析报告"徽章。快速分析自动保存到知识库
+- [x] T044 [US4] 更新状态管理适配快速模式 `frontend/src/store/stockAnalysisStore.ts` — 新增 quickAnalysisResult 状态存储简化结果（market_summary、fundamentals_summary、brief_advice）。处理快速模式 SSE 事件（更少的 agent_status，无辩论事件，简化决策）
 
 **检查点**: 快速分析模式可用 — 60秒内得到简要报告
 
@@ -141,9 +141,9 @@
 
 **目的**: 边界场景处理、免责声明强化、故障转移、最终验证
 
-- [ ] T045 [P] 实现边界场景处理 `backend/app/application/use_cases/stock_analysis_use_case.py` — 处理：无效股票代码（400响应）、停牌股票（继续使用历史数据分析+标注"当前停牌"警告）、单Agent LLM调用失败（保留已完成结果，降级处理）、5分钟内重复分析（409响应+返回最近分析链接）、分析超时>10分钟（终止+保存部分结果）、并发分析防重（409响应）
-- [ ] T046 [P] 强化"不构成投资建议"免责声明 — 确保后端 Prompt（T012）包含免责声明、前端 DecisionCard（T035）显示持久免责横幅、StockAnalysisPage（T030）显示底部免责声明（FR-010）
-- [ ] T047 [P] 实现工具调用故障转移 `backend/app/infrastructure/workflow/tools/stock_data_toolkit.py` — 每个工具：尝试 AKShare → 失败时尝试 BaoStock → 失败时返回含可用数据的错误消息（FR-012）。添加3秒超时重试逻辑（SC-005）
+- [x] T045 [P] 实现边界场景处理 `backend/app/application/use_cases/stock_analysis_use_case.py` — 处理：无效股票代码（400响应）、停牌股票（继续使用历史数据分析+标注"当前停牌"警告）、单Agent LLM调用失败（保留已完成结果，降级处理）、5分钟内重复分析（409响应+返回最近分析链接）、分析超时>10分钟（终止+保存部分结果）、并发分析防重（409响应）
+- [x] T046 [P] 强化"不构成投资建议"免责声明 — 确保后端 Prompt（T012）包含免责声明、前端 DecisionCard（T035）显示持久免责横幅、StockAnalysisPage（T030）显示底部免责声明（FR-010）
+- [x] T047 [P] 实现工具调用故障转移 `backend/app/infrastructure/workflow/tools/stock_data_toolkit.py` — 每个工具：尝试 AKShare → 失败时尝试 BaoStock → 失败时返回含可用数据的错误消息（FR-012）。添加3秒超时重试逻辑（SC-005）
 - [ ] T048 执行 quickstart.md 端到端验证 — 按照 `specs/003-stock-analysis/quickstart.md` 步骤：启动后端+前端、验证 validate-stock API、验证 SSE 流式输出（curl）、验证前端页面完整流程、验证知识库集成。修复发现的问题
 
 ---

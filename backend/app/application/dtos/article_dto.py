@@ -24,6 +24,7 @@ class ArticleListItemDTO(BaseModel):
     event_type: str
     created_at: str
     highlight: Optional[str] = None
+    analysis_data: Optional[dict] = None  # 个股分析结构化数据
 
 
 class ArticleDetailDTO(BaseModel):

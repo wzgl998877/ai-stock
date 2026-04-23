@@ -1,6 +1,18 @@
 import { create } from "zustand";
 import { AnalysisMode, type AgentStatusEvent, type DebateEvent, type DecisionEvent } from "../domain/types";
 
+interface ContentBlock {
+  agent: string;
+  type: "content" | "reasoning";
+  text: string;
+}
+
+interface QuickAnalysisResult {
+  market_summary: string;
+  fundamentals_summary: string;
+  brief_advice: string;
+}
+
 interface StockAnalysisState {
   // 输入状态
   stockCode: string;
@@ -18,6 +30,16 @@ interface StockAnalysisState {
   decision: DecisionEvent | null;
   content: string;
 
+  // 细粒度流式状态（US2）
+  contentBlocks: ContentBlock[];
+  phaseProgress: Record<string, number>;
+
+  // 快速分析结果（US4）
+  quickAnalysisResult: QuickAnalysisResult | null;
+
+  // 历史刷新触发器（US3）
+  historyRefreshKey: number;
+
   // 结果
   title: string;
   summary: string;
@@ -34,10 +56,13 @@ interface StockAnalysisState {
   addDebate: (event: DebateEvent) => void;
   setDecision: (decision: DecisionEvent) => void;
   appendContent: (text: string) => void;
+  updateStreamingContent: (agent: string, type: "content" | "reasoning", text: string) => void;
   setTitle: (title: string) => void;
   setSummary: (summary: string) => void;
   setIndustries: (industries: string[]) => void;
   setError: (error: string) => void;
+  setQuickResult: (result: QuickAnalysisResult) => void;
+  triggerHistoryRefresh: () => void;
   reset: () => void;
 }
 
@@ -54,6 +79,10 @@ const initialState = {
   debates: [],
   decision: null,
   content: "",
+  contentBlocks: [] as ContentBlock[],
+  phaseProgress: {} as Record<string, number>,
+  quickAnalysisResult: null as QuickAnalysisResult | null,
+  historyRefreshKey: 0,
   title: "",
   summary: "",
   industries: [],
@@ -76,6 +105,9 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       debates: [],
       decision: null,
       content: "",
+      contentBlocks: [],
+      phaseProgress: {},
+      quickAnalysisResult: null,
       title: "",
       summary: "",
       industries: [],
@@ -100,10 +132,19 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
 
   setDecision: (decision) => set({ decision }),
   appendContent: (text) => set((state) => ({ content: state.content + text })),
+
+  updateStreamingContent: (agent, type, text) =>
+    set((state) => ({
+      contentBlocks: [...state.contentBlocks, { agent, type, text }],
+    })),
+
   setTitle: (title) => set({ title }),
   setSummary: (summary) => set({ summary }),
   setIndustries: (industries) => set({ industries }),
   setError: (error) => set({ analysisState: "error", error }),
+
+  setQuickResult: (result) => set({ quickAnalysisResult: result }),
+  triggerHistoryRefresh: () => set((state) => ({ historyRefreshKey: state.historyRefreshKey + 1 })),
 
   reset: () => set(initialState),
 }));
