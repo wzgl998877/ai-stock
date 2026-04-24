@@ -17,6 +17,7 @@ interface StockAnalysisState {
   // 输入状态
   stockCode: string;
   stockName: string;
+  dataSource: string;
   analysisMode: AnalysisMode;
   validationLoading: boolean;
   validationValid: boolean;
@@ -48,6 +49,7 @@ interface StockAnalysisState {
 
   // Actions
   setStock: (code: string, name: string) => void;
+  setDataSource: (source: string) => void;
   setMode: (mode: AnalysisMode) => void;
   setValidation: (loading: boolean, valid: boolean) => void;
   startAnalysis: () => void;
@@ -69,6 +71,7 @@ interface StockAnalysisState {
 const initialState = {
   stockCode: "",
   stockName: "",
+  dataSource: "",
   analysisMode: AnalysisMode.FULL,
   validationLoading: false,
   validationValid: false,
@@ -93,6 +96,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
   ...initialState,
 
   setStock: (code, name) => set({ stockCode: code, stockName: name, validationValid: !!code }),
+  setDataSource: (source) => set({ dataSource: source }),
   setMode: (mode) => set({ analysisMode: mode }),
   setValidation: (loading, valid) => set({ validationLoading: loading, validationValid: valid }),
 
@@ -112,6 +116,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       summary: "",
       industries: [],
       error: "",
+      dataSource: "",
     }),
 
   updateAgentStatus: (event) =>

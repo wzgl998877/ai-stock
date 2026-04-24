@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
@@ -22,8 +22,10 @@ from app.application.use_cases.analyze_event import AnalyzeEventUseCase
 from app.application.use_cases.manage_article import SaveArticleUseCase
 from app.core.database import get_db
 from app.core.exceptions import InvalidInputError, AIServiceError, NoIndustryTagError
+from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.infrastructure.ai.ai_service import AIService
 from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
+from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +33,14 @@ router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 
 # === 股票列表缓存 ===
+# 从数据库读取后缓存到内存，避免重复查询
 _stock_list_cache: list[dict] | None = None
 _stock_list_cache_time: float = 0
 _STOCK_LIST_CACHE_TTL = 4 * 3600  # 4小时
 
 
-def _get_stock_list_sync() -> list[dict]:
-    """同步获取A股股票列表（仅代码+名称），优先走缓存"""
+async def _get_stock_list(db: AsyncSession) -> list[dict]:
+    """异步获取A股股票列表，优先走内存缓存，其次从数据库查询。"""
     global _stock_list_cache, _stock_list_cache_time
 
     now = time.time()
@@ -45,20 +48,17 @@ def _get_stock_list_sync() -> list[dict]:
         return _stock_list_cache
 
     try:
-        import akshare as ak
-        # 轻量级接口：只返回代码和名称，不拉实时行情
-        df = ak.stock_info_a_code_name()
-        stocks = []
-        for _, row in df.iterrows():
-            code = str(row.get("code", "")).strip()
-            name = str(row.get("name", "")).strip()
-            if code and name:
-                market = "sh" if code.startswith(("6", "9")) else "sz"
-                stocks.append({"code": code, "name": name, "market": market})
-        _stock_list_cache = stocks
+        repo = MySQLStockDataRepository(db)
+        stocks = await repo.get_all_stocks()
+        result = []
+        for s in stocks:
+            # 根据交易所推断市场
+            market = "sh" if s.exchange in ("SH",) or s.stock_code.startswith(("6", "9")) else "sz"
+            result.append({"code": s.code, "name": s.name, "market": market})
+        _stock_list_cache = result
         _stock_list_cache_time = now
-        logger.info("股票列表缓存刷新，共 %d 条", len(stocks))
-        return stocks
+        logger.info("股票列表缓存刷新（数据库），共 %d 条", len(result))
+        return result
     except Exception as e:
         logger.error("获取股票列表失败: %s", e)
         if _stock_list_cache is not None:
@@ -140,7 +140,7 @@ async def check_similarity(body: SimilarityRequestDTO):
 
 
 @router.get("/validate-stock")
-async def validate_stock(keyword: str):
+async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
     """验证股票代码/名称，返回匹配的股票列表（支持自动补全）"""
     if not keyword or not keyword.strip():
         return {"valid": False, "message": "请输入股票代码或名称"}
@@ -150,10 +150,10 @@ async def validate_stock(keyword: str):
     safe_keyword = re.escape(keyword)
     pattern = re.compile(safe_keyword, re.IGNORECASE)
 
-    # 异步获取股票列表（缓存+to_thread）
-    stocks = await asyncio.to_thread(_get_stock_list_sync)
+    # 异步获取股票列表（数据库 + 缓存）
+    stocks = await _get_stock_list(db)
     if not stocks:
-        return {"valid": False, "message": "数据源暂时不可用，请稍后重试"}
+        return {"valid": False, "message": "数据源暂时不可用，请先同步股票基础信息"}
 
     # 精确匹配优先：代码完全匹配
     exact_code = [s for s in stocks if s["code"] == keyword]

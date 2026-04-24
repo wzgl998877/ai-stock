@@ -7,8 +7,81 @@ from logging.handlers import RotatingFileHandler
 from app.core.config import settings
 
 
+def get_log_config() -> dict:
+    """生成 uvicorn 日志配置 dict，确保 uvicorn 日志也写入文件。
+
+    uvicorn 会在 lifespan 之前就配置自己的 logger，如果不传 log_config，
+    只会输出到控制台，不会写入我们的日志文件。
+    """
+    log_dir = os.path.abspath(settings.log_dir)
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "app.log")
+
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+                "use_colors": None,
+            },
+            "access": {
+                "()": "uvicorn.logging.AccessFormatter",
+                "fmt": "%(asctime)s | %(levelname)-7s | %(name)s | %(client_addr)s - \"%(request_line)s\" %(status_code)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "console": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+            },
+            "file": {
+                "formatter": "default",
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": log_file,
+                "maxBytes": settings.log_max_bytes,
+                "backupCount": settings.log_backup_count,
+                "encoding": "utf-8",
+            },
+            "access_file": {
+                "formatter": "access",
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": log_file,
+                "maxBytes": settings.log_max_bytes,
+                "backupCount": settings.log_backup_count,
+                "encoding": "utf-8",
+            },
+        },
+        "loggers": {
+            "uvicorn": {
+                "handlers": ["console", "file"],
+                "level": settings.log_level.upper(),
+                "propagate": False,
+            },
+            "uvicorn.error": {
+                "level": "INFO",
+                "handlers": ["console", "file"],
+                "propagate": False,
+            },
+            "uvicorn.access": {
+                "handlers": ["console", "access_file"],
+                "level": settings.log_level.upper(),
+                "propagate": False,
+            },
+        },
+    }
+
+
 def setup_logging() -> None:
-    """初始化全局日志：控制台 + 文件（按大小自动切分）"""
+    """初始化全局日志：控制台 + 文件（按大小自动切分）
+
+    注意：uvicorn 的日志通过 get_log_config() 在启动时配置，
+    本函数只负责给 root logger 添加 handler（捕获应用层日志）。
+    """
     log_dir = os.path.abspath(settings.log_dir)
     os.makedirs(log_dir, exist_ok=True)
 
@@ -24,8 +97,11 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(log_level)
 
-    # 避免重复添加 handler（reload 场景）
-    if root.handlers:
+    # 检查是否已经有我们的 RotatingFileHandler（reload 场景去重）
+    has_file_handler = any(
+        isinstance(h, RotatingFileHandler) for h in root.handlers
+    )
+    if has_file_handler:
         return
 
     # 控制台
@@ -85,3 +161,4 @@ def _redact(text: str) -> str:
     text = re.sub(r"(Bearer\s+)\S+", r"\1***", text)
     text = re.sub(r"(sk-)\w{4}\w+", r"\1****", text)
     return text
+

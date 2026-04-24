@@ -5,6 +5,7 @@ uvicorn[standard]>=0.29,<1.0
 # ORM & 数据库
 sqlalchemy[asyncio]>=2.0,<3.0
 aiomysql>=0.2,<1.0
+pymysql>=1.1,<2.0
 alembic>=1.13,<2.0
 
 # 数据验证
@@ -32,3 +33,6 @@ beautifulsoup4>=4.12,<5.0
 
 # 外部搜索 API（Agent 自主搜索）
 tavily-python>=0.5,<1.0
+
+# 加密工具
+cryptography>=41.0,<45.0

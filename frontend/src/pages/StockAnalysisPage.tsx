@@ -1,13 +1,14 @@
 /** StockAnalysisPage -- 个股分析主页面（含可视化+历史+快速模式） */
 
-import React, { useCallback, useRef, useState } from "react";
-import { Button, Typography, Card, Steps, Spin, Alert, Space, Divider, Badge } from "antd";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Typography, Card, Steps, Spin, Alert, Space, Divider, Badge, Tag } from "antd";
 import {
   PlayCircleOutlined,
   RedoOutlined,
   StockOutlined,
   HistoryOutlined,
   SwapOutlined,
+  DatabaseOutlined,
 } from "@ant-design/icons";
 import StockSearchInput from "../components/stock-analysis/StockSearchInput";
 import AnalysisModeSelector from "../components/stock-analysis/AnalysisModeSelector";
@@ -19,6 +20,7 @@ import AnalysisHistoryList from "../components/stock-analysis/AnalysisHistoryLis
 import AnalysisComparison from "../components/stock-analysis/AnalysisComparison";
 import { useStockAnalysisStore } from "../store/stockAnalysisStore";
 import * as stockAnalysisService from "../services/stockAnalysisService";
+import { stockDataService } from "../services/stockDataService";
 import {
   ANALYSIS_PHASE_LABELS,
 } from "../domain/constants";
@@ -41,6 +43,20 @@ const StockAnalysisPage: React.FC = () => {
   const isDone = store.analysisState === "done";
   const isError = store.analysisState === "error";
   const isQuickMode = store.analysisMode === AnalysisMode.QUICK;
+
+  // Fetch data source info when stock code changes
+  useEffect(() => {
+    if (!store.stockCode) return;
+    stockDataService.getStockBasic(store.stockCode)
+      .then((info) => {
+        if (info?.data_source) {
+          store.setDataSource(info.data_source);
+        }
+      })
+      .catch(() => {
+        // Silently fail — data may not be synced yet
+      });
+  }, [store.stockCode, store.setDataSource]);
 
   /** 发起分析 */
   const handleStart = useCallback(async () => {
@@ -234,6 +250,11 @@ const StockAnalysisPage: React.FC = () => {
               </Text>
             )}
           </div>
+          {store.dataSource && (
+            <Tag color="blue" icon={<DatabaseOutlined />}>
+              数据源: {store.dataSource}
+            </Tag>
+          )}
         </div>
         <Space>
           {isRunning && (

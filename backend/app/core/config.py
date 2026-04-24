@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # === 搜索 ===
     tavily_api_key: str = ""
 
+    # === 数据源加密 ===
+    datasource_encryption_key: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

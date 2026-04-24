@@ -7,6 +7,8 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
+from decimal import Decimal
+
 from sqlalchemy import (
     Boolean,
     CHAR,
@@ -20,7 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.mysql import JSON
+from sqlalchemy.dialects.mysql import DECIMAL, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -101,6 +103,8 @@ class Stock(AuditMixin, Base):
     )
     list_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    data_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="")
+    market_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -276,4 +280,134 @@ class ChatMessage(AuditMixin, Base):
 
     __table_args__ = (
         Index("idx_session_id", "session_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 11. t_datasource_config
+# ---------------------------------------------------------------------------
+
+class DataSourceConfigModel(AuditMixin, Base):
+    __tablename__ = "t_datasource_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    api_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=99)
+    config_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# 12. t_sync_task
+# ---------------------------------------------------------------------------
+
+class SyncTaskModel(Base):
+    __tablename__ = "t_sync_task"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    data_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    total_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    processed_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    success_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    fail_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    start_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_source_status", "source_type", "status"),
+        Index("idx_create_time", "create_time"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 13. t_market_quote
+# ---------------------------------------------------------------------------
+
+class MarketQuoteModel(Base):
+    __tablename__ = "t_market_quote"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)
+    price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    change_pct: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 2), nullable=True)
+    change_amount: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    volume: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 0), nullable=True)
+    amount: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
+    open_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    high_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    low_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    pre_close: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    quote_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    data_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("code", "data_source", name="uk_code_source"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 14. t_stock_daily_quote
+# ---------------------------------------------------------------------------
+
+class StockDailyQuoteModel(Base):
+    __tablename__ = "t_stock_daily_quote"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    period: Mapped[str] = mapped_column(String(10), nullable=False)
+    open_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    high_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    low_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    close_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    pre_close: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    volume: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 0), nullable=True)
+    amount: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
+    pct_chg: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 2), nullable=True)
+    data_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("code", "trade_date", "data_source", "period", name="uk_code_date_source_period"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 15. t_stock_financial
+# ---------------------------------------------------------------------------
+
+class StockFinancialModel(Base):
+    __tablename__ = "t_stock_financial"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)
+    report_date: Mapped[date] = mapped_column(Date, nullable=False)
+    roe: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 2), nullable=True)
+    net_profit: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
+    revenue: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
+    eps: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 4), nullable=True)
+    gross_margin: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 2), nullable=True)
+    debt_ratio: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 2), nullable=True)
+    data_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("code", "report_date", "data_source", name="uk_code_date_source"),
     )

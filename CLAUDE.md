@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - [后端分层与架构](./rules/backend.md)
    - [Workflow 编排（LangGraph）](./rules/langgraph.md)
    - [前端分层与交互](./rules/frontend.md)
+   - [单元测试与质量门禁](./rules/testing.md)
 
 3. **[产品概览](./docs/product-overview.md)** — 理解三模块、用户路径与 MVP 边界
 
@@ -33,6 +34,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. `constitution.md`
 2. `rules/*`
 3. `CLAUDE.md`
+
+## ✅ 单元测试重要性（强制）
+
+- 单元测试是 AI 代码可交付的质量底线，不可省略。
+- AI 生成或修改的代码，必须通过对应单元测试后才可视为完成。
+- 未通过单元测试的代码，禁止标记为“已完成”或“可上线”。
+- 详细要求以 `rules/testing.md` 为准。
 
 ## 🛠 技术栈
 
@@ -84,4 +92,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **产品总览**：[docs/product-overview.md](./docs/product-overview.md)
 - **用户使用说明**：[README.md](./README.md)
 
-**最后更新**: 2026-04-16
+**最后更新**: 2026-04-25

@@ -170,10 +170,56 @@ data: xxx\n\n
 
 ## 十、日志规范
 
+### 10.1 请求日志（强制）
+
+所有 HTTP 请求必须通过中间件记录以下信息：
+
+* **请求方法 + 路径**：`[GET] /api/v1/sync/execute`
+* **请求参数**：query params（字典格式）
+* **响应状态码**
+* **耗时**：秒级精度，保留三位小数
+* **异常信息**：500 错误必须记录异常堆栈
+
+示例格式（普通接口）：
+
+```
+[GET] /api/v1/sync/execute | query={'source_type': 'tushare', 'data_type': 'basic_info'}
+[GET] /api/v1/sync/execute | status=200 | 耗时=1.234s | 返回={"data": {...}}
+[POST] /api/v1/datasources | status=422 | 耗时=0.012s | 返回={"detail": [...]}
+[GET] /api/v1/stocks/600132 | 异常=DatabaseError | 耗时=0.045s
+```
+
+示例格式（SSE 流式接口）：
+
+```
+[GET] /api/v1/sync/execute | query={'source_type': 'tushare', 'data_type': 'basic_info'}
+[SSE响应] basic_info | data={"error": "datasource_not_configured", "message": "数据源 tushare 未配置..."}
+[SSE响应] basic_info | data={"task_id": "xxx", "source_type": "tushare", ...}
+```
+
+SSE 接口特殊说明：
+* `StreamingResponse` 的 body 无法在中间件中捕获
+* SSE 事件必须在 router 层逐个记录（遍历 yield 的 event，提取 `data:` 行写入日志）
+* 日志格式：`[SSE响应] {data_type} | data={json}`
+
+日志级别规则：
+
+* `INFO`：2xx / 3xx 正常请求
+* `WARNING`：4xx 客户端错误
+* `ERROR`：5xx 服务端异常 + 未捕获异常
+
+### 10.2 业务日志
+
 必须记录：
 
-* AI调用
-* 关键业务操作
+* AI 调用（prompt 摘要、模型、耗时）
+* 关键业务操作（同步任务启动/完成、数据源配置变更）
+* 工作流节点执行结果
+
+### 10.3 日志安全
+
+* 禁止在日志中输出 API Key、密码、Token 等敏感信息
+* 已有 `_sanitize_filter` 自动脱敏，禁止绕过
 
 ---
 
