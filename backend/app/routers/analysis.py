@@ -53,7 +53,7 @@ async def _get_stock_list(db: AsyncSession) -> list[dict]:
         result = []
         for s in stocks:
             # 根据交易所推断市场
-            market = "sh" if s.exchange in ("SH",) or s.stock_code.startswith(("6", "9")) else "sz"
+            market = "sh" if s.exchange in ("SH",) or s.code.startswith(("6", "9")) else "sz"
             result.append({"code": s.code, "name": s.name, "market": market})
         _stock_list_cache = result
         _stock_list_cache_time = now
