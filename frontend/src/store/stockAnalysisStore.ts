@@ -83,6 +83,8 @@ interface StockAnalysisState {
     agentCompletedAt?: Record<string, number>;
     analysisMode?: AnalysisMode;
   }) => void;
+  setAnalysisState: (state: "idle" | "running" | "done" | "error") => void;
+  setCurrentPhase: (phase: string) => void;
   reset: () => void;
 }
 
@@ -207,6 +209,9 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       agentCompletedAt: data.agentCompletedAt || {},
       analysisMode: data.analysisMode || AnalysisMode.FULL,
     }),
+
+  setAnalysisState: (state) => set({ analysisState: state }),
+  setCurrentPhase: (phase) => set({ currentPhase: phase }),
 
   reset: () => set(initialState),
 }));
