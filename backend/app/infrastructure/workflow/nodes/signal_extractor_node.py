@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.signal_extractor import SYSTEM_PROMPT, USER_TEMPLATE
 
@@ -21,6 +22,7 @@ def create_signal_extractor_node(ai_service):
     """
 
     async def signal_extractor_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
 
         # 获取 risk_judge 的输出（从 messages 中最后一条）
@@ -52,8 +54,8 @@ def create_signal_extractor_node(ai_service):
         signal = _parse_signal_json(full_text)
 
         logger.info(
-            "[signal_extractor] 完成: stock=%s, action=%s, confidence=%.1f",
-            stock_code, signal.get("action", "未知"), signal.get("confidence", 0),
+            "[耗时] signal_extractor 总耗时: %.3fs, stock=%s, action=%s, confidence=%.1f",
+            time.time() - t_start, stock_code, signal.get("action", "未知"), signal.get("confidence", 0),
         )
 
         return {

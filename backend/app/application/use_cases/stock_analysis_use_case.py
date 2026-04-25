@@ -53,7 +53,9 @@ class StockAnalysisUseCase:
         """
         t_start = time.time()
 
+        t0 = time.time()
         session = await self.chat_repo.get_session(session_id)
+        logger.info("[耗时] 获取会话: %.3fs", time.time() - t0)
         if not session:
             yield {"type": "error", "data": "会话不存在"}
             return
@@ -63,6 +65,7 @@ class StockAnalysisUseCase:
         analysis_mode = config.analysis_mode
 
         # 1. 保存用户消息
+        t0 = time.time()
         user_msg = ChatMessage(
             message_id=uuid.uuid4().hex,
             session_id=session_id,
@@ -71,8 +74,10 @@ class StockAnalysisUseCase:
             event_type="stock_analysis",
         )
         await self.chat_repo.add_message(user_msg)
+        logger.info("[耗时] 保存用户消息: %.3fs", time.time() - t0)
 
         # 1.5 创建分析记录（增量存档）
+        t0 = time.time()
         article_id = uuid.uuid4().hex
         analysis_article = None
         if self.article_repo:
@@ -96,6 +101,7 @@ class StockAnalysisUseCase:
             except Exception as e:
                 logger.warning("创建分析记录失败（不影响分析流程）: %s", e)
                 analysis_article = None
+        logger.info("[耗时] 创建分析记录: %.3fs", time.time() - t0)
 
         # 2. 运行 StockAnalysisGraph
         thinking_steps = []
@@ -123,6 +129,8 @@ class StockAnalysisUseCase:
 
             async def _run_graph():
                 nonlocal accumulated, full_content
+                t_graph_start = time.time()
+                t_last_node = time.time()
                 async for update in self.stock_analysis_graph.astream(
                     {
                         "stock_code": stock_code,
@@ -133,6 +141,9 @@ class StockAnalysisUseCase:
                     stream_mode="updates",
                 ):
                     for node_name, state_update in update.items():
+                        t_now = time.time()
+                        logger.info("[耗时] 节点 [%s] 完成: %.3fs (距上个节点)", node_name, t_now - t_last_node)
+                        t_last_node = t_now
                         accumulated.update(state_update)
 
                         # 获取当前 Agent 信息
@@ -249,6 +260,7 @@ class StockAnalysisUseCase:
             try:
                 async for event in _run_graph():
                     yield event
+                logger.info("[耗时] LangGraph 工作流总耗时: %.3fs", time.time() - t_graph_start)
             except asyncio.TimeoutError:
                 graph_timed_out = True
                 logger.warning("StockAnalysisGraph 执行超时 (%ds)，保存部分结果", DEFAULT_TIMEOUT)
@@ -281,7 +293,9 @@ class StockAnalysisUseCase:
                 yield {"type": "error", "data": f"分析过程出错: {str(e)}"}
 
         # 3. 生成标题和摘要
+        t0 = time.time()
         parse_result = self.parser.parse_stock_analysis(analysis_data)
+        logger.info("[耗时] 解析标题/摘要: %.3fs", time.time() - t0)
 
         title = parse_result.title or f"{stock_name}深度分析"
         summary = parse_result.summary or f"{stock_name}多Agent深度分析报告"
@@ -293,6 +307,7 @@ class StockAnalysisUseCase:
             yield {"type": "industries", "data": industries}
 
         # 4. 保存 AI 消息
+        t0 = time.time()
         ai_msg = ChatMessage(
             message_id=uuid.uuid4().hex,
             session_id=session_id,
@@ -307,8 +322,10 @@ class StockAnalysisUseCase:
             },
         )
         await self.chat_repo.add_message(ai_msg)
+        logger.info("[耗时] 保存AI消息: %.3fs", time.time() - t0)
 
         # 4.5 更新分析记录为已完成
+        t0 = time.time()
         if self.article_repo and analysis_article:
             try:
                 analysis_data["title"] = title
@@ -323,6 +340,7 @@ class StockAnalysisUseCase:
                 logger.warning("更新分析记录为完成状态失败: %s", e)
 
         await self.chat_repo.session.commit()
+        logger.info("[耗时] 更新分析记录+commit: %.3fs", time.time() - t0)
 
         # 5. 完成
         yield {"type": "done", "data": ""}

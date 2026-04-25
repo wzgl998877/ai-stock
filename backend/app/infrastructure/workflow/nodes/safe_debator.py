@@ -1,6 +1,7 @@
 """保守风险分析师节点 — 从保守角度评估交易风险"""
 
 import logging
+import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.safe_debator import SYSTEM_PROMPT, USER_TEMPLATE
 
@@ -16,6 +17,7 @@ def create_safe_debator_node(ai_service):
     """
 
     async def safe_debator_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
 
         trader_plan = state.get("trader_investment_plan", "")
@@ -48,8 +50,8 @@ def create_safe_debator_node(ai_service):
         risk_debate_state["round"] = risk_debate_state.get("round", 0) + 1
 
         logger.info(
-            "[safe_debator] 完成: stock=%s, report_len=%d",
-            stock_code, len(full_text),
+            "[耗时] safe_debator 总耗时: %.3fs, stock=%s, report_len=%d",
+            time.time() - t_start, stock_code, len(full_text),
         )
 
         return {

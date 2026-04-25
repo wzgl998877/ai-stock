@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.news_analyst import SYSTEM_PROMPT, USER_TEMPLATE
 from app.infrastructure.workflow.tools.stock_data_toolkit import (
@@ -22,6 +23,7 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
     """
 
     async def news_analyst_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
         stock_name = state.get("stock_name", "")
 
@@ -37,12 +39,14 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
         # 循环调用工具，最多 max_tool_calls 次
         for _ in range(max_tool_calls):
             try:
+                t0 = time.time()
                 response = await ai_service.tool_call(
                     messages=messages,
                     tools=tools_schema,
                     tool_choice="auto",
                     max_tokens=1024,
                 )
+                logger.info("[耗时] news_analyst tool_call(第%d轮): %.3fs", tool_call_count + 1, time.time() - t0)
             except Exception as e:
                 logger.error("[news_analyst] tool_call 调用失败: %s", e)
                 break
@@ -68,7 +72,9 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
                 tool_func = TOOL_FUNCTION_MAP.get(func_name)
                 if tool_func:
                     try:
+                        t0 = time.time()
                         tool_result = tool_func(**func_args)
+                        logger.info("[耗时] news_analyst 工具[%s]: %.3fs", func_name, time.time() - t0)
                     except Exception as e:
                         tool_result = f"工具执行失败: {e}"
                         logger.error("[news_analyst] 工具 %s 执行失败: %s", func_name, e)
@@ -83,6 +89,7 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
                 tool_call_count += 1
 
         # 最终获取完整分析报告
+        t_stream = time.time()
         full_text = ""
         try:
             async for chunk in ai_service.stream_chat(
@@ -99,8 +106,11 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
             full_text = f"新闻分析生成失败: {e}"
 
         logger.info(
-            "[news_analyst] 完成: stock=%s, tool_calls=%d, report_len=%d",
-            stock_code, tool_call_count, len(full_text),
+            "[耗时] news_analyst stream_chat: %.3fs", time.time() - t_stream,
+        )
+        logger.info(
+            "[耗时] news_analyst 总耗时: %.3fs, stock=%s, tool_calls=%d, report_len=%d",
+            time.time() - t_start, stock_code, tool_call_count, len(full_text),
         )
 
         return {

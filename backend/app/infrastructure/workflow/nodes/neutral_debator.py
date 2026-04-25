@@ -1,6 +1,7 @@
 """中立风险分析师节点 — 平衡激进与保守观点，给出中性评估"""
 
 import logging
+import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.neutral_debator import SYSTEM_PROMPT, USER_TEMPLATE
 
@@ -16,6 +17,7 @@ def create_neutral_debator_node(ai_service):
     """
 
     async def neutral_debator_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
 
         risk_debate_state = state.get("risk_debate_state", {})
@@ -52,8 +54,8 @@ def create_neutral_debator_node(ai_service):
         risk_debate_state["round"] = risk_debate_state.get("round", 0) + 1
 
         logger.info(
-            "[neutral_debator] 完成: stock=%s, report_len=%d",
-            stock_code, len(full_text),
+            "[耗时] neutral_debator 总耗时: %.3fs, stock=%s, report_len=%d",
+            time.time() - t_start, stock_code, len(full_text),
         )
 
         return {

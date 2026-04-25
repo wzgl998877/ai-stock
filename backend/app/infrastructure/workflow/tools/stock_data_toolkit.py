@@ -223,10 +223,12 @@ def _get_spot_df():
 
 def _fetch_stock_quote(stock_code: str) -> str:
     """获取股票实时/最新行情数据（数据库优先 + AKShare 降级）"""
+    t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
     db_data = _query_db_quote(stock_code)
     if db_data:
+        logger.info("[耗时] _fetch_stock_quote(DB命中): %.3fs, code=%s", time.time() - t0, stock_code)
         logger.info("[fetch_stock_quote] 数据库命中: code=%s, source=%s", stock_code, db_data.get("data_source"))
         result = {
             "代码": stock_code,
@@ -276,6 +278,7 @@ def _fetch_stock_quote(stock_code: str) -> str:
                     "总市值": str(r.get("总市值", "")),
                     "流通市值": str(r.get("流通市值", "")),
                 }
+                logger.info("[耗时] _fetch_stock_quote(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
                 return json.dumps(result, ensure_ascii=False, indent=2)
         except Exception as cache_err:
             logger.warning("[fetch_stock_quote] 缓存读取失败，降级到直接查询: %s", cache_err)
@@ -336,10 +339,12 @@ def _fetch_stock_quote(stock_code: str) -> str:
 
 def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60) -> str:
     """获取股票历史K线数据（数据库优先 + AKShare 降级）"""
+    t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
     db_data = _query_db_history(stock_code, days)
     if db_data:
+        logger.info("[耗时] _fetch_stock_history(DB命中): %.3fs, code=%s", time.time() - t0, stock_code)
         logger.info("[fetch_stock_history] 数据库命中: code=%s, 共 %d 条, source=%s",
                      stock_code, len(db_data), db_data[0].get("data_source"))
         return json.dumps(db_data, ensure_ascii=False, indent=2)
@@ -362,6 +367,7 @@ def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60)
             for key in record:
                 record[key] = str(record[key])
 
+        logger.info("[耗时] _fetch_stock_history(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
         return json.dumps(records, ensure_ascii=False, indent=2)
     except ImportError:
         return "AKShare 未安装，无法获取历史数据（数据库也无数据）"
@@ -372,10 +378,12 @@ def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60)
 
 def _fetch_stock_financial(stock_code: str) -> str:
     """获取股票财务指标数据（数据库优先 + AKShare 降级）"""
+    t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
     db_data = _query_db_financial(stock_code)
     if db_data:
+        logger.info("[耗时] _fetch_stock_financial(DB命中): %.3fs, code=%s", time.time() - t0, stock_code)
         logger.info("[fetch_stock_financial] 数据库命中: code=%s, 共 %d 条, source=%s",
                      stock_code, len(db_data), db_data[0].get("data_source"))
         return json.dumps(db_data, ensure_ascii=False, indent=2)
@@ -397,6 +405,7 @@ def _fetch_stock_financial(stock_code: str) -> str:
             for key in record:
                 record[key] = str(record[key])
 
+        logger.info("[耗时] _fetch_stock_financial(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
         return json.dumps(records, ensure_ascii=False, indent=2)
     except ImportError:
         return "AKShare 未安装，无法获取财务数据（数据库也无数据）"
@@ -407,6 +416,7 @@ def _fetch_stock_financial(stock_code: str) -> str:
 
 def _fetch_stock_news(stock_code: str) -> str:
     """获取个股最新新闻/公告数据"""
+    t0 = time.time()
     try:
         import akshare as ak
 
@@ -421,6 +431,7 @@ def _fetch_stock_news(stock_code: str) -> str:
             for key in record:
                 record[key] = str(record[key])
 
+        logger.info("[耗时] _fetch_stock_news: %.3fs, code=%s", time.time() - t0, stock_code)
         return json.dumps(records, ensure_ascii=False, indent=2)
     except ImportError:
         return "AKShare 未安装，无法获取新闻数据"

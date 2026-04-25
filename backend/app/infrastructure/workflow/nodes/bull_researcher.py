@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.bull_researcher import SYSTEM_PROMPT, USER_TEMPLATE
 
@@ -17,6 +18,7 @@ def create_bull_researcher_node(ai_service):
     """
 
     async def bull_researcher_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
         stock_name = state.get("stock_name", "")
 
@@ -54,8 +56,8 @@ def create_bull_researcher_node(ai_service):
         debate_state["round"] = debate_state.get("round", 0) + 1
 
         logger.info(
-            "[bull_researcher] 完成: stock=%s, report_len=%d",
-            stock_code, len(full_text),
+            "[耗时] bull_researcher 总耗时: %.3fs, stock=%s, report_len=%d",
+            time.time() - t_start, stock_code, len(full_text),
         )
 
         return {

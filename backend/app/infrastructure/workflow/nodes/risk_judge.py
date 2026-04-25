@@ -1,6 +1,7 @@
 """风险裁决节点 — 综合所有风险观点，给出最终风险评估"""
 
 import logging
+import time
 
 from app.core.config import settings
 from app.infrastructure.workflow.prompts.stock_analysis.risk_judge import SYSTEM_PROMPT, USER_TEMPLATE
@@ -19,6 +20,7 @@ def create_risk_judge_node(ai_service):
     """
 
     async def risk_judge_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
 
         risk_debate_state = state.get("risk_debate_state", {})
@@ -57,8 +59,8 @@ def create_risk_judge_node(ai_service):
             full_text = f"风险裁决生成失败: {e}"
 
         logger.info(
-            "[risk_judge] 完成: stock=%s, report_len=%d",
-            stock_code, len(full_text),
+            "[耗时] risk_judge 总耗时: %.3fs, stock=%s, report_len=%d",
+            time.time() - t_start, stock_code, len(full_text),
         )
 
         # 将裁决结果追加到 messages 供后续节点使用

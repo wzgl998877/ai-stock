@@ -1,6 +1,7 @@
 """研究管理器节点 — 综合辩论结果，制定投资计划"""
 
 import logging
+import time
 
 from app.core.config import settings
 from app.infrastructure.workflow.prompts.stock_analysis.research_manager import SYSTEM_PROMPT, USER_TEMPLATE
@@ -19,6 +20,7 @@ def create_research_manager_node(ai_service):
     """
 
     async def research_manager_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
         stock_name = state.get("stock_name", "")
 
@@ -55,8 +57,8 @@ def create_research_manager_node(ai_service):
             full_text = f"投资计划生成失败: {e}"
 
         logger.info(
-            "[research_manager] 完成: stock=%s, plan_len=%d",
-            stock_code, len(full_text),
+            "[耗时] research_manager 总耗时: %.3fs, stock=%s, plan_len=%d",
+            time.time() - t_start, stock_code, len(full_text),
         )
 
         return {

@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.signal_extractor import SYSTEM_PROMPT
 
@@ -34,6 +35,7 @@ def create_quick_decision_node(ai_service):
     """
 
     async def quick_decision_node(state: dict) -> dict:
+        t_start = time.time()
         stock_code = state.get("stock_code", "")
 
         market_report = state.get("market_report", "")
@@ -68,8 +70,8 @@ def create_quick_decision_node(ai_service):
         signal = _parse_signal_json(full_text)
 
         logger.info(
-            "[quick_decision] 完成: stock=%s, action=%s, confidence=%.1f",
-            stock_code, signal.get("action", "未知"), signal.get("confidence", 0),
+            "[耗时] quick_decision 总耗时: %.3fs, stock=%s, action=%s, confidence=%.1f",
+            time.time() - t_start, stock_code, signal.get("action", "未知"), signal.get("confidence", 0),
         )
 
         return {
