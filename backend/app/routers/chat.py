@@ -20,6 +20,7 @@ from app.application.use_cases.chat_use_case import ChatUseCase
 from app.core.database import get_db
 from app.core.exceptions import InvalidInputError
 from app.infrastructure.repositories.mysql_chat_repo import MySQLChatRepository
+from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,13 @@ USER_ID = "default"  # MVP 阶段固定用户
 
 
 def _get_use_case(request: Request, db: AsyncSession) -> ChatUseCase:
-    """统一构造 ChatUseCase，注入 ai_service + analysis_graph + stock_analysis_graph"""
+    """统一构造 ChatUseCase，注入 ai_service + analysis_graph + stock_analysis_graph + article_repo"""
     repo = MySQLChatRepository(db)
+    article_repo = MySQLArticleRepository(db)
     ai_service = request.app.state.ai_service
     analysis_graph = getattr(request.app.state, "analysis_graph", None)
     stock_analysis_graph = getattr(request.app.state, "stock_analysis_graph", None)
-    return ChatUseCase(repo, ai_service, analysis_graph, stock_analysis_graph)
+    return ChatUseCase(repo, ai_service, analysis_graph, stock_analysis_graph, article_repo)
 
 
 async def _sse_stream(event_gen: AsyncGenerator, db: AsyncSession) -> AsyncGenerator[str, None]:

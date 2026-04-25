@@ -9,6 +9,7 @@ import AnalysisPage from "./pages/AnalysisPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import ArticleDetailPage from "./pages/ArticleDetailPage";
 import StockAnalysisPage from "./pages/StockAnalysisPage";
+import AnalysisRecordsPage from "./pages/AnalysisRecordsPage";
 import SyncPanel from "./pages/SyncPanel";
 import "./styles/global.css";
 
@@ -61,6 +62,7 @@ const App: React.FC = () => (
         <Routes>
           <Route path="/analysis" element={<AnalysisPage />} />
           <Route path="/stock-analysis" element={<StockAnalysisPage />} />
+          <Route path="/analysis-records" element={<AnalysisRecordsPage />} />
           <Route path="/sync" element={<SyncPanel />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/knowledge/articles/:id" element={<ArticleDetailPage />} />

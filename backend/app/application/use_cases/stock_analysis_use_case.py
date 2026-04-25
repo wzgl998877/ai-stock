@@ -7,8 +7,10 @@ import uuid
 from typing import AsyncGenerator, Optional
 
 from app.application.dtos.stock_analysis_dto import StockAnalysisConfigDTO
+from app.domain.entities.article import Article, StockRef
 from app.domain.entities.chat_session import ChatSession
 from app.domain.entities.chat_message import ChatMessage
+from app.domain.repositories.article_repo import ArticleRepository
 from app.domain.repositories.chat_repo import ChatRepository
 from app.domain.services.analysis_parser import AnalysisParser
 from app.domain.services.signal_extractor import SignalExtractor
@@ -25,10 +27,17 @@ MAX_TIMEOUT = 600
 class StockAnalysisUseCase:
     """个股多Agent分析用例"""
 
-    def __init__(self, chat_repo: ChatRepository, ai_service: AIService, stock_analysis_graph=None):
+    def __init__(
+        self,
+        chat_repo: ChatRepository,
+        ai_service: AIService,
+        stock_analysis_graph=None,
+        article_repo: Optional[ArticleRepository] = None,
+    ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
         self.stock_analysis_graph = stock_analysis_graph
+        self.article_repo = article_repo
         self.parser = AnalysisParser()
         self.signal_extractor = SignalExtractor()
 
@@ -62,6 +71,31 @@ class StockAnalysisUseCase:
             event_type="stock_analysis",
         )
         await self.chat_repo.add_message(user_msg)
+
+        # 1.5 创建分析记录（增量存档）
+        article_id = uuid.uuid4().hex
+        analysis_article = None
+        if self.article_repo:
+            try:
+                analysis_article = Article(
+                    article_id=article_id,
+                    title=f"{stock_name}分析中...",
+                    summary="",
+                    content="",
+                    event_type="other",
+                    raw_input=f"{stock_code} {stock_name}",
+                    user_id=session.user_id,
+                    article_type="stock_analysis",
+                    analysis_data={"mode": analysis_mode, "agents": {}, "debates": [], "decision": {}},
+                    status="in_progress",
+                    stocks=[StockRef(stock_code=stock_code, stock_name=stock_name)],
+                )
+                analysis_article = await self.article_repo.save(analysis_article)
+                article_id = analysis_article.article_id
+                await self.chat_repo.session.flush()
+            except Exception as e:
+                logger.warning("创建分析记录失败（不影响分析流程）: %s", e)
+                analysis_article = None
 
         # 2. 运行 StockAnalysisGraph
         thinking_steps = []
@@ -187,6 +221,16 @@ class StockAnalysisUseCase:
                             },
                         }
 
+                        # 增量更新存档（每阶段完成时）
+                        if self.article_repo and analysis_article:
+                            try:
+                                await self.article_repo.update_analysis_data(
+                                    article_id, analysis_data, "in_progress"
+                                )
+                                await self.chat_repo.session.flush()
+                            except Exception as e:
+                                logger.warning("增量更新分析记录失败: %s", e)
+
                         thinking_steps.append({
                             "step": current_agent,
                             "status": "done",
@@ -209,9 +253,27 @@ class StockAnalysisUseCase:
                 graph_timed_out = True
                 logger.warning("StockAnalysisGraph 执行超时 (%ds)，保存部分结果", DEFAULT_TIMEOUT)
                 yield {"type": "error", "data": "分析超时，已完成的部分结果已保存"}
+                # 超时时标记为 stopped
+                if self.article_repo and analysis_article:
+                    try:
+                        await self.article_repo.update_analysis_data(
+                            article_id, analysis_data, "stopped"
+                        )
+                        await self.chat_repo.session.flush()
+                    except Exception as e:
+                        logger.warning("超时后更新记录状态失败: %s", e)
 
         except Exception as e:
             logger.error("StockAnalysisGraph 执行失败: %s", e, exc_info=True)
+            # 异常时标记为 stopped
+            if self.article_repo and analysis_article:
+                try:
+                    await self.article_repo.update_analysis_data(
+                        article_id, analysis_data, "stopped"
+                    )
+                    await self.chat_repo.session.flush()
+                except Exception:
+                    pass
             # 降级：保留已完成的部分结果
             if full_content:
                 yield {"type": "error", "data": f"部分分析完成，但出现错误: {str(e)}"}
@@ -245,6 +307,21 @@ class StockAnalysisUseCase:
             },
         )
         await self.chat_repo.add_message(ai_msg)
+
+        # 4.5 更新分析记录为已完成
+        if self.article_repo and analysis_article:
+            try:
+                analysis_data["title"] = title
+                analysis_data["summary"] = summary
+                analysis_data["industries"] = industries
+                await self.article_repo.update_analysis_data(
+                    article_id, analysis_data, "completed"
+                )
+                # 同时更新 title 和 summary 字段
+                await self.chat_repo.session.flush()
+            except Exception as e:
+                logger.warning("更新分析记录为完成状态失败: %s", e)
+
         await self.chat_repo.session.commit()
 
         # 5. 完成

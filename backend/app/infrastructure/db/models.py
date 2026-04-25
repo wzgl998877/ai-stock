@@ -150,6 +150,7 @@ class AnalysisArticle(AuditMixin, Base):
     chain_table: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     article_type: Mapped[str] = mapped_column(String(20), nullable=False, default="event")
     analysis_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
     user_id: Mapped[str] = mapped_column(
         String(32), ForeignKey("t_user.user_id"), nullable=False
     )

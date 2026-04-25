@@ -12,6 +12,7 @@ import {
 } from "@ant-design/icons";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
 import { AGENT_DISPLAY_NAMES, AGENT_PROFILES, ANALYSIS_PHASE_LABELS } from "../../domain/constants";
+import { AnalysisMode } from "../../domain/types";
 
 const { Text } = Typography;
 
@@ -22,13 +23,18 @@ const PHASE_ICONS: Record<string, React.ReactNode> = {
   risk: <SafetyCertificateOutlined />,
 };
 
-const PHASE_ORDER = ["analysts", "debate", "trader", "risk"];
+const PHASE_ORDER_FULL = ["analysts", "debate", "trader", "risk"];
+const PHASE_ORDER_QUICK = ["analysts"];
 
-const AGENTS_BY_PHASE: Record<string, string[]> = {
+const AGENTS_BY_PHASE_FULL: Record<string, string[]> = {
   analysts: ["market_analyst", "fundamentals_analyst", "news_analyst", "sentiment_analyst"],
   debate: ["bull_researcher", "bear_researcher", "research_manager"],
   trader: ["trader"],
   risk: ["risky_debator", "safe_debator", "neutral_debator", "risk_judge"],
+};
+
+const AGENTS_BY_PHASE_QUICK: Record<string, string[]> = {
+  analysts: ["market_analyst", "fundamentals_analyst"],
 };
 
 /** 统一状态图标 */
@@ -75,12 +81,16 @@ const AgentAvatar: React.FC<{ agent: string; status: string }> = ({ agent, statu
 };
 
 const AgentProgressPanel: React.FC = () => {
-  const { agentStatuses, agentCompletedAt, currentPhase } = useStockAnalysisStore();
+  const { agentStatuses, agentCompletedAt, currentPhase, analysisMode } = useStockAnalysisStore();
+
+  const isQuick = analysisMode === AnalysisMode.QUICK;
+  const phaseOrder = isQuick ? PHASE_ORDER_QUICK : PHASE_ORDER_FULL;
+  const agentsByPhase = isQuick ? AGENTS_BY_PHASE_QUICK : AGENTS_BY_PHASE_FULL;
 
   return (
     <div style={{ padding: "4px 0" }}>
-      {PHASE_ORDER.map((phase, phaseIdx) => {
-        const agents = AGENTS_BY_PHASE[phase] || [];
+      {phaseOrder.map((phase, phaseIdx) => {
+        const agents = agentsByPhase[phase] || [];
         const isActive = currentPhase === phase;
         const allDone = agents.length > 0 && agents.every((a) => agentStatuses[a] === "done");
 
@@ -208,7 +218,7 @@ const AgentProgressPanel: React.FC = () => {
             </div>
 
             {/* 阶段间分隔线（非最后一个阶段） */}
-            {phaseIdx < PHASE_ORDER.length - 1 && (
+            {phaseIdx < phaseOrder.length - 1 && (
               <div style={{
                 height: 1,
                 background: "linear-gradient(to right, transparent, #e5edf5 20%, #e5edf5 80%, transparent)",

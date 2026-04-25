@@ -49,6 +49,10 @@ interface StockAnalysisState {
   industries: string[];
   error: string;
 
+  // 查看模式（从记录回看）
+  viewMode: boolean;
+  viewRecordId: string;
+
   // Actions
   setStock: (code: string, name: string) => void;
   setDataSource: (source: string) => void;
@@ -68,6 +72,17 @@ interface StockAnalysisState {
   setError: (error: string) => void;
   setQuickResult: (result: QuickAnalysisResult) => void;
   triggerHistoryRefresh: () => void;
+  loadFromRecord: (data: {
+    recordId: string;
+    title: string;
+    summary: string;
+    industries: string[];
+    agentReports: Record<string, string>;
+    debates: DebateEvent[];
+    decision: DecisionEvent | null;
+    agentCompletedAt?: Record<string, number>;
+    analysisMode?: AnalysisMode;
+  }) => void;
   reset: () => void;
 }
 
@@ -95,6 +110,8 @@ const initialState = {
   summary: "",
   industries: [],
   error: "",
+  viewMode: false,
+  viewRecordId: "",
 };
 
 export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
@@ -123,6 +140,8 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       industries: [],
       error: "",
       dataSource: "",
+      viewMode: false,
+      viewRecordId: "",
     }),
 
   updateAgentStatus: (event) =>
@@ -173,6 +192,21 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
 
   setQuickResult: (result) => set({ quickAnalysisResult: result }),
   triggerHistoryRefresh: () => set((state) => ({ historyRefreshKey: state.historyRefreshKey + 1 })),
+
+  loadFromRecord: (data) =>
+    set({
+      analysisState: "done",
+      viewMode: true,
+      viewRecordId: data.recordId,
+      title: data.title || "",
+      summary: data.summary || "",
+      industries: data.industries || [],
+      agentReports: data.agentReports || {},
+      debates: data.debates || [],
+      decision: data.decision || null,
+      agentCompletedAt: data.agentCompletedAt || {},
+      analysisMode: data.analysisMode || AnalysisMode.FULL,
+    }),
 
   reset: () => set(initialState),
 }));

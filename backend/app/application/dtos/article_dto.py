@@ -25,6 +25,8 @@ class ArticleListItemDTO(BaseModel):
     created_at: str
     highlight: Optional[str] = None
     analysis_data: Optional[dict] = None  # 个股分析结构化数据
+    status: Optional[str] = None  # in_progress / completed / stopped
+    analysis_mode: Optional[str] = None  # quick / full (从 analysis_data.mode 读取)
 
 
 class ArticleDetailDTO(BaseModel):
@@ -39,6 +41,9 @@ class ArticleDetailDTO(BaseModel):
     chain_table: Optional[List[dict]] = None
     created_at: str
     updated_at: str
+    analysis_data: Optional[dict] = None
+    status: Optional[str] = None
+    analysis_mode: Optional[str] = None
 
 
 class ArticleListResponseDTO(BaseModel):

@@ -52,3 +52,20 @@ class ArticleRepository(ABC):
     @abstractmethod
     async def count_by_user(self, user_id: str) -> int:
         ...
+
+    @abstractmethod
+    async def update_analysis_data(self, article_id: str, analysis_data: dict, status: str) -> None:
+        """更新分析记录的 analysis_data JSON 和 status"""
+        ...
+
+    @abstractmethod
+    async def list_analysis_records(
+        self,
+        user_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        article_type: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Tuple[List[Article], int]:
+        """查询分析记录列表（支持 article_type 和 status 过滤）"""
+        ...

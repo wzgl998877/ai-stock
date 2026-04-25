@@ -232,3 +232,86 @@ async def check_recent_analysis(stock_code: str, minutes: int = 5, db: AsyncSess
         }
 
     return {"has_recent": False}
+
+
+@router.get("/records")
+async def list_analysis_records(
+    page: int = 1,
+    page_size: int = 20,
+    status: str = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取分析记录列表"""
+    # TODO: 从认证上下文获取 user_id，暂时用固定值
+    user_id = "default_user"
+
+    repo = MySQLArticleRepository(db)
+    articles, total = await repo.list_analysis_records(
+        user_id=user_id,
+        page=page,
+        page_size=page_size,
+        article_type="stock_analysis",
+        status=status,
+    )
+
+    items = []
+    for a in articles:
+        ad = a.analysis_data or {}
+        mode = ad.get("mode", "full")
+
+        # 计算进度
+        agents_done = len([k for k, v in ad.get("agents", {}).items() if isinstance(v, dict) and v.get("status") == "done"])
+        total_agents = 2 if mode == "quick" else 12
+
+        items.append({
+            "id": a.article_id,
+            "title": a.title,
+            "summary": a.summary,
+            "status": a.status,
+            "analysis_mode": mode,
+            "stocks": [{"code": s.stock_code, "name": s.stock_name} for s in a.stocks],
+            "industries": [{"code": i.industry_code} for i in a.industries],
+            "progress": {
+                "completed": agents_done,
+                "total": total_agents,
+            },
+            "analysis_data": ad,
+            "created_at": a.create_time.isoformat() if a.create_time else "",
+            "updated_at": a.update_time.isoformat() if a.update_time else "",
+        })
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": items,
+    }
+
+
+@router.get("/records/{record_id}")
+async def get_analysis_record(record_id: str, db: AsyncSession = Depends(get_db)):
+    """获取单条分析记录详情"""
+    repo = MySQLArticleRepository(db)
+    article = await repo.get_by_id(record_id)
+
+    if not article or article.article_type != "stock_analysis":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="分析记录不存在")
+
+    ad = article.analysis_data or {}
+    mode = ad.get("mode", "full")
+
+    return {
+        "id": article.article_id,
+        "title": article.title,
+        "summary": article.summary,
+        "content": article.content,
+        "status": article.status,
+        "analysis_mode": mode,
+        "raw_input": article.raw_input,
+        "stocks": [{"code": s.stock_code, "name": s.stock_name} for s in article.stocks],
+        "industries": [{"code": i.industry_code} for i in article.industries],
+        "analysis_data": ad,
+        "created_at": article.create_time.isoformat() if article.create_time else "",
+        "updated_at": article.update_time.isoformat() if article.update_time else "",
+    }

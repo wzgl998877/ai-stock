@@ -27,6 +27,9 @@ def _to_entity(model: ArticleModel) -> Article:
         raw_input=model.raw_input,
         user_id=model.user_id,
         chain_table=model.chain_table,
+        article_type=getattr(model, 'article_type', 'event'),
+        analysis_data=getattr(model, 'analysis_data', None),
+        status=getattr(model, 'status', 'completed'),
         industries=[
             IndustryRef(industry_code=ai.industry_code, chain_level=ai.chain_level)
             for ai in model.article_industries
@@ -55,6 +58,9 @@ class MySQLArticleRepository(ArticleRepository):
             raw_input=article.raw_input,
             user_id=article.user_id,
             chain_table=article.chain_table,
+            article_type=article.article_type,
+            analysis_data=article.analysis_data,
+            status=article.status,
         )
         self.session.add(model)
 
@@ -234,3 +240,48 @@ class MySQLArticleRepository(ArticleRepository):
             ArticleModel.deleted == "0",
         )
         return (await self.session.execute(stmt)).scalar() or 0
+
+    async def update_analysis_data(self, article_id: str, analysis_data: dict, status: str) -> None:
+        stmt = select(ArticleModel).where(ArticleModel.article_id == article_id)
+        result = await self.session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model:
+            model.analysis_data = analysis_data
+            model.status = status
+            await self.session.flush()
+
+    async def list_analysis_records(
+        self,
+        user_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        article_type: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Tuple[List[Article], int]:
+        conditions = [
+            ArticleModel.user_id == user_id,
+            ArticleModel.deleted == "0",
+        ]
+        if article_type:
+            conditions.append(ArticleModel.article_type == article_type)
+        if status:
+            conditions.append(ArticleModel.status == status)
+
+        where = and_(*conditions)
+
+        count_stmt = select(func.count()).select_from(ArticleModel).where(where)
+        total = (await self.session.execute(count_stmt)).scalar() or 0
+
+        stmt = (
+            select(ArticleModel)
+            .where(where)
+            .order_by(ArticleModel.update_time.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .options(selectinload(ArticleModel.article_industries))
+            .options(selectinload(ArticleModel.article_stocks))
+        )
+        result = await self.session.execute(stmt)
+        models = result.scalars().all()
+
+        return [_to_entity(m) for m in models], total

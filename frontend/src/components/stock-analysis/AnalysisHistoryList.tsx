@@ -66,7 +66,7 @@ const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, on
         return (
           <List.Item
             style={{ cursor: "pointer", padding: "8px 12px", borderRadius: 4 }}
-            onClick={() => navigate(`/knowledge/articles/${item.id}`)}
+            onClick={() => navigate(`/stock-analysis?recordId=${item.id}`)}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
               <div style={{ flex: 1, minWidth: 0 }}>

@@ -1,6 +1,6 @@
 /** 个股分析 API Service */
 import api from "./api";
-import type { StockValidationResult, StockSSEEvent } from "../domain/types";
+import type { StockValidationResult, StockSSEEvent, AnalysisRecordDetail, AnalysisRecordListResponse } from "../domain/types";
 
 const BASE = "/api/chat";
 const ANALYSIS_BASE = "/api/analysis";
@@ -100,4 +100,26 @@ export async function streamStockAnalysis(
       }
     }
   }
+}
+
+/** 获取分析记录列表 */
+export async function listAnalysisRecords(params?: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+}): Promise<AnalysisRecordListResponse> {
+  const res = await api.get(`${ANALYSIS_BASE}/records`, {
+    params: {
+      page: params?.page || 1,
+      page_size: params?.pageSize || 20,
+      status: params?.status,
+    },
+  });
+  return res.data;
+}
+
+/** 获取单条分析记录详情 */
+export async function getAnalysisRecord(recordId: string): Promise<AnalysisRecordDetail> {
+  const res = await api.get(`${ANALYSIS_BASE}/records/${recordId}`);
+  return res.data;
 }

@@ -11,6 +11,7 @@ import {
   PlusOutlined,
   DeleteOutlined,
   SyncOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { MenuProps } from "antd";
@@ -224,6 +225,11 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       key: "/stock-analysis",
       icon: <StockOutlined />,
       label: "个股分析",
+    },
+    {
+      key: "/analysis-records",
+      icon: <FileSearchOutlined />,
+      label: "分析记录",
     },
     {
       key: "/sync",

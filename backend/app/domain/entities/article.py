@@ -27,6 +27,9 @@ class Article:
     raw_input: str
     user_id: str
     chain_table: Optional[List[Dict[str, Any]]] = None
+    article_type: str = "event"
+    analysis_data: Optional[Dict[str, Any]] = None
+    status: str = "completed"  # in_progress / completed / stopped
     # 关联数据（非持久化，从关联表查询填充）
     industries: List[IndustryRef] = field(default_factory=list)
     stocks: List[StockRef] = field(default_factory=list)

@@ -1,6 +1,7 @@
 /** StockAnalysisPage -- 个股分析主页面（含可视化+历史+快速模式） */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button, Typography, Card, Steps, Spin, Alert, Space, Divider, Badge, Tag, Modal } from "antd";
 import {
   PlayCircleOutlined,
@@ -14,7 +15,10 @@ import {
   SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import StockSearchInput from "../components/stock-analysis/StockSearchInput";
-import AnalysisModeSelector from "../components/stock-analysis/AnalysisModeSelector";
+import SystemStatusBar from "../components/stock-analysis/SystemStatusBar";
+import AgentTopologyPreview from "../components/stock-analysis/AgentTopologyPreview";
+import ModeSelectionCards from "../components/stock-analysis/ModeSelectionCards";
+import HistoryQuickEntry from "../components/stock-analysis/HistoryQuickEntry";
 import AgentProgressPanel from "../components/stock-analysis/AgentProgressPanel";
 import AgentReportCard from "../components/stock-analysis/AgentReportCard";
 import DebateTimeline from "../components/stock-analysis/DebateTimeline";
@@ -23,12 +27,12 @@ import AnalysisHistoryList from "../components/stock-analysis/AnalysisHistoryLis
 import AnalysisComparison from "../components/stock-analysis/AnalysisComparison";
 import RiskAssessmentSection from "../components/stock-analysis/RiskAssessmentSection";
 import SummaryCard from "../components/stock-analysis/SummaryCard";
-import AnalysisFeatureCards from "../components/stock-analysis/AnalysisFeatureCards";
 import SectionHeader from "../components/stock-analysis/SectionHeader";
 import ThinkingChain from "../components/chat/ThinkingChain";
 import { AGENT_PROFILES } from "../domain/constants";
 import { useStockAnalysisStore } from "../store/stockAnalysisStore";
 import * as stockAnalysisService from "../services/stockAnalysisService";
+import { getAnalysisRecord } from "../services/stockAnalysisService";
 import { stockDataService } from "../services/stockDataService";
 import {
   ANALYSIS_PHASE_LABELS,
@@ -46,6 +50,58 @@ const StockAnalysisPage: React.FC = () => {
   const abortRef = useRef<AbortController | null>(null);
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [historyItems] = useState<any[]>([]);
+  const [starting, setStarting] = useState(false);
+  const [searchParams] = useSearchParams();
+
+  // 查看模式：从 URL recordId 加载存档数据
+  useEffect(() => {
+    const recordId = searchParams.get("recordId");
+    if (!recordId || store.viewMode) return;
+
+    const loadRecord = async () => {
+      try {
+        const record = await getAnalysisRecord(recordId);
+        const ad = record.analysis_data || {};
+        const agents = ad.agents || {};
+        const debates = ad.debates || [];
+        const decision = ad.decision || null;
+
+        // 构建 agentReports
+        const agentReports: Record<string, string> = {};
+        const agentCompletedAt: Record<string, number> = {};
+        for (const [key, val] of Object.entries(agents)) {
+          const v = val as { summary?: string; full_report?: string; completed_at?: number };
+          if (v.summary || v.full_report) {
+            agentReports[key + "_analyst"] = v.summary || v.full_report || "";
+          }
+          if (v.completed_at) {
+            agentCompletedAt[key + "_analyst"] = v.completed_at;
+          }
+        }
+
+        // 设置股票信息
+        const stockInfo = record.stocks?.[0];
+        if (stockInfo) {
+          useStockAnalysisStore.getState().setStock(stockInfo.code, stockInfo.name);
+        }
+
+        store.loadFromRecord({
+          recordId: record.id,
+          title: record.title || ad.title || "",
+          summary: record.summary || ad.summary || "",
+          industries: ad.industries || [],
+          agentReports,
+          debates,
+          decision: decision as any,
+          agentCompletedAt,
+          analysisMode: (record.analysis_mode || ad.mode) as AnalysisMode,
+        });
+      } catch (err) {
+        console.error("加载分析记录失败:", err);
+      }
+    };
+    loadRecord();
+  }, [searchParams]);
 
   const isIdle = store.analysisState === "idle";
   const isRunning = store.analysisState === "running";
@@ -71,11 +127,16 @@ const StockAnalysisPage: React.FC = () => {
   const handleStart = useCallback(async () => {
     if (!store.stockCode || !store.stockName) return;
 
+    // 过渡动效：按钮文字变化后延迟进入分析
+    setStarting(true);
+    await new Promise((r) => setTimeout(r, 300));
+
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     store.startAnalysis();
+    setStarting(false);
 
     try {
       const session = await stockAnalysisService.createStockAnalysisSession({
@@ -143,8 +204,16 @@ const StockAnalysisPage: React.FC = () => {
   }, [store]);
 
   const handleStop = useCallback(() => {
-    abortRef.current?.abort();
-    useStockAnalysisStore.setState({ analysisState: "done" });
+    Modal.confirm({
+      title: "确认停止当前分析？",
+      content: "已生成部分将保留在分析记录中。",
+      okText: "确认停止",
+      cancelText: "继续分析",
+      onOk: () => {
+        abortRef.current?.abort();
+        useStockAnalysisStore.setState({ analysisState: "done" });
+      },
+    });
   }, []);
 
   const handleReset = useCallback(() => {
@@ -161,7 +230,7 @@ const StockAnalysisPage: React.FC = () => {
 
   const currentPhaseIndex = PHASE_ORDER.indexOf(store.currentPhase);
 
-  // === Idle 态 ===
+  // === Idle 态 ===（双栏布局）
   if (isIdle) {
     return (
       <div
@@ -169,83 +238,102 @@ const StockAnalysisPage: React.FC = () => {
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          padding: "0 32px",
+          padding: "24px 32px",
           minHeight: "100vh",
         }}
       >
-        {/* 居中头部区域 */}
-        <div style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          paddingTop: 64,
-          paddingBottom: 40,
-        }}>
+        {/* 系统状态栏 */}
+        <SystemStatusBar />
+
+        {/* 页面标题 */}
+        <div style={{ marginBottom: 24 }}>
           <h1
             style={{
               fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
               fontWeight: 300,
-              fontSize: 30,
+              fontSize: 28,
               color: "#061b31",
               letterSpacing: "-0.6px",
-              fontFeatureSettings: "'ss01' on",
               margin: 0,
-              marginBottom: 12,
-              textAlign: "center",
+              marginBottom: 6,
             }}
           >
             <StockOutlined style={{ color: "#533afd", marginRight: 8 }} />
-            个股深度分析
+            个股分析
           </h1>
           <Paragraph
             style={{
-              fontSize: 15,
+              fontSize: 14,
               color: "#64748d",
-              textAlign: "center",
-              marginBottom: 40,
-              fontFeatureSettings: "'ss01' on",
+              margin: 0,
             }}
           >
             多 Agent 协作分析，从技术面、基本面、新闻面等多维度评估个股
           </Paragraph>
-
-          <div style={{ marginBottom: 28 }}>
-            <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8, fontFeatureSettings: "'ss01' on" }}>
-              选择分析标的
-            </Text>
-            <StockSearchInput />
-          </div>
-
-          <div style={{ marginBottom: 36 }}>
-            <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8, fontFeatureSettings: "'ss01' on" }}>
-              分析模式
-            </Text>
-            <AnalysisModeSelector />
-          </div>
-
-          <Button
-            type="primary"
-            size="large"
-            disabled={!store.stockCode || !store.stockName || store.validationLoading}
-            onClick={handleStart}
-            icon={<PlayCircleOutlined />}
-            style={{ borderRadius: 6, fontWeight: 400, height: 44, padding: "0 28px", fontSize: 15 }}
-          >
-            开始分析
-          </Button>
         </div>
 
-        {/* 功能说明卡片 */}
-        <div style={{ maxWidth: 600, margin: "0 auto 40px", width: "100%" }}>
-          <SectionHeader title="分析维度" />
-          <AnalysisFeatureCards />
-        </div>
+        {/* 双栏主体 */}
+        <div style={{ display: "flex", gap: 32, flex: 1, minHeight: 0 }}>
+          {/* 左侧配置区 40-45% */}
+          <div style={{ flex: "0 0 42%", display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* 标的搜索 */}
+            <div>
+              <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8 }}>
+                选择分析标的
+              </Text>
+              <StockSearchInput />
+            </div>
 
-        {/* Idle 态底部免责声明 */}
-        <div style={{ marginTop: "auto", textAlign: "center", padding: "24px 0 16px" }}>
-          <Text style={{ fontSize: 11, color: "#c0c6cf", fontFeatureSettings: "'ss01' on" }}>
-            本工具仅供投研参考，不构成任何投资建议
-          </Text>
+            {/* 模式选择卡片 */}
+            <div>
+              <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8 }}>
+                分析模式
+              </Text>
+              <ModeSelectionCards
+                value={store.analysisMode}
+                onChange={store.setMode}
+              />
+            </div>
+
+            {/* 开始分析按钮 */}
+            <Button
+              type="primary"
+              size="large"
+              block
+              disabled={!store.stockCode || !store.stockName || store.validationLoading}
+              onClick={handleStart}
+              loading={starting}
+              icon={!starting ? <PlayCircleOutlined /> : undefined}
+              style={{ borderRadius: 8, fontWeight: 500, height: 48, fontSize: 15, marginTop: 4 }}
+            >
+              {starting ? "正在调动分析师..." : "开始分析"}
+            </Button>
+
+            {/* 合规提示 */}
+            <div style={{ marginTop: "auto", textAlign: "left" }}>
+              <Text style={{ fontSize: 11, color: "#c0c6cf" }}>
+                本工具仅供投研参考，不构成任何投资建议
+              </Text>
+            </div>
+          </div>
+
+          {/* 右侧预览区 55-60% */}
+          <div style={{ flex: "1 1 58%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            {/* Agent 拓扑图 */}
+            <AgentTopologyPreview analysisMode={store.analysisMode} />
+
+            {/* 历史快捷入口 */}
+            {store.stockCode && (
+              <div style={{ width: "100%", maxWidth: 320 }}>
+                <HistoryQuickEntry
+                  stockCode={store.stockCode}
+                  onSelect={(recordId) => {
+                    window.location.href = `/stock-analysis?recordId=${recordId}`;
+                  }}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -253,7 +341,7 @@ const StockAnalysisPage: React.FC = () => {
 
   // === Running / Done / Error 态 ===
   const phasesToShow = isQuickMode ? ["analysts"] : PHASE_ORDER;
-  const showSidebar = !isQuickMode;
+  const showSidebar = true; // 统一显示侧边栏
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -292,7 +380,7 @@ const StockAnalysisPage: React.FC = () => {
           )}
         </div>
         <Space>
-          {isRunning && (
+          {isRunning && !store.viewMode && (
             <Button onClick={handleStop} style={{ borderRadius: 4 }}>
               停止分析
             </Button>
