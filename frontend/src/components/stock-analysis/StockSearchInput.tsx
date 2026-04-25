@@ -139,7 +139,7 @@ const StockSearchInput: React.FC = () => {
   };
 
   return (
-    <div style={{ width: 480 }}>
+    <div style={{ width: "100%" }}>
       <AutoComplete
         value={keyword}
         options={options}

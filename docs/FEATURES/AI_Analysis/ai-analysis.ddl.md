@@ -111,6 +111,7 @@ CREATE TABLE t_analysis_article (
     chain_table JSON COMMENT '产业链传导表(仅supply_chain类型)',
     article_type VARCHAR(20) NOT NULL DEFAULT 'event' COMMENT '文章类型: event=事件分析, stock_analysis=个股深度分析',
     analysis_data JSON COMMENT '多Agent分析结构化数据',
+    status VARCHAR(20) NOT NULL DEFAULT 'completed' COMMENT '分析状态: in_progress=分析中, completed=已完成, stopped=已停止',
     user_id VARCHAR(32) NOT NULL COMMENT '用户编号(关联t_user.user_id)',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间',
@@ -378,6 +379,8 @@ ALTER TABLE t_analysis_article ADD COLUMN article_type VARCHAR(20) NOT NULL DEFA
     COMMENT '文章类型: event=事件分析, stock_analysis=个股深度分析';
 ALTER TABLE t_analysis_article ADD COLUMN analysis_data JSON
     COMMENT '多Agent分析结构化数据';
+ALTER TABLE t_analysis_article ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'
+    COMMENT '分析状态: in_progress=分析中, completed=已完成, stopped=已停止';
 ALTER TABLE t_analysis_article ADD INDEX idx_article_type (article_type);
 
 -- t_chat_session 新增字段
@@ -508,7 +511,7 @@ CREATE TABLE t_stock_financial (
 | 2 | `t_industry` | 申万行业字典 | 基础 |
 | 3 | `t_stock` | 股票基本信息 | 基础 + 004 |
 | 4 | `t_stock_industry` | 股票-行业关联 | 基础 |
-| 5 | `t_analysis_article` | AI 分析文章 | 基础 + 003 |
+| 5 | `t_analysis_article` | AI 分析文章 | 基础 + 003 + 005 |
 | 6 | `t_article_industry` | 文章-行业关联 | 基础 |
 | 7 | `t_article_stock` | 文章-股票关联 | 基础 |
 | 8 | `t_event_reminder` | 大事提醒 | 基础 |

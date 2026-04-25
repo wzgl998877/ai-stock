@@ -1,7 +1,7 @@
 /** StockAnalysisPage -- 个股分析主页面（含可视化+历史+快速模式） */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button, Typography, Card, Steps, Spin, Alert, Space, Divider, Badge, Tag, Modal } from "antd";
 import {
   PlayCircleOutlined,
@@ -40,18 +40,20 @@ import {
 import { AnalysisMode } from "../domain/types";
 import type { StockSSEEvent, AgentStatusEvent, DebateEvent, DecisionEvent, AgentReportEvent, ThinkingStepData } from "../domain/types";
 
-const { Text, Title, Paragraph } = Typography;
+const { Text, Title } = Typography;
 
 /** 分析阶段顺序 */
 const PHASE_ORDER = ["analysts", "debate", "trader", "risk"];
 
 const StockAnalysisPage: React.FC = () => {
   const store = useStockAnalysisStore();
+  const navigate = useNavigate();
   const abortRef = useRef<AbortController | null>(null);
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [historyItems] = useState<any[]>([]);
   const [starting, setStarting] = useState(false);
   const [searchParams] = useSearchParams();
+  const [collapsedPhases, setCollapsedPhases] = useState<string[]>([]);
 
   // 查看模式：从 URL recordId 加载存档数据
   useEffect(() => {
@@ -230,7 +232,73 @@ const StockAnalysisPage: React.FC = () => {
 
   const currentPhaseIndex = PHASE_ORDER.indexOf(store.currentPhase);
 
-  // === Idle 态 ===（双栏布局）
+  /** 按阶段渲染内容 */
+  const renderPhaseContent = (phase: string) => {
+    switch (phase) {
+      case "analysts":
+        // 分析师阶段：渲染对应 Agent 卡片
+        if (Object.keys(store.agentReports).length === 0) {
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 0" }}>
+              <Spin size="small" />
+              <Text style={{ fontSize: 13, color: "#8c8c8c" }}>等待分析师输出...</Text>
+            </div>
+          );
+        }
+        return (
+          <div>
+            {Object.entries(store.agentReports).map(([agent, summary]) => {
+              if (isQuickMode && agent !== "market_analyst" && agent !== "fundamentals_analyst") return null;
+              const profile = AGENT_PROFILES[agent];
+              return (
+                <AgentReportCard
+                  key={agent}
+                  agent={agent}
+                  summary={summary}
+                  isRunning={store.agentStatuses[agent] === "running"}
+                  thinkingMessage={profile?.thinkingMessage}
+                />
+              );
+            })}
+          </div>
+        );
+
+      case "debate":
+        if (store.debates.length === 0) {
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 0" }}>
+              <Spin size="small" />
+              <Text style={{ fontSize: 13, color: "#8c8c8c" }}>等待辩论数据...</Text>
+            </div>
+          );
+        }
+        return <DebateTimeline debates={store.debates} />;
+
+      case "trader":
+        if (!store.decision) {
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 0" }}>
+              <Spin size="small" />
+              <Text style={{ fontSize: 13, color: "#8c8c8c" }}>等待决策输出...</Text>
+            </div>
+          );
+        }
+        return <DecisionCard decision={store.decision} />;
+
+      case "risk":
+        return (
+          <RiskAssessmentSection
+            debates={store.debates}
+            decision={store.decision ?? undefined}
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // === Idle 态 ===（双栏对称布局）
   if (isIdle) {
     return (
       <div
@@ -245,90 +313,129 @@ const StockAnalysisPage: React.FC = () => {
         {/* 系统状态栏 */}
         <SystemStatusBar />
 
-        {/* 页面标题 */}
-        <div style={{ marginBottom: 24 }}>
-          <h1
-            style={{
-              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-              fontWeight: 300,
-              fontSize: 28,
-              color: "#061b31",
-              letterSpacing: "-0.6px",
-              margin: 0,
-              marginBottom: 6,
-            }}
-          >
-            <StockOutlined style={{ color: "#533afd", marginRight: 8 }} />
-            个股分析
-          </h1>
-          <Paragraph
-            style={{
-              fontSize: 14,
-              color: "#64748d",
-              margin: 0,
-            }}
-          >
-            多 Agent 协作分析，从技术面、基本面、新闻面等多维度评估个股
-          </Paragraph>
-        </div>
+        {/* 双栏主体 — 对称卡片 */}
+        <div style={{ display: "flex", gap: 24, flex: 1, minHeight: 0, alignItems: "stretch" }}>
+          {/* 左侧配置区 — 白色卡片容器 */}
+          <div style={{
+            flex: "0 0 44%",
+            display: "flex",
+            flexDirection: "column",
+            background: "#fff",
+            borderRadius: 12,
+            border: "1px solid #f0f0f0",
+            padding: "28px 28px 20px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          }}>
+            {/* 区块标题 */}
+            <div style={{ marginBottom: 24 }}>
+              <h1
+                style={{
+                  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+                  fontWeight: 500,
+                  fontSize: 20,
+                  color: "#061b31",
+                  margin: 0,
+                  marginBottom: 4,
+                  letterSpacing: "-0.3px",
+                }}
+              >
+                分析配置
+              </h1>
+              <span style={{ fontSize: 13, color: "#8c8c8c" }}>
+                选择标的和分析模式
+              </span>
+            </div>
 
-        {/* 双栏主体 */}
-        <div style={{ display: "flex", gap: 32, flex: 1, minHeight: 0 }}>
-          {/* 左侧配置区 40-45% */}
-          <div style={{ flex: "0 0 42%", display: "flex", flexDirection: "column", gap: 20 }}>
             {/* 标的搜索 */}
-            <div>
-              <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8 }}>
-                选择分析标的
-              </Text>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 8 }}>
+                分析标的
+              </label>
               <StockSearchInput />
             </div>
 
             {/* 模式选择卡片 */}
-            <div>
-              <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8 }}>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 8 }}>
                 分析模式
-              </Text>
+              </label>
               <ModeSelectionCards
                 value={store.analysisMode}
                 onChange={store.setMode}
               />
             </div>
 
-            {/* 开始分析按钮 */}
-            <Button
-              type="primary"
-              size="large"
-              block
-              disabled={!store.stockCode || !store.stockName || store.validationLoading}
-              onClick={handleStart}
-              loading={starting}
-              icon={!starting ? <PlayCircleOutlined /> : undefined}
-              style={{ borderRadius: 8, fontWeight: 500, height: 48, fontSize: 15, marginTop: 4 }}
-            >
-              {starting ? "正在调动分析师..." : "开始分析"}
-            </Button>
+            {/* 弹性填充 */}
+            <div style={{ flex: 1 }} />
 
-            {/* 合规提示 */}
-            <div style={{ marginTop: "auto", textAlign: "left" }}>
-              <Text style={{ fontSize: 11, color: "#c0c6cf" }}>
-                本工具仅供投研参考，不构成任何投资建议
-              </Text>
+            {/* 底部：开始按钮 + 合规提示 */}
+            <div>
+              <Button
+                type="primary"
+                size="large"
+                block
+                disabled={!store.stockCode || !store.stockName || store.validationLoading}
+                onClick={handleStart}
+                loading={starting}
+                icon={!starting ? <PlayCircleOutlined /> : undefined}
+                style={{ borderRadius: 8, fontWeight: 500, height: 48, fontSize: 15 }}
+              >
+                {starting ? "正在调动分析师..." : "开始分析"}
+              </Button>
+              <div style={{ textAlign: "center", marginTop: 10 }}>
+                <Text style={{ fontSize: 11, color: "#c0c6cf" }}>
+                  本工具仅供投研参考，不构成任何投资建议
+                </Text>
+              </div>
             </div>
           </div>
 
-          {/* 右侧预览区 55-60% */}
-          <div style={{ flex: "1 1 58%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            {/* Agent 拓扑图 */}
-            <AgentTopologyPreview analysisMode={store.analysisMode} />
+          {/* 右侧预览区 — 白色卡片容器 */}
+          <div style={{
+            flex: "1 1 56%",
+            display: "flex",
+            flexDirection: "column",
+            background: "#fff",
+            borderRadius: 12,
+            border: "1px solid #f0f0f0",
+            padding: "28px 28px 20px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          }}>
+            {/* 区块标题 */}
+            <div style={{ marginBottom: 24 }}>
+              <h1
+                style={{
+                  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+                  fontWeight: 500,
+                  fontSize: 20,
+                  color: "#061b31",
+                  margin: 0,
+                  marginBottom: 4,
+                  letterSpacing: "-0.3px",
+                }}
+              >
+                Agent 协作拓扑
+              </h1>
+              <span style={{ fontSize: 13, color: "#8c8c8c" }}>
+                {store.analysisMode === AnalysisMode.FULL
+                  ? "深度模式：4位分析师 + 辩论 + 风评"
+                  : "快速模式：2位分析师协作"
+                }
+              </span>
+            </div>
 
-            {/* 历史快捷入口 */}
+            {/* 拓扑图 — 居中展示 */}
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <AgentTopologyPreview analysisMode={store.analysisMode} />
+            </div>
+
+            {/* 历史快捷入口 — 底部 */}
             {store.stockCode && (
-              <div style={{ width: "100%", maxWidth: 320 }}>
+              <div style={{ marginTop: 16 }}>
                 <HistoryQuickEntry
                   stockCode={store.stockCode}
                   onSelect={(recordId) => {
-                    window.location.href = `/stock-analysis?recordId=${recordId}`;
+                    navigate(`/stock-analysis?recordId=${recordId}`);
                   }}
                 />
               </div>
@@ -582,7 +689,7 @@ const StockAnalysisPage: React.FC = () => {
             </>
           )}
 
-          {/* === Running 态 === */}
+          {/* === Running 态：阶段联动 === */}
           {isRunning && (
             <>
               {/* 加载中 */}
@@ -603,38 +710,72 @@ const StockAnalysisPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Agent 报告卡片 — Running 态线性堆叠 */}
-              {Object.keys(store.agentReports).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  {Object.entries(store.agentReports).map(([agent, summary]) => {
-                    if (isQuickMode && agent !== "market_analyst" && agent !== "fundamentals_analyst") return null;
-                    const profile = AGENT_PROFILES[agent];
-                    return (
-                      <AgentReportCard
-                        key={agent}
-                        agent={agent}
-                        summary={summary}
-                        isRunning={store.agentStatuses[agent] === "running"}
-                        thinkingMessage={profile?.thinkingMessage}
-                      />
-                    );
-                  })}
-                </div>
-              )}
+              {/* 已完成阶段折叠 + 当前阶段展开 */}
+              {phasesToShow.map((phase) => {
+                const phaseLabel = ANALYSIS_PHASE_LABELS[phase] || phase;
+                const isCompleted = PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf(store.currentPhase);
+                const isUpcoming = PHASE_ORDER.indexOf(phase) > PHASE_ORDER.indexOf(store.currentPhase);
 
-              {/* 辩论时间线（仅 full 模式） */}
-              {!isQuickMode && store.debates.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <DebateTimeline debates={store.debates} />
-                </div>
-              )}
+                if (isUpcoming) return null;
 
-              {/* 决策卡片 */}
-              {store.decision && (
-                <div style={{ marginBottom: 16 }}>
-                  <DecisionCard decision={store.decision} />
-                </div>
-              )}
+                if (isCompleted) {
+                  // 已完成阶段：折叠为一行
+                  const isPhaseCollapsed = collapsedPhases.includes(phase);
+                  return (
+                    <div key={phase} style={{ marginBottom: 12 }}>
+                      <div
+                        onClick={() => {
+                          setCollapsedPhases((prev) =>
+                            isPhaseCollapsed
+                              ? prev.filter((p) => p !== phase)
+                              : [...prev, phase]
+                          );
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 12px",
+                          background: "#f9f9f9",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          transition: "background 0.2s ease",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: "#52c41a" }}>✓</span>
+                        <Text style={{ fontSize: 12, color: "#52c41a", fontWeight: 500 }}>
+                          {phaseLabel}已完成
+                        </Text>
+                        <Text style={{ fontSize: 11, color: "#bfbfbf" }}>
+                          {isPhaseCollapsed ? "点击展开" : "点击收起"}
+                        </Text>
+                        <span style={{
+                          fontSize: 10,
+                          color: "#bfbfbf",
+                          marginLeft: "auto",
+                          transform: isPhaseCollapsed ? "rotate(-90deg)" : "rotate(0)",
+                          transition: "transform 0.2s ease",
+                        }}>▾</span>
+                      </div>
+
+                      {/* 展开内容 */}
+                      {!isPhaseCollapsed && (
+                        <div style={{ marginTop: 8, paddingLeft: 8 }}>
+                          {renderPhaseContent(phase)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // 当前阶段：完整渲染
+                return (
+                  <div key={phase} style={{ marginBottom: 16 }}>
+                    <SectionHeader title={phaseLabel} />
+                    {renderPhaseContent(phase)}
+                  </div>
+                );
+              })}
 
               {/* 分析内容文本（兜底展示） */}
               {store.content && !store.decision && (
