@@ -1,82 +1,114 @@
 # Research: 个股分析界面展示优化与存档
 
 **Feature Branch**: `005-analysis-ui-archive`
-**Date**: 2025-04-25
+**Created**: 2025-04-25
 
-## R1: 文本首句切分策略
+## 研究决策
 
-**Decision**: 前端使用正则按中文句号、英文句号、问号、感叹号切分，取第一句作为摘要，其余作为折叠详情。
+### R1: 分析记录存储策略
 
-**Rationale**:
-- 后端 `AgentReportEvent` 只提供 `summary` 字段，没有独立的 `full_report`
-- 前端切分是零后端改动的方案，符合宪法"最小变更原则"
-- 大模型输出的摘要通常第一句就是核心结论，切分效果可靠
-
-**Alternatives considered**:
-- 等后端扩展字段：需要后端改动，违反"后端无需改动"的假设
-- 用 NLP 模型提取：过度工程，违反 KISS 原则
-
-## R2: 数字高亮正则模式
-
-**Decision**: 使用 `[-+]?\s?\d+\.?\d*\s?%` 匹配百分比（含正负），`¥?\s?\d+\.\d{2}` 匹配价格格式（精确到小数点后两位）。
+**Decision**: 扩展现有 `t_analysis_article` 表，启用已存在的 `analysis_data` JSON 字段，新增 `status` 列。
 
 **Rationale**:
-- 价格和百分比是最常见的财务数字，误匹配风险最低
-- "3月"、"第4轮"等不含百分号或小数点后两位格式，不会被匹配
-- 高亮使用主题色 `#533afd` + `fontWeight: 600`，视觉突出但不突兀
+- 数据库模型 `AnalysisArticle` 已定义 `analysis_data` (JSON) 和 `article_type` (String) 字段，但 Domain Entity 和 Repository 层未打通
+- `article_type` 已支持 `"stock_analysis"` 值，可用于区分分析类型
+- 新增 `status` 列（String(20): in_progress/completed/stopped）支持增量存档的三态管理
+- 复用现有知识库基础设施（列表查询、详情查询），避免创建新表
 
 **Alternatives considered**:
-- 匹配所有数字：误匹配率太高（"3月"等）
-- 使用 NER 模型：过度工程
+- 创建独立的 `t_analysis_record` 表 → 过度设计，与现有知识库体系割裂
+- 将 status 放入 `analysis_data` JSON → 查询效率低，无法直接 WHERE 过滤
 
-## R3: 辩论分栏数据组织
+### R2: 增量存档实现机制
 
-**Decision**: 从 `debates` 数组中按 `round` 和 `speaker` 过滤配对，使用 CSS Grid（`grid-template-columns: 1fr auto 1fr`）实现左右分栏 + 中线。
+**Decision**: 在 `StockAnalysisUseCase` 中，分析流程开始时创建 article 记录（status=in_progress），每个阶段完成时更新 `analysis_data` JSON 字段。
 
 **Rationale**:
-- 后端辩论事件已包含 `round` 和 `speaker` 字段，数据层面无需改动
-- CSS Grid 是最轻量的分栏实现，不需要引入新组件库
-- 研究主管（`research_manager`）和风险裁决官（`risk_judge`）的内容单独提取置顶
+- `StockAnalysisUseCase` 已有完整的阶段数据（agent_reports、debates、decision）
+- 在 yield SSE 事件的同时写入数据库，不影响 SSE 流
+- 利用 `analysis_data` JSON 字段存储完整结构化数据：
+  ```json
+  {
+    "mode": "full",
+    "agents": { "market_analyst": { "summary": "...", "completed_at": 1714036800 } },
+    "debates": [{ "speaker": "bull_researcher", "round": 1, "content": "..." }],
+    "decision": { "action": "买入", "target_price": 0, "confidence": 0.8, "risk_score": 0.3, "reasoning": "..." },
+    "title": "...",
+    "summary": "...",
+    "industries": ["..."]
+  }
+  ```
 
 **Alternatives considered**:
-- 使用 Ant Design Timeline：无法实现分栏效果
-- 使用第三方表格组件：过度工程
+- 前端触发保存 → 不可靠，页面关闭即丢失；当前前端也未调用保存接口
+- 消息队列异步保存 → 过度设计，增加复杂度
 
-## R4: 风险角色区块化数据来源
+### R3: 分析详情页实现方式
 
-**Decision**: 风险角色的内容从 `store.debates` 数组按 `speaker` 过滤，交易决策官内容从 `store.decision.reasoning` 获取。当某角色无内容时显示"暂无输出"。
+**Decision**: 复用 `StockAnalysisPage` 组件，通过路由参数 `/stock-analysis?recordId=xxx` 进入"查看模式"，从 API 加载存档数据填充 Store。
 
 **Rationale**:
-- 当前后端风险阶段的辩论内容通过 `debate` 事件推送，按 `speaker` 区分角色
-- 交易决策官有独立的 `decision` 事件，`reasoning` 字段包含决策依据
-- 无需新增数据结构，完全复用现有 store
+- 结构化报告的 UI 组件（AgentReportCard、DebateTimeline、DecisionCard 等）完全可复用
+- Store 添加 `viewMode: boolean` 和 `viewRecordId: string` 状态
+- 查看模式下：不显示左侧配置/启动区域，直接渲染结构化报告；不显示"停止分析"按钮
 
 **Alternatives considered**:
-- 后端新增风险评估独立事件类型：需后端改动
-- 将风险内容存入 agentReports：语义不准确
+- 创建独立的 `AnalysisDetailPage` → 组件重复，维护成本高
+- 复用知识库文章详情页 → 不支持结构化展示（纯文本渲染）
 
-## R5: Agent 状态图标与连接线方案
+### R4: 启动配置页实现策略
 
-**Decision**: 使用 Ant Design Icons（CheckCircleFilled/CloseCircleFilled/LoadingOutlined/ClockCircleOutlined）作为统一状态图标，CSS 绝对定位实现节点间竖线连接。
+**Decision**: 重构 `StockAnalysisPage` 的 Idle 态，从单栏居中改为双栏布局（左配置+右预览），不创建新页面。
 
 **Rationale**:
-- Ant Design Icons 已在项目中使用，无需引入新图标库
-- CSS 竖线实现：每个 Agent 行左侧加绝对定位的 `div`（`width: 1px`），颜色按状态动态变化
-- 符合宪法"复用 Ant Design"要求
+- 当前 Idle 态已有搜索框、模式选择和启动按钮，只需重组布局
+- Agent 拓扑图作为新组件 `AgentTopologyPreview` 在右侧预览区渲染
+- 系统状态栏作为新组件 `SystemStatusBar` 在页面顶部渲染
+- 模式选择器从 `Radio.Group` 改为卡片式（`ModeSelectionCards` 组件）
 
 **Alternatives considered**:
-- 使用 Ant Design Timeline 组件：布局控制不够灵活，难以实现自定义头像和状态
-- SVG 绘制连接线：过度工程
+- 创建独立的启动页 → 增加路由和页面跳转，当前设计已是同页状态切换
 
-## R6: 历史记录限制与存档机制
+### R5: 分析记录列表页路由与菜单
 
-**Decision**: 前端 `page_size` 改为 3（仅请求最近 3 条），存档复用现有知识库 API（`knowledgeService.getArticles`）。
+**Decision**: 新增路由 `/analysis-records` 指向 `AnalysisRecordsPage`，在侧边栏"个股分析"下方添加"分析记录"菜单项。
 
 **Rationale**:
-- 知识库 API 已支持按 `article_type: "stock_analysis"` 和 `stock_code` 过滤
-- 无需新建存档服务，完全复用现有基础设施
-- 3 条是"最近分析"区域的信息密度最优值，多了会占用页面空间
+- 与现有路由风格一致（`/stock-analysis`、`/knowledge`）
+- 菜单位置在"个股分析"下方，与核心投研功能同组
+- 列表页调用后端 API 按 `article_type="stock_analysis"` 查询
 
 **Alternatives considered**:
-- 新建独立的存档 API：过度工程，违反 KISS
-- 前端缓存所有历史记录：违反数据源真实性的设计原则
+- 放在知识库下作为子功能 → 语义不匹配，分析记录≠知识库文章
+- 弹窗形式 → 无法承载完整列表体验
+
+### R6: 快速分析与深度分析的统一体验
+
+**Decision**: 两种模式共享相同的执行页面和结果页面组件，通过 `analysisMode` 状态控制 Agent 数量和阶段数。
+
+**Rationale**:
+- 现有代码已有 `analysisMode: "quick" | "full"` 的区分逻辑
+- `AgentProgressPanel` 根据 `analysisMode` 决定渲染哪些 Agent（quick=2, full=12）
+- 右侧内容区根据当前阶段和模式决定显示哪些区块
+- 结果页在快速模式下仅渲染概要+决策+2位分析师报告
+
+**Alternatives considered**:
+- 快速分析用简化页面 → 维护两套 UI，用户体验不一致
+
+### R7: 文本首句切分与数字高亮
+
+**Decision**: 使用正则按中文句号/英文句号/问号/感叹号切分首句，百分比和价格格式数字自动高亮。已有 `textUtils.tsx` 实现。
+
+**Rationale**:
+- 后端 `AgentReportEvent` 只提供 `summary` 字段，前端切分是零后端改动方案
+- 大模型输出的摘要通常第一句就是核心结论
+- 高亮正则：`[-+]?\s?\d+\.?\d*\s?%` 匹配百分比，`¥?\s?\d+\.\d{2}` 匹配价格
+
+### R8: 辩论分栏与风险角色数据组织
+
+**Decision**: 从 `debates` 数组按 `round` 和 `speaker` 过滤配对，CSS Grid 分栏。风险角色内容从 debates 按speaker 过滤，交易决策官从 decision.reasoning 获取。
+
+**Rationale**:
+- 后端辩论事件已包含 round 和 speaker 字段，无需改动
+- 研究主管和风险裁决官内容单独提取置顶
+- 无内容时显示"暂无输出"

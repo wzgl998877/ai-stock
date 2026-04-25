@@ -1,81 +1,147 @@
 # Data Model: 个股分析界面展示优化与存档
 
 **Feature Branch**: `005-analysis-ui-archive`
-**Date**: 2025-04-25
+**Created**: 2025-04-25
 
-## Entities
+## 实体定义
 
-### AgentCompletedAt (Store 扩展)
+### E1: 分析记录 (Analysis Record)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| agent | string | Agent 标识（如 "market_analyst"） |
-| timestamp | number | 完成时间戳（ms），由前端在 agent_status 事件 status="done" 时记录 |
+扩展现有 `t_analysis_article` 表，用于存储个股分析的完整存档。
 
-**Relationship**: 与 `agentStatuses` 一对一，共享同一 key
+| 字段 | 类型 | 说明 | 来源 |
+|------|------|------|------|
+| article_id | String(32) PK | 唯一标识 | 已有 |
+| title | String(50) | 分析标题 | 已有 |
+| summary | String(200) | 分析摘要 | 已有 |
+| content | Text | 完整 Markdown 内容 | 已有 |
+| event_type | Enum | 固定 "other" | 已有 |
+| raw_input | String(500) | 股票代码+名称 | 已有 |
+| article_type | String(20) | 固定 "stock_analysis" | 已有（需启用写入） |
+| analysis_data | JSON | 结构化分析数据（见 E1.1） | 已有（需启用写入） |
+| status | String(20) | in_progress/completed/stopped | **新增列** |
+| user_id | String(32) FK | 用户 ID | 已有 |
+| create_time | DateTime | 创建时间 | 已有 |
+| update_time | DateTime | 最后更新时间 | 已有 |
+| deleted | Char(1) | 软删除标记 | 已有 |
 
-### TextHighlight (工具层)
+**关联关系**：1:N → ArticleIndustry, 1:N → ArticleStock
 
-| Field | Type | Description |
-|-------|------|-------------|
-| pattern | RegExp | 数字匹配正则（百分比、价格） |
-| style | object | 高亮样式（color: #533afd, fontWeight: 600） |
+#### E1.1: analysis_data JSON 结构
 
-**Note**: 纯前端渲染工具，不持久化
+```json
+{
+  "mode": "full | quick",
+  "agents": {
+    "market_analyst": { "summary": "...", "completed_at": 1714036800000 },
+    "fundamentals_analyst": { "summary": "...", "completed_at": 1714036860000 }
+  },
+  "debates": [
+    { "speaker": "bull_researcher", "round": 1, "content": "..." }
+  ],
+  "decision": {
+    "action": "买入", "target_price": 0, "confidence": 0.8,
+    "risk_score": 0.3, "reasoning": "..."
+  },
+  "title": "...", "summary": "...", "industries": ["..."]
+}
+```
 
-### DebateRound (视图模型)
+### E2: Agent 报告 (Agent Report)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| round | number | 轮次编号 |
-| bull | DebateEvent \| null | 看多研究员发言 |
-| bear | DebateEvent \| null | 看空研究员发言 |
+`analysis_data.agents` 映射中的条目。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| agent | String | Agent 标识（如 market_analyst） |
+| summary | String | 分析摘要文本 |
+| completed_at | Number | 完成时间戳（毫秒） |
+
+### E3: 辩论事件 (Debate Event)
+
+`analysis_data.debates` 数组元素。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| speaker | String | 发言人标识 |
+| round | Number | 轮次号 |
+| content | String | 发言内容 |
+
+### E4: 投资决策 (Investment Decision)
+
+`analysis_data.decision` 对象。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| action | String | 买入/卖出/持有 |
+| target_price | Number | 目标价格 |
+| confidence | Number | 置信度（0-1） |
+| risk_score | Number | 风险评分（0-1） |
+| reasoning | String | 决策依据 |
+
+### E5: 阶段进度 (Phase Progress)
+
+前端根据 `analysis_data` 计算，不独立存储。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| total_phases | Number | 总阶段数（快速=1，深度=4） |
+| completed_phases | Number | 已完成阶段数 |
+
+### E6: 辩论轮次 (DebateRound) — 视图模型
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| round | Number | 轮次编号 |
+| bull | DebateEvent \| null | 看多发言 |
+| bear | DebateEvent \| null | 看空发言 |
 | neutral | DebateEvent \| null | 中立派发言（仅风险辩论） |
 
-**Relationship**: 从 `debates` 数组按 round 聚合生成，纯前端派生视图
+### E7: 风险角色卡片 (RiskRoleCard) — 视图模型
 
-### RiskRoleCard (视图模型)
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| agent | String | 角色标识 |
+| label | String | 角色中文名 |
+| content | String \| null | 完整辩论内容（多轮合并） |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| agent | string | 角色标识（如 "risky_debator"） |
-| label | string | 角色中文名（如 "激进派"） |
-| content | string \| null | 该角色的完整辩论内容（多轮合并） |
-| status | string | 当前状态（pending/running/done/failed） |
-| completedAt | number \| undefined | 完成时间戳 |
+## 状态机
 
-**Relationship**: 交易决策官内容来自 `decision.reasoning`，其余角色来自 `debates` 按 speaker 过滤
+### S1: 分析记录状态（持久化）
 
-## State Transitions
+```
+[开始分析] → in_progress
+                ├── [全部阶段完成] → completed
+                ├── [用户停止]     → stopped
+                └── [异常中断]     → stopped
+```
 
-### Agent Status
+### S2: Agent 运行状态（前端内存态）
 
 ```
 pending → running → done
-                  → failed
+                 → failed
 ```
 
-- `pending → running`: 收到 `agent_status` 事件 `status="running"`
-- `running → done`: 收到 `agent_status` 事件 `status="done"`，同时记录 `agentCompletedAt`
-- `running → failed`: 收到 `agent_status` 事件 `status="failed"`，同时记录 `agentCompletedAt`
-
-### Analysis Phase
+### S3: 前端页面状态
 
 ```
-analysts → debate → trader → risk → (done)
+idle → running → done → idle（重新分析）
+       → error
+viewMode（从记录进入，直接渲染结果）
 ```
 
-- 阶段切换由 `agent_status` 事件中的 `phase` 字段驱动
-- 快速模式仅经历 `analysts` 阶段
+## 数据库变更
 
-### Analysis State
+### 新增列
 
-```
-idle → running → done
-               → error
-```
+| 表 | 列 | 类型 | 默认值 | 说明 |
+|----|----|------|--------|------|
+| t_analysis_article | status | VARCHAR(20) | "completed" | 分析状态 |
 
-- `idle → running`: 用户点击"开始分析"
-- `running → done`: 收到 `done` 事件或用户点击"停止分析"
-- `running → error`: 收到 `error` 事件或网络异常
-- `done/error → idle`: 用户点击"重新分析"并确认
+### 需打通的字段（已有列但未使用）
+
+| 表 | 列 | 当前状态 | 改动 |
+|----|----|----------|------|
+| t_analysis_article | analysis_data | DB有列，Entity/Repo未映射 | 打通全链路 |
+| t_analysis_article | article_type | DB有列，默认"event" | 写入时赋值"stock_analysis" |
