@@ -41,7 +41,7 @@ const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, on
     if (!stockCode) return;
     setLoading(true);
     knowledgeService
-      .getArticles({ article_type: "stock_analysis", stock_code: stockCode, page: 1, page_size: 10 })
+      .getArticles({ article_type: "stock_analysis", stock_code: stockCode, page: 1, page_size: 3 })
       .then((res: any) => {
         setItems(res.items || []);
       })
@@ -54,7 +54,7 @@ const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, on
   }
 
   if (items.length === 0) {
-    return <Empty description="暂无分析记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    return <Empty description="暂无历史分析记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
   return (

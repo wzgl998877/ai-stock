@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AnalysisMode, type AgentStatusEvent, type DebateEvent, type DecisionEvent } from "../domain/types";
+import { AnalysisMode, type AgentStatusEvent, type DebateEvent, type DecisionEvent, type ThinkingStepData } from "../domain/types";
 
 interface ContentBlock {
   agent: string;
@@ -27,9 +27,11 @@ interface StockAnalysisState {
   currentPhase: string;
   agentStatuses: Record<string, string>;  // agent -> pending/running/done/failed
   agentReports: Record<string, string>;   // agent -> summary
+  agentCompletedAt: Record<string, number>; // agent -> 完成时间戳(ms)
   debates: DebateEvent[];
   decision: DecisionEvent | null;
   content: string;
+  thinkingSteps: ThinkingStepData[];
 
   // 细粒度流式状态（US2）
   contentBlocks: ContentBlock[];
@@ -55,6 +57,7 @@ interface StockAnalysisState {
   startAnalysis: () => void;
   updateAgentStatus: (event: AgentStatusEvent) => void;
   addAgentReport: (agent: string, summary: string) => void;
+  addThinkingStep: (step: ThinkingStepData) => void;
   addDebate: (event: DebateEvent) => void;
   setDecision: (decision: DecisionEvent) => void;
   appendContent: (text: string) => void;
@@ -79,9 +82,11 @@ const initialState = {
   currentPhase: "",
   agentStatuses: {},
   agentReports: {},
+  agentCompletedAt: {},
   debates: [],
   decision: null,
   content: "",
+  thinkingSteps: [] as ThinkingStepData[],
   contentBlocks: [] as ContentBlock[],
   phaseProgress: {} as Record<string, number>,
   quickAnalysisResult: null as QuickAnalysisResult | null,
@@ -109,6 +114,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       debates: [],
       decision: null,
       content: "",
+      thinkingSteps: [],
       contentBlocks: [],
       phaseProgress: {},
       quickAnalysisResult: null,
@@ -120,15 +126,32 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
     }),
 
   updateAgentStatus: (event) =>
-    set((state) => ({
-      agentStatuses: { ...state.agentStatuses, [event.agent]: event.status },
-      currentPhase: event.phase || state.currentPhase,
-    })),
+    set((state) => {
+      const completedAt = event.status === "done" ? Date.now() : state.agentCompletedAt[event.agent];
+      return {
+        agentStatuses: { ...state.agentStatuses, [event.agent]: event.status },
+        agentCompletedAt: { ...state.agentCompletedAt, [event.agent]: completedAt },
+        currentPhase: event.phase || state.currentPhase,
+      };
+    }),
 
   addAgentReport: (agent, summary) =>
     set((state) => ({
       agentReports: { ...state.agentReports, [agent]: summary },
     })),
+
+  addThinkingStep: (step) =>
+    set((state) => {
+      const existing = state.thinkingSteps.findIndex(
+        (s) => s.step === step.step
+      );
+      if (existing >= 0) {
+        const updated = [...state.thinkingSteps];
+        updated[existing] = step;
+        return { thinkingSteps: updated };
+      }
+      return { thinkingSteps: [...state.thinkingSteps, step] };
+    }),
 
   addDebate: (event) =>
     set((state) => ({

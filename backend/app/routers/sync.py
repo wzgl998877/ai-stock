@@ -6,6 +6,7 @@ Provides:
 - POST /api/v1/sync/tasks/{task_id}/retry — Retry a failed task
 """
 
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -74,10 +75,12 @@ async def execute_sync(
                             logger.info("[SSE响应] %s | data=%s", data_type, data_str)
                         break
                 yield event
-            # 流式传输完成后提交事务
-            await db.commit()
+        except asyncio.CancelledError:
+            # SSE client disconnected — sync continues in background
+            logger.info("SSE client disconnected, sync continues in background (source=%s type=%s)", src.value, dt.value)
         except Exception:
-            await db.rollback()
+            # No need to rollback here — data writes are managed by the
+            # background coroutine with its own session
             raise
 
     return StreamingResponse(
@@ -165,11 +168,14 @@ async def retry_sync_task(
     executor = SyncExecutor(repo, datasource_repo, stock_data_repo)
 
     async def event_generator():
-        async for event in executor.execute_sync(
-            source_type=task.source_type,
-            data_type=task.data_type,
-        ):
-            yield event
+        try:
+            async for event in executor.execute_sync(
+                source_type=task.source_type,
+                data_type=task.data_type,
+            ):
+                yield event
+        except asyncio.CancelledError:
+            logger.info("SSE client disconnected during retry, sync continues in background")
 
     return StreamingResponse(
         event_generator(),

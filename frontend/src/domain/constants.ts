@@ -76,18 +76,127 @@ export const DEFAULT_PAGE_SIZE = 20;
 
 // === Agent 中文显示名映射 ===
 export const AGENT_DISPLAY_NAMES: Record<string, string> = {
-  market_analyst: "技术面分析",
-  fundamentals_analyst: "基本面分析",
-  news_analyst: "新闻分析",
-  sentiment_analyst: "情绪分析",
-  bull_researcher: "看多论证",
-  bear_researcher: "看空论证",
-  research_manager: "研究管理器",
-  trader: "交易决策",
-  risky_debator: "激进风险观点",
-  safe_debator: "保守风险观点",
-  neutral_debator: "中立风险观点",
-  risk_judge: "风险裁决",
+  market_analyst: "技术分析师",
+  fundamentals_analyst: "基本面分析师",
+  news_analyst: "新闻分析师",
+  sentiment_analyst: "情绪分析师",
+  bull_researcher: "看多研究员",
+  bear_researcher: "看空研究员",
+  research_manager: "研究主管",
+  trader: "交易决策官",
+  risky_debator: "激进派",
+  safe_debator: "保守派",
+  neutral_debator: "中立派",
+  risk_judge: "风险裁决官",
+};
+
+// === Agent 角色形象化配置 ===
+export interface AgentProfile {
+  emoji: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  description: string;
+  thinkingMessage: string;
+}
+
+export const AGENT_PROFILES: Record<string, AgentProfile> = {
+  market_analyst: {
+    emoji: "📊",
+    color: "#3b82f6",
+    bgColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+    description: "扫描K线形态，分析均线系统与量价关系",
+    thinkingMessage: "正在扫描K线形态，分析均线系统与量价关系...",
+  },
+  fundamentals_analyst: {
+    emoji: "💰",
+    color: "#15be53",
+    bgColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
+    description: "解读财务报表，评估估值水平与盈利能力",
+    thinkingMessage: "正在解读财务报表，评估估值水平与盈利能力...",
+  },
+  news_analyst: {
+    emoji: "📰",
+    color: "#f59e0b",
+    bgColor: "#fffbeb",
+    borderColor: "#fde68a",
+    description: "搜集近期新闻事件，评估信息面影响",
+    thinkingMessage: "正在搜集近期新闻事件，评估信息面影响...",
+  },
+  sentiment_analyst: {
+    emoji: "💭",
+    color: "#a855f7",
+    bgColor: "#faf5ff",
+    borderColor: "#d8b4fe",
+    description: "分析市场情绪指标，判断多空力量对比",
+    thinkingMessage: "正在分析市场情绪指标，判断多空力量对比...",
+  },
+  bull_researcher: {
+    emoji: "🐂",
+    color: "#15be53",
+    bgColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
+    description: "从利好角度构建看多论证",
+    thinkingMessage: "正在从利好角度构建看多论证...",
+  },
+  bear_researcher: {
+    emoji: "🐻",
+    color: "#ea2261",
+    bgColor: "#fff1f2",
+    borderColor: "#fecdd3",
+    description: "从风险角度构建看空论证",
+    thinkingMessage: "正在从风险角度构建看空论证...",
+  },
+  research_manager: {
+    emoji: "⚖️",
+    color: "#0891b2",
+    bgColor: "#ecfeff",
+    borderColor: "#a5f3fc",
+    description: "综合多空观点，形成平衡判断",
+    thinkingMessage: "正在综合多空观点，形成平衡判断...",
+  },
+  trader: {
+    emoji: "📈",
+    color: "#533afd",
+    bgColor: "#f8f7ff",
+    borderColor: "#d6d9fc",
+    description: "基于分析结果，制定交易策略",
+    thinkingMessage: "正在基于分析结果，制定交易策略...",
+  },
+  risky_debator: {
+    emoji: "🔥",
+    color: "#f59e0b",
+    bgColor: "#fffbeb",
+    borderColor: "#fde68a",
+    description: "从高风险偏好视角评估收益空间",
+    thinkingMessage: "正在从高风险偏好视角评估收益空间...",
+  },
+  safe_debator: {
+    emoji: "🛡️",
+    color: "#3b82f6",
+    bgColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+    description: "从安全边际角度评估下行风险",
+    thinkingMessage: "正在从安全边际角度评估下行风险...",
+  },
+  neutral_debator: {
+    emoji: "⚖️",
+    color: "#a855f7",
+    bgColor: "#faf5ff",
+    borderColor: "#d8b4fe",
+    description: "平衡激进与保守观点",
+    thinkingMessage: "正在平衡激进与保守观点...",
+  },
+  risk_judge: {
+    emoji: "👨‍⚖️",
+    color: "#4f46e5",
+    bgColor: "#eef2ff",
+    borderColor: "#c7d2fe",
+    description: "综合风险评估，给出最终风险定级",
+    thinkingMessage: "正在综合风险评估，给出最终风险定级...",
+  },
 };
 
 export const AGENT_PHASE_MAPPING: Record<string, string> = {

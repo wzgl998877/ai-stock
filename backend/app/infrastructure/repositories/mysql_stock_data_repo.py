@@ -106,11 +106,8 @@ class MySQLStockDataRepository(StockDataRepository):
     # --- Basic Info ---
 
     async def upsert_basic(self, info: StockBasicInfo) -> None:
-        """Upsert stock basic info by code + data_source."""
-        stmt = select(Stock).where(
-            Stock.stock_code == info.code,
-            Stock.data_source == info.data_source,
-        )
+        """Upsert stock basic info by stock_code (primary key)."""
+        stmt = select(Stock).where(Stock.stock_code == info.code)
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
 
@@ -120,6 +117,7 @@ class MySQLStockDataRepository(StockDataRepository):
             existing.market_type = info.market_type or existing.market_type
             existing.list_date = info.list_date or existing.list_date
             existing.is_active = info.is_active
+            existing.data_source = info.data_source or existing.data_source
             existing.update_time = datetime.now()
         else:
             new_stock = Stock(

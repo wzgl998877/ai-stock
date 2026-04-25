@@ -24,7 +24,11 @@
       "Bash(python3:*)",
       "Bash(echo 创建会话: $SESSION:*)",
       "Bash(echo session_id: $SID:*)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(pip install:*)",
+      "Bash(node_modules/.bin/tsc:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(./node_modules/.bin/tsc:*)"
     ]
   }
 }

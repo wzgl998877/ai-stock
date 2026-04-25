@@ -34,5 +34,13 @@ beautifulsoup4>=4.12,<5.0
 # 外部搜索 API（Agent 自主搜索）
 tavily-python>=0.5,<1.0
 
+# A 股数据源
+akshare>=1.12,<2.0
+baostock>=0.8,<1.0
+tushare>=1.4,<2.0
+
+# 数据处理
+pandas>=2.0,<3.0
+
 # 加密工具
 cryptography>=41.0,<45.0

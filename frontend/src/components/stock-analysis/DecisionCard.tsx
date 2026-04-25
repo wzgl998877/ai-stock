@@ -2,6 +2,7 @@ import React from "react";
 import { Card, Typography, Tag, Progress, Statistic, Row, Col, Alert } from "antd";
 import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from "@ant-design/icons";
 import type { DecisionEvent } from "../../domain/types";
+import { highlightNumbers } from "../../utils/textUtils";
 
 const { Text, Paragraph } = Typography;
 
@@ -11,17 +12,27 @@ const ACTION_CONFIG: Record<string, { color: string; bg: string; border: string;
   "持有": { color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe", icon: <MinusOutlined /> },
 };
 
+/** 风险评分色阶：0-30绿 / 31-60黄 / 61-80橙 / 81-100红 */
+const getRiskColor = (score: number): string => {
+  const pct = Math.round(score * 100);
+  if (pct <= 30) return "#15be53";
+  if (pct <= 60) return "#f59e0b";
+  if (pct <= 80) return "#f97316";
+  return "#ea2261";
+};
+
 interface DecisionCardProps {
   decision: DecisionEvent;
 }
 
 const DecisionCard: React.FC<DecisionCardProps> = ({ decision }) => {
   const config = ACTION_CONFIG[decision.action] || ACTION_CONFIG["持有"];
+  const riskColor = getRiskColor(decision.risk_score || 0);
 
   return (
     <Card
       style={{ borderRadius: 6, border: `2px solid ${config.border}`, marginBottom: 12 }}
-      bodyStyle={{ padding: "16px 20px" }}
+      styles={{ body: { padding: "16px 20px" } }}
     >
       {/* 操作方向 + 目标价 */}
       <Row gutter={16} align="middle" style={{ marginBottom: 16 }}>
@@ -52,36 +63,46 @@ const DecisionCard: React.FC<DecisionCardProps> = ({ decision }) => {
         </Col>
       </Row>
 
-      {/* 置信度 + 风险评分 */}
+      {/* 置信度 + 风险评分（色阶条+数字并行） */}
       <Row gutter={24} style={{ marginBottom: 16 }}>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Text style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 6 }}>置信度</Text>
-          <Progress
-            percent={Math.round((decision.confidence || 0) * 100)}
-            strokeColor="#533afd"
-            size="small"
-            format={(p) => `${p}%`}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Progress
+              percent={Math.round((decision.confidence || 0) * 100)}
+              strokeColor="#533afd"
+              size="small"
+              showInfo={false}
+              style={{ flex: 1, marginBottom: 0 }}
+            />
+            <Text style={{ fontSize: 12, color: "#061b31", fontFeatureSettings: "'tnum' on", fontWeight: 500, flexShrink: 0 }}>
+              {Math.round((decision.confidence || 0) * 100)}%
+            </Text>
+          </div>
         </Col>
-        <Col span={12}>
+        <Col xs={24} sm={12}>
           <Text style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 6 }}>风险评分</Text>
-          <Progress
-            percent={Math.round((decision.risk_score || 0) * 100)}
-            strokeColor={
-              (decision.risk_score || 0) > 0.7 ? "#ea2261" : (decision.risk_score || 0) > 0.4 ? "#f59e0b" : "#15be53"
-            }
-            size="small"
-            format={(p) => `${p}%`}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Progress
+              percent={Math.round((decision.risk_score || 0) * 100)}
+              strokeColor={riskColor}
+              size="small"
+              showInfo={false}
+              style={{ flex: 1, marginBottom: 0 }}
+            />
+            <Text style={{ fontSize: 12, color: riskColor, fontFeatureSettings: "'tnum' on", fontWeight: 500, flexShrink: 0 }}>
+              {Math.round((decision.risk_score || 0) * 100)}
+            </Text>
+          </div>
         </Col>
       </Row>
 
-      {/* 决策依据 */}
+      {/* 决策依据 — 数字高亮 */}
       {decision.reasoning && (
         <div style={{ marginBottom: 12 }}>
           <Text style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 4 }}>决策依据</Text>
           <Paragraph style={{ fontSize: 13, color: "#273951", lineHeight: 1.7, margin: 0 }}>
-            {decision.reasoning}
+            {highlightNumbers(decision.reasoning)}
           </Paragraph>
         </div>
       )}

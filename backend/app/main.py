@@ -42,6 +42,23 @@ async def lifespan(app: FastAPI):
         logger.warning("LangGraph 个股分析工作流初始化失败: %s", e)
         app.state.stock_analysis_graph = None
 
+    # 清理残留的 RUNNING 状态同步任务（进程重启后旧任务不可能仍在执行）
+    try:
+        from sqlalchemy import text
+        async with async_session() as cleanup_session:
+            result = await cleanup_session.execute(
+                text(
+                    "UPDATE t_sync_task SET status='failed', "
+                    "error_message='进程重启，任务中断' "
+                    "WHERE status='running'"
+                )
+            )
+            await cleanup_session.commit()
+            if result.rowcount > 0:
+                logger.info("清理残留 RUNNING 任务: %d 条标记为 failed", result.rowcount)
+    except Exception as e:
+        logger.warning("清理残留任务失败（非致命）: %s", e)
+
     yield
     # Shutdown
 
