@@ -59,6 +59,11 @@ class ArticleRepository(ABC):
         ...
 
     @abstractmethod
+    async def update(self, article_id: str, **fields) -> None:
+        """更新文章字段（如 title, summary, content）"""
+        ...
+
+    @abstractmethod
     async def list_analysis_records(
         self,
         user_id: str,

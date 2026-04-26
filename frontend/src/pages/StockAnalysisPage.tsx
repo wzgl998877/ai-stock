@@ -7,7 +7,6 @@ import {
   PlayCircleOutlined,
   RedoOutlined,
   StockOutlined,
-  HistoryOutlined,
   SwapOutlined,
   DatabaseOutlined,
   TeamOutlined,
@@ -17,17 +16,13 @@ import {
   FundOutlined,
   ReadOutlined,
   CheckCircleOutlined,
-  SyncOutlined,
   FileTextOutlined,
   ThunderboltOutlined,
   ExperimentOutlined,
-  ClockCircleOutlined,
 } from "@ant-design/icons";
 import StockSearchInput from "../components/stock-analysis/StockSearchInput";
 import SystemStatusBar from "../components/stock-analysis/SystemStatusBar";
-import AgentTopologyPreview from "../components/stock-analysis/AgentTopologyPreview";
 import ModeSelectionCards from "../components/stock-analysis/ModeSelectionCards";
-import HistoryQuickEntry from "../components/stock-analysis/HistoryQuickEntry";
 import AgentProgressPanel from "../components/stock-analysis/AgentProgressPanel";
 import AgentReportCard from "../components/stock-analysis/AgentReportCard";
 import DebateTimeline from "../components/stock-analysis/DebateTimeline";
@@ -38,7 +33,7 @@ import RiskAssessmentSection from "../components/stock-analysis/RiskAssessmentSe
 import SummaryCard from "../components/stock-analysis/SummaryCard";
 import SectionHeader from "../components/stock-analysis/SectionHeader";
 import ThinkingChain from "../components/chat/ThinkingChain";
-import { AGENT_PROFILES } from "../domain/constants";
+import { AGENT_PROFILES, AGENT_DISPLAY_NAMES } from "../domain/constants";
 import { useStockAnalysisStore } from "../store/stockAnalysisStore";
 import * as stockAnalysisService from "../services/stockAnalysisService";
 import { getAnalysisRecord } from "../services/stockAnalysisService";
@@ -49,7 +44,7 @@ import {
 import { AnalysisMode } from "../domain/types";
 import type { StockSSEEvent, AgentStatusEvent, DebateEvent, DecisionEvent, AgentReportEvent, ThinkingStepData } from "../domain/types";
 
-const { Text, Title } = Typography;
+const { Text, Title, Paragraph } = Typography;
 
 /** 分析阶段顺序 */
 const PHASE_ORDER = ["analysts", "debate", "trader", "risk"];
@@ -85,8 +80,8 @@ interface AnalystReadyCard {
 const FULL_ANALYSTS: AnalystReadyCard[] = [
   { icon: <LineChartOutlined />, name: "技术面分析师", color: "#3b82f6", description: "分析K线形态、均线系统、MACD/KDJ信号", status: "ready" },
   { icon: <FundOutlined />, name: "基本面分析师", color: "#8b5cf6", description: "评估财务指标、估值水平、盈利能力", status: "ready" },
-  { icon: <ReadOutlined />, name: "新闻舆情哨兵", color: "#f59e0b", description: "扫描 7 日新闻，识别利好/利空舆情信号", status: "waiting" },
-  { icon: <SafetyCertificateOutlined />, name: "风险评估官", color: "#ef4444", description: "多维度量化风险，给出安全边际建议", status: "waiting" },
+  { icon: <ReadOutlined />, name: "新闻舆情哨兵", color: "#f59e0b", description: "扫描 7 日新闻，识别利好/利空舆情信号", status: "ready" },
+  { icon: <SafetyCertificateOutlined />, name: "风险评估官", color: "#ef4444", description: "多维度量化风险，给出安全边际建议", status: "ready" },
 ];
 
 const QUICK_ANALYSTS: AnalystReadyCard[] = [
@@ -242,6 +237,8 @@ const StockAnalysisPage: React.FC = () => {
   const store = useStockAnalysisStore();
   const navigate = useNavigate();
   const abortRef = useRef<AbortController | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRecordIdRef = useRef<string>("");
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [historyItems] = useState<any[]>([]);
   const [starting, setStarting] = useState(false);
@@ -249,56 +246,105 @@ const StockAnalysisPage: React.FC = () => {
   const [collapsedPhases, setCollapsedPhases] = useState<string[]>([]);
   const [activePhase, setActivePhase] = useState<string>("analysts");
   const [doneActiveTab, setDoneActiveTab] = useState("overview");
+  const [phaseTransition, setPhaseTransition] = useState<{ from: string; to: string } | null>(null);
+  const prevPhaseRef = useRef<string>("");
 
-  // 查看模式：从 URL recordId 加载存档数据
+  // 记录当前分析中的股票（从接口拉取）
+  const [currentAnalyzing, setCurrentAnalyzing] = useState<{ code: string; name: string; recordId: string } | null>(null);
+
+  // idle 时从接口拉取正在分析中的记录
   useEffect(() => {
-    const recordId = searchParams.get("recordId");
-    if (!recordId || store.viewMode) return;
+    if (!store.analysisState || store.analysisState !== "idle") return;
 
-    const loadRecord = async () => {
+    const fetchAnalyzing = async () => {
       try {
-        const record = await getAnalysisRecord(recordId);
-        const ad = record.analysis_data || {};
-        const agents = ad.agents || {};
-        const debates = ad.debates || [];
-        const decision = ad.decision || null;
-
-        // 构建 agentReports
-        const agentReports: Record<string, string> = {};
-        const agentCompletedAt: Record<string, number> = {};
-        for (const [key, val] of Object.entries(agents)) {
-          const v = val as { summary?: string; full_report?: string; completed_at?: number };
-          if (v.summary || v.full_report) {
-            agentReports[key + "_analyst"] = v.summary || v.full_report || "";
+        const res = await stockAnalysisService.listAnalysisRecords({ status: "in_progress", page: 1, pageSize: 1 });
+        if (res.items && res.items.length > 0) {
+          const item = res.items[0];
+          const stock = item.stocks?.[0];
+          if (stock) {
+            setCurrentAnalyzing({
+              code: stock.code,
+              name: stock.name,
+              recordId: item.id,
+            });
           }
-          if (v.completed_at) {
-            agentCompletedAt[key + "_analyst"] = v.completed_at;
-          }
+        } else {
+          setCurrentAnalyzing(null);
         }
-
-        // 设置股票信息
-        const stockInfo = record.stocks?.[0];
-        if (stockInfo) {
-          useStockAnalysisStore.getState().setStock(stockInfo.code, stockInfo.name);
-        }
-
-        store.loadFromRecord({
-          recordId: record.id,
-          title: record.title || ad.title || "",
-          summary: record.summary || ad.summary || "",
-          industries: ad.industries || [],
-          agentReports,
-          debates,
-          decision: decision as any,
-          agentCompletedAt,
-          analysisMode: (record.analysis_mode || ad.mode) as AnalysisMode,
-        });
-      } catch (err) {
-        console.error("加载分析记录失败:", err);
+      } catch {
+        setCurrentAnalyzing(null);
       }
     };
-    loadRecord();
+
+    fetchAnalyzing();
+    // 每 3 秒轮询一次，保持状态同步
+    const timer = setInterval(fetchAnalyzing, 3000);
+    return () => clearInterval(timer);
+  }, [store.analysisState]);
+
+  // 页面挂载时：如果有 recordId 则加载记录，否则强制 reset 到 idle（确保每次进入都是新分析入口）
+  useEffect(() => {
+    const recordId = searchParams.get("recordId");
+    if (recordId) {
+      // 从记录加载模式
+      const loadRecord = async () => {
+        try {
+          const record = await getAnalysisRecord(recordId);
+          const ad = record.analysis_data || {};
+          const agents = ad.agents || {};
+          const debates = ad.debates || [];
+          const decision = ad.decision || null;
+
+          // 构建 agentReports
+          const agentReports: Record<string, string> = {};
+          const agentCompletedAt: Record<string, number> = {};
+          for (const [key, val] of Object.entries(agents)) {
+            const v = val as { summary?: string; full_report?: string; completed_at?: number };
+            if (v.summary || v.full_report) {
+              agentReports[key + "_analyst"] = v.summary || v.full_report || "";
+            }
+            if (v.completed_at) {
+              agentCompletedAt[key + "_analyst"] = v.completed_at;
+            }
+          }
+
+          // 设置股票信息
+          const stockInfo = record.stocks?.[0];
+          if (stockInfo) {
+            useStockAnalysisStore.getState().setStock(stockInfo.code, stockInfo.name);
+          }
+
+          store.loadFromRecord({
+            recordId: record.id,
+            title: record.title || ad.title || "",
+            summary: record.summary || ad.summary || "",
+            fullContent: record.content || "",
+            industries: ad.industries || [],
+            agentReports,
+            debates,
+            decision: decision as any,
+            agentCompletedAt,
+            analysisMode: (record.analysis_mode || ad.mode) as AnalysisMode,
+            status: record.status,
+          });
+        } catch (err) {
+          console.error("加载分析记录失败:", err);
+        }
+      };
+      loadRecord();
+    } else {
+      // 无 recordId → 强制 reset 到 idle（每次进入都是新分析入口）
+      store.reset();
+    }
   }, [searchParams]);
+
+  const isIdle = store.analysisState === "idle";
+  const isRunning = store.analysisState === "running";
+  const isDone = store.analysisState === "done";
+  const isError = store.analysisState === "error";
+  const isQuickMode = store.analysisMode === AnalysisMode.QUICK;
+  const isViewMode = store.viewMode;
 
   // Fetch data source info when stock code changes
   useEffect(() => {
@@ -314,12 +360,84 @@ const StockAnalysisPage: React.FC = () => {
       });
   }, [store.stockCode, store.setDataSource]);
 
-  const isIdle = store.analysisState === "idle";
-  const isRunning = store.analysisState === "running";
-  const isDone = store.analysisState === "done";
-  const isError = store.analysisState === "error";
-  const isQuickMode = store.analysisMode === AnalysisMode.QUICK;
-  const isViewMode = store.viewMode;
+  // 轮询机制：分析进行中时定期拉取最新进度
+  useEffect(() => {
+    if (!isRunning || !store.viewRecordId) return;
+
+    // 清除旧定时器
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+
+    pollRecordIdRef.current = store.viewRecordId;
+
+    // 立即拉一次
+    stockAnalysisService.getAnalysisProgress(store.viewRecordId)
+      .then((progress) => {
+        const st = useStockAnalysisStore.getState();
+        st.loadRunningState({
+          currentPhase: progress.current_phase || "analysts",
+          agents: progress.agents || {},
+          debates: progress.debates || [],
+          decision: progress.decision,
+          title: progress.title || "",
+          summary: progress.summary || "",
+          industries: progress.industries || [],
+        });
+        if (progress.status === "done") {
+          // 获取完整报告内容
+          getAnalysisRecord(pollRecordIdRef.current)
+            .then((record) => {
+              if (record?.content) {
+                useStockAnalysisStore.getState().setFullContent(record.content);
+              }
+            })
+            .catch(() => {});
+          useStockAnalysisStore.setState({ analysisState: "done" });
+          useStockAnalysisStore.getState().triggerHistoryRefresh();
+          setCurrentAnalyzing(null);
+        }
+      })
+      .catch(() => {
+        // 静默失败
+      });
+
+    // 每 3 秒轮询
+    pollTimerRef.current = setInterval(() => {
+      stockAnalysisService.getAnalysisProgress(pollRecordIdRef.current)
+        .then((progress) => {
+          const st = useStockAnalysisStore.getState();
+          st.loadRunningState({
+            currentPhase: progress.current_phase || "analysts",
+            agents: progress.agents || {},
+            debates: progress.debates || [],
+            decision: progress.decision,
+            title: progress.title || "",
+            summary: progress.summary || "",
+            industries: progress.industries || [],
+          });
+          if (progress.status === "done") {
+            // 获取完整报告内容
+            getAnalysisRecord(pollRecordIdRef.current)
+              .then((record) => {
+                if (record?.content) {
+                  useStockAnalysisStore.getState().setFullContent(record.content);
+                }
+              })
+              .catch(() => {});
+            useStockAnalysisStore.setState({ analysisState: "done" });
+            useStockAnalysisStore.getState().triggerHistoryRefresh();
+            setCurrentAnalyzing(null);
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          }
+        })
+        .catch(() => {
+          // 静默失败
+        });
+    }, 3000);
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [isRunning, store.viewRecordId]);
 
   /** 发起分析 */
   const handleStart = useCallback(async () => {
@@ -342,6 +460,17 @@ const StockAnalysisPage: React.FC = () => {
         analysis_mode: store.analysisMode,
       });
 
+      // 获取最近创建的分析记录 ID，用于轮询恢复
+      try {
+        const recent = await stockAnalysisService.checkRecentAnalysis(store.stockCode, 1);
+        if (recent.has_recent && recent.article_id) {
+          useStockAnalysisStore.setState({ viewRecordId: recent.article_id });
+          pollRecordIdRef.current = recent.article_id;
+        }
+      } catch {
+        // 静默失败，不影响正常流程
+      }
+
       await stockAnalysisService.streamStockAnalysis(
         session.id,
         {
@@ -355,6 +484,18 @@ const StockAnalysisPage: React.FC = () => {
           switch (event.type) {
             case "agent_status":
               st.updateAgentStatus(event.data as AgentStatusEvent);
+              // 阶段完成时触发过渡
+              if ((event.data as AgentStatusEvent).status === "done") {
+                const phase = (event.data as AgentStatusEvent).phase;
+                if (phase && phase !== st.currentPhase) {
+                  const prev = st.currentPhase;
+                  setPhaseTransition({ from: prev, to: phase });
+                  setCollapsedPhases((p) => p.includes(prev) ? p : [...p, prev]);
+                  setActivePhase(phase);
+                  st.setCurrentPhase(phase);
+                  setTimeout(() => setPhaseTransition(null), 3000);
+                }
+              }
               break;
             case "thinking":
               st.addThinkingStep(event.data as ThinkingStepData);
@@ -384,6 +525,20 @@ const StockAnalysisPage: React.FC = () => {
               st.setIndustries(event.data as string[]);
               break;
             case "done":
+              if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+              // 获取完整报告内容
+              {
+                const recordId = useStockAnalysisStore.getState().viewRecordId;
+                if (recordId) {
+                  getAnalysisRecord(recordId)
+                    .then((record) => {
+                      if (record?.content) {
+                        useStockAnalysisStore.getState().setFullContent(record.content);
+                      }
+                    })
+                    .catch(() => {});
+                }
+              }
               useStockAnalysisStore.setState({ analysisState: "done" });
               useStockAnalysisStore.getState().triggerHistoryRefresh();
               break;
@@ -408,6 +563,7 @@ const StockAnalysisPage: React.FC = () => {
       cancelText: "继续分析",
       onOk: () => {
         abortRef.current?.abort();
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         useStockAnalysisStore.setState({ analysisState: "done" });
       },
     });
@@ -420,12 +576,31 @@ const StockAnalysisPage: React.FC = () => {
       okText: "确认",
       cancelText: "取消",
       onOk: () => {
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         store.reset();
       },
     });
   }, [store]);
 
   const currentPhaseIndex = PHASE_ORDER.indexOf(store.currentPhase);
+
+  // 阶段变化时显示过渡提示
+  useEffect(() => {
+    if (!isRunning || !store.currentPhase) return;
+    const prev = prevPhaseRef.current;
+    const curr = store.currentPhase;
+    if (prev && prev !== curr) {
+      setPhaseTransition({ from: prev, to: curr });
+      // 自动收起已完成阶段
+      setCollapsedPhases((p) => p.includes(prev) ? p : [...p, prev]);
+      // 自动切换到当前阶段
+      setActivePhase(curr);
+      // 3秒后清除过渡提示
+      const timer = setTimeout(() => setPhaseTransition(null), 3000);
+      return () => clearTimeout(timer);
+    }
+    prevPhaseRef.current = curr;
+  }, [store.currentPhase, isRunning]);
 
   /** 按阶段渲染内容 */
   const renderPhaseContent = (phase: string) => {
@@ -528,6 +703,40 @@ const StockAnalysisPage: React.FC = () => {
               </h1>
               <span style={{ fontSize: 13, color: "#8c8c8c" }}>选择标的和分析模式</span>
             </div>
+
+            {/* 当前分析中的股票提示 */}
+            {currentAnalyzing && (
+              <div style={{
+                padding: "12px 16px",
+                borderRadius: 10,
+                background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                border: "1px solid #fde68a",
+                marginBottom: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Spin size="small" />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#92400e" }}>
+                      正在分析：{currentAnalyzing.name}({currentAnalyzing.code})
+                    </div>
+                    <div style={{ fontSize: 12, color: "#a16207", marginTop: 2 }}>
+                      分析进行中，点击查看实时进度
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => navigate(`/stock-analysis?recordId=${currentAnalyzing.recordId}`)}
+                  style={{ borderRadius: 4, flexShrink: 0 }}
+                >
+                  查看进度
+                </Button>
+              </div>
+            )}
 
             {/* 标的搜索 */}
             <div style={{ marginBottom: 24 }}>
@@ -638,16 +847,6 @@ const StockAnalysisPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* 历史快捷入口 */}
-              {store.stockCode && (
-                <HistoryQuickEntry
-                  stockCode={store.stockCode}
-                  onSelect={(recordId) => {
-                    navigate(`/stock-analysis?recordId=${recordId}`);
-                  }}
-                />
-              )}
             </div>
           </div>
         </div>
@@ -720,8 +919,41 @@ const StockAnalysisPage: React.FC = () => {
         {/* ===== Running 态：三栏布局 ===== */}
         {isRunning && (
           <>
+            {/* 阶段完成过渡提示 */}
+            {phaseTransition && (
+              <div style={{
+                position: "absolute",
+                top: 0,
+                left: 280,
+                right: 280,
+                zIndex: 100,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "8px 0",
+                background: "linear-gradient(180deg, #f0fdf4 0%, transparent 100%)",
+                pointerEvents: "none",
+              }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 16px",
+                  borderRadius: 20,
+                  background: "#fff",
+                  border: "1px solid #bbf7d0",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                }}>
+                  <CheckCircleOutlined style={{ fontSize: 14, color: "#52c41a" }} />
+                  <span style={{ fontSize: 12, color: "#166534", fontWeight: 500 }}>
+                    {ANALYSIS_PHASE_LABELS[phaseTransition.from] || phaseTransition.from} 已完成，正在进入 {ANALYSIS_PHASE_LABELS[phaseTransition.to] || phaseTransition.to}...
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* 左栏：阶段导航 */}
-            <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid #e5edf5", overflowY: "auto", padding: "16px 12px", background: "#fafbfc" }}>
+            <div style={{ width: 280, flexShrink: 0, borderRight: "1px solid #e5edf5", overflowY: "auto", padding: "16px 12px", background: "#fafbfc" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
                 <ThunderboltOutlined style={{ color: "#533afd", fontSize: 14 }} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#273951" }}>分析阶段</span>
@@ -753,7 +985,37 @@ const StockAnalysisPage: React.FC = () => {
             </div>
 
             {/* 中栏：当前阶段内容 */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56 }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56, maxWidth: 900, margin: "0 auto" }}>
+              {/* 动态进度条 */}
+              {(() => {
+                const totalAgents = isQuickMode ? 2 : 4;
+                const completedAgents = Object.values(store.agentStatuses).filter(s => s === "done").length;
+                const runningAgent = Object.entries(store.agentStatuses).find(([, s]) => s === "running");
+                const percent = Math.min(Math.round((completedAgents / totalAgents) * 100), 90);
+                const currentAgentName = runningAgent ? AGENT_DISPLAY_NAMES[runningAgent[0]] : null;
+
+                if (completedAgents === 0 && !runningAgent) return null;
+
+                return (
+                  <div style={{ marginBottom: 20, padding: "16px 20px", background: "#fff", borderRadius: 8, border: "1px solid #e8e0ff" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: 500, color: "#273951" }}>
+                        {currentAgentName ? `${currentAgentName}正在分析中...` : "正在初始化分析流程..."}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: "#8c8c8c" }}>
+                        已完成 {completedAgents}/{totalAgents} 位分析师
+                      </Text>
+                    </div>
+                    <Progress
+                      percent={percent}
+                      showInfo={false}
+                      strokeColor={{ "0%": "#533afd", "100%": "#8b5cf6" }}
+                      trailColor="#f0f0f0"
+                    />
+                  </div>
+                );
+              })()}
+
               {/* 加载初始态 */}
               {Object.keys(store.agentStatuses).length === 0 && store.thinkingSteps.length === 0 && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
@@ -829,7 +1091,7 @@ const StockAnalysisPage: React.FC = () => {
             </div>
 
             {/* 右栏：Agent 进度（原侧边栏保留） */}
-            <div style={{ width: 240, flexShrink: 0, borderLeft: "1px solid #e5edf5", overflowY: "auto", padding: "8px 12px", background: "#fafbfc", paddingBottom: 48 }}>
+            <div style={{ width: 280, flexShrink: 0, borderLeft: "1px solid #e5edf5", overflowY: "auto", padding: "8px 12px", background: "#fafbfc", paddingBottom: 48 }}>
               <Text style={{ fontSize: 12, color: "#64748d", display: "block", marginBottom: 8, fontFeatureSettings: "'ss01' on" }}>
                 分析进度
               </Text>
@@ -842,7 +1104,7 @@ const StockAnalysisPage: React.FC = () => {
         {isDone && (
           <>
             {/* 左栏：阶段回顾导航 */}
-            <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid #e5edf5", overflowY: "auto", padding: "16px 12px", background: "#fafbfc" }}>
+            <div style={{ width: 280, flexShrink: 0, borderRight: "1px solid #e5edf5", overflowY: "auto", padding: "16px 12px", background: "#fafbfc" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
                 <CheckCircleOutlined style={{ color: "#52c41a", fontSize: 14 }} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#273951" }}>分析完成</span>
@@ -876,7 +1138,7 @@ const StockAnalysisPage: React.FC = () => {
             </div>
 
             {/* 中栏：内容区（Tab 组织） */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56 }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56, maxWidth: 900, margin: "0 auto" }}>
               {/* 浓缩结论卡片（置顶） */}
               {store.decision && (
                 <div style={{ marginBottom: 20 }}>
@@ -1009,12 +1271,27 @@ const StockAnalysisPage: React.FC = () => {
                   {
                     key: "detail",
                     label: <span><FileTextOutlined style={{ marginRight: 4 }} />完整报告</span>,
-                    children: (
+                    children: store.fullContent ? (
                       <div style={{ padding: "16px 0" }}>
-                        {Object.entries(store.agentReports).map(([agent, summary]) => {
-                          if (isQuickMode && agent !== "market_analyst" && agent !== "fundamentals_analyst") return null;
-                          return <AgentReportCard key={agent} agent={agent} summary={summary} />;
+                        {store.fullContent.split("\n").filter(Boolean).map((line, i) => {
+                          if (line.startsWith("## ")) {
+                            return (
+                              <Title key={i} level={4} style={{ marginTop: 24, marginBottom: 8, color: "#273951" }}>
+                                {line.replace("## ", "")}
+                              </Title>
+                            );
+                          }
+                          return (
+                            <Paragraph key={i} style={{ fontSize: 14, color: "#061b31", lineHeight: 1.8, whiteSpace: "pre-wrap", marginBottom: 8 }}>
+                              {line}
+                            </Paragraph>
+                          );
                         })}
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: "center", padding: 40 }}>
+                        <FileTextOutlined style={{ fontSize: 32, color: "#d9d9d9", marginBottom: 8 }} />
+                        <div style={{ fontSize: 13, color: "#8c8c8c" }}>暂无完整报告，请重新发起分析</div>
                       </div>
                     ),
                   },
@@ -1058,8 +1335,8 @@ const StockAnalysisPage: React.FC = () => {
           style={{
             position: "absolute",
             bottom: 0,
-            left: (isRunning || isDone) ? 220 : 0,
-            right: isRunning ? 240 : 0,
+            left: (isRunning || isDone) ? 280 : 0,
+            right: (isRunning) ? 280 : 0,
             textAlign: "center",
             padding: "8px 0",
             background: "linear-gradient(transparent, #ffffff 30%)",

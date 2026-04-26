@@ -242,6 +242,12 @@ class MySQLArticleRepository(ArticleRepository):
         return (await self.session.execute(stmt)).scalar() or 0
 
     async def update_analysis_data(self, article_id: str, analysis_data: dict, status: str) -> None:
+        """增量更新分析数据，并立即 commit 使外部查询可见。
+
+        注意：此处使用 commit() 而非 flush()，是因为分析过程中需要通过轮询
+        接口（/records/{id}/progress）读取中间进度，flush 的数据在事务内对外部不可见。
+        即使后续分析失败，已提交的中间数据也应保留。
+        """
         stmt = select(ArticleModel).where(ArticleModel.article_id == article_id)
         result = await self.session.execute(stmt)
         model = result.scalar_one_or_none()
@@ -249,6 +255,19 @@ class MySQLArticleRepository(ArticleRepository):
             model.analysis_data = analysis_data
             model.status = status
             await self.session.flush()
+            await self.session.commit()
+
+    async def update(self, article_id: str, **fields) -> None:
+        """更新文章字段（如 title, summary, content），直接 commit 使外部可见。"""
+        stmt = select(ArticleModel).where(ArticleModel.article_id == article_id)
+        result = await self.session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model:
+            for key, value in fields.items():
+                if hasattr(model, key):
+                    setattr(model, key, value)
+            await self.session.flush()
+            await self.session.commit()
 
     async def list_analysis_records(
         self,

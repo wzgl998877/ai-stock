@@ -1,4 +1,4 @@
-"""金融数据工具集 — 数据库优先 + AKShare 降级（含 BaoStock 降级 + 超时重试 + 缓存）"""
+"""金融数据工具集 — 数据库优先 + Tushare 降级 + BaoStock 保底"""
 
 import json
 import logging
@@ -46,6 +46,58 @@ def _get_sync_engine():
         _sync_session_factory = sessionmaker(bind=_sync_engine)
         logger.info("[DB] 同步数据库引擎初始化完成")
     return _sync_engine, _sync_session_factory
+
+
+def _get_tushare_token() -> Optional[str]:
+    """从数据库获取 Tushare Token（同步版本）。"""
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+        from app.core.config import settings
+        from app.infrastructure.db.models import DataSourceConfigModel
+
+        engine, factory = _get_sync_engine()
+        with factory() as session:
+            stmt = session.query(DataSourceConfigModel).filter(
+                DataSourceConfigModel.source_type == "tushare",
+                DataSourceConfigModel.is_enabled == True,
+            ).first()
+
+            if not stmt or not stmt.api_key:
+                logger.debug("[Tushare] 未配置 Tushare Token")
+                return None
+
+            encrypted_key = stmt.api_key
+            # 解密
+            key = settings.datasource_encryption_key or ""
+            if key:
+                try:
+                    fernet = Fernet(key.encode())
+                    return fernet.decrypt(encrypted_key.encode()).decode()
+                except InvalidToken:
+                    # 可能为旧明文数据
+                    return encrypted_key
+            else:
+                # 未配置加密密钥，直接返回
+                return encrypted_key
+    except Exception as e:
+        logger.warning("[Tushare] 获取 Token 失败: %s", e)
+        return None
+
+
+def _to_ts_code(code: str) -> str:
+    """将纯数字股票代码转换为 Tushare ts_code 格式。"""
+    if "." in code:
+        return code
+    if not code:
+        return code
+    first = code[0]
+    if first in ("6",):
+        return f"{code}.SH"
+    elif first in ("0", "3"):
+        return f"{code}.SZ"
+    elif first in ("4", "8"):
+        return f"{code}.BJ"
+    return code
 
 
 def _query_db_quote(code: str) -> Optional[dict]:
@@ -185,7 +237,128 @@ def _query_db_financial(code: str) -> Optional[List[dict]]:
 
 
 # ============================================================
-# 重试 & 缓存辅助
+# Tushare 降级调用
+# ============================================================
+
+def _tushare_quote(code: str) -> Optional[dict]:
+    """通过 Tushare 获取实时行情（单只股票）。"""
+    try:
+        import tushare as ts
+
+        token = _get_tushare_token()
+        if not token:
+            logger.debug("[Tushare] Token 未配置")
+            return None
+
+        ts.set_token(token)
+        pro = ts.pro_api()
+
+        ts_code = _to_ts_code(code)
+        df = pro.rt_k(ts_code=ts_code)
+        if df is None or df.empty:
+            logger.debug("[Tushare] rt_k 返回空: %s", ts_code)
+            return None
+
+        row = df.iloc[0]
+        return {
+            "code": code,
+            "price": row.get("close", ""),
+            "change_pct": row.get("pct_chg", ""),
+            "change_amount": row.get("change", ""),
+            "volume": row.get("vol", ""),
+            "amount": row.get("amount", ""),
+            "open": row.get("open", ""),
+            "high": row.get("high", ""),
+            "low": row.get("low", ""),
+            "pre_close": row.get("pre_close", ""),
+        }
+    except Exception as e:
+        logger.warning("[Tushare] 实时行情获取失败: %s", e)
+        return None
+
+
+def _tushare_history(code: str, days: int = 60) -> Optional[List[dict]]:
+    """通过 Tushare 获取历史日K线数据。"""
+    try:
+        import tushare as ts
+        from datetime import date, timedelta
+
+        token = _get_tushare_token()
+        if not token:
+            return None
+
+        ts.set_token(token)
+        pro = ts.pro_api()
+
+        ts_code = _to_ts_code(code)
+        start_date = (date.today() - timedelta(days=days * 2)).strftime("%Y%m%d")
+        end_date = date.today().strftime("%Y%m%d")
+
+        df = pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        if df is None or df.empty:
+            return None
+
+        df = df.head(days)
+        records = df.to_dict(orient="records")
+        return [
+            {
+                "日期": str(r.get("trade_date", "")),
+                "开盘": str(r.get("open", "")),
+                "最高": str(r.get("high", "")),
+                "最低": str(r.get("low", "")),
+                "收盘": str(r.get("close", "")),
+                "前收盘": str(r.get("pre_close", "")),
+                "成交量": str(r.get("vol", "")),
+                "成交额": str(r.get("amount", "")),
+                "涨跌幅": str(r.get("pct_chg", "")),
+                "data_source": "tushare",
+            }
+            for r in records
+        ]
+    except Exception as e:
+        logger.warning("[Tushare] 历史K线获取失败: %s", e)
+        return None
+
+
+def _tushare_financial(code: str) -> Optional[List[dict]]:
+    """通过 Tushare 获取财务指标数据。"""
+    try:
+        import tushare as ts
+
+        token = _get_tushare_token()
+        if not token:
+            return None
+
+        ts.set_token(token)
+        pro = ts.pro_api()
+
+        ts_code = _to_ts_code(code)
+        df = pro.fina_indicator(ts_code=ts_code)
+        if df is None or df.empty:
+            return None
+
+        df = df.head(4)  # 最近4个报告期
+        records = df.to_dict(orient="records")
+        return [
+            {
+                "报告日期": str(r.get("end_date", "")),
+                "ROE": str(r.get("roe", "")),
+                "净利润": str(r.get("n_profit", "")),
+                "营业收入": str(r.get("revenue", "")),
+                "每股收益": str(r.get("basic_eps", "")),
+                "毛利率": str(r.get("gross_margin", "")),
+                "资产负债率": str(r.get("debt_ratio", "")),
+                "data_source": "tushare",
+            }
+            for r in records
+        ]
+    except Exception as e:
+        logger.warning("[Tushare] 财务数据获取失败: %s", e)
+        return None
+
+
+# ============================================================
+# 重试辅助
 # ============================================================
 
 def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
@@ -203,26 +376,10 @@ def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
     raise last_error
 
 
-def _get_spot_df():
-    """获取全市场行情 DataFrame（带缓存，5分钟TTL）"""
-    global _spot_cache, _spot_cache_time
-
-    now = time.time()
-    if _spot_cache is not None and (now - _spot_cache_time) < _SPOT_CACHE_TTL:
-        return _spot_cache
-
-    import akshare as ak
-    df = ak.stock_zh_a_spot_em()
-    _spot_cache = df
-    _spot_cache_time = now
-    logger.info("[行情缓存] 刷新，共 %d 条", len(df))
-    return df
-
-
 # === 工具函数实现 ===
 
 def _fetch_stock_quote(stock_code: str) -> str:
-    """获取股票实时/最新行情数据（数据库优先 + AKShare 降级）"""
+    """获取股票实时/最新行情数据（数据库优先 + Tushare 降级 + BaoStock 保底）"""
     t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
@@ -246,55 +403,35 @@ def _fetch_stock_quote(stock_code: str) -> str:
         }
         return json.dumps(result, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_quote] 数据库无数据，尝试 AKShare: code=%s", stock_code)
+    logger.info("[fetch_stock_quote] 数据库无数据，尝试 Tushare: code=%s", stock_code)
 
-    # === 2. AKShare 查询 ===
-    try:
-        import akshare as ak
+    # === 2. Tushare 查询 ===
+    tushare_data = _tushare_quote(stock_code)
+    if tushare_data:
+        logger.info("[耗时] _fetch_stock_quote(Tushare): %.3fs, code=%s", time.time() - t0, stock_code)
+        result = {
+            "代码": stock_code,
+            "最新价": str(tushare_data["price"]),
+            "涨跌幅": str(tushare_data["change_pct"]),
+            "涨跌额": str(tushare_data["change_amount"]),
+            "成交量": str(tushare_data["volume"]),
+            "成交额": str(tushare_data["amount"]),
+            "最高": str(tushare_data["high"]),
+            "最低": str(tushare_data["low"]),
+            "今开": str(tushare_data["open"]),
+            "昨收": str(tushare_data["pre_close"]),
+            "数据来源": "Tushare",
+        }
+        return json.dumps(result, ensure_ascii=False, indent=2)
 
-        # 优先使用缓存的全市场行情
-        try:
-            df = _get_spot_df()
-            row = df[df["代码"] == stock_code]
-            if not row.empty:
-                r = row.iloc[0]
-                result = {
-                    "代码": str(r.get("代码", "")),
-                    "名称": str(r.get("名称", "")),
-                    "最新价": str(r.get("最新价", "")),
-                    "涨跌幅": str(r.get("涨跌幅", "")),
-                    "涨跌额": str(r.get("涨跌额", "")),
-                    "成交量": str(r.get("成交量", "")),
-                    "成交额": str(r.get("成交额", "")),
-                    "振幅": str(r.get("振幅", "")),
-                    "最高": str(r.get("最高", "")),
-                    "最低": str(r.get("最低", "")),
-                    "今开": str(r.get("今开", "")),
-                    "昨收": str(r.get("昨收", "")),
-                    "量比": str(r.get("量比", "")),
-                    "换手率": str(r.get("换手率", "")),
-                    "市盈率-动态": str(r.get("市盈率-动态", "")),
-                    "市净率": str(r.get("市净率", "")),
-                    "总市值": str(r.get("总市值", "")),
-                    "流通市值": str(r.get("流通市值", "")),
-                }
-                logger.info("[耗时] _fetch_stock_quote(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
-                return json.dumps(result, ensure_ascii=False, indent=2)
-        except Exception as cache_err:
-            logger.warning("[fetch_stock_quote] 缓存读取失败，降级到直接查询: %s", cache_err)
-            global _spot_cache
-            _spot_cache = None
-    except ImportError:
-        logger.warning("[fetch_stock_quote] AKShare 未安装，尝试 BaoStock")
-    except Exception as e:
-        logger.error("[fetch_stock_quote] AKShare获取行情数据失败: %s，尝试BaoStock降级", e)
+    logger.info("[fetch_stock_quote] Tushare 不可用，尝试 BaoStock 降级")
 
     # === 3. BaoStock 降级 ===
     try:
         import baostock as bs
         lg = bs.login()
         if lg.error_code != '0':
-            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，AKShare不可用，BaoStock登录失败）"
+            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，Tushare不可用，BaoStock登录失败）"
 
         prefix = "sh" if stock_code.startswith(("6", "9")) else "sz"
         rs = bs.query_history_k_data_plus(
@@ -306,7 +443,7 @@ def _fetch_stock_quote(stock_code: str) -> str:
 
         if rs.error_code != '0':
             bs.logout()
-            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，AKShare不可用，BaoStock查询失败: {rs.error_msg}）"
+            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，Tushare不可用，BaoStock查询失败: {rs.error_msg}）"
 
         rows = []
         while (rs.error_code == '0') and rs.next():
@@ -315,7 +452,7 @@ def _fetch_stock_quote(stock_code: str) -> str:
         bs.logout()
 
         if not rows:
-            return f"未找到股票代码 {stock_code} 的行情数据（数据库无数据，AKShare不可用，BaoStock无数据）"
+            return f"未找到股票代码 {stock_code} 的行情数据（数据库无数据，Tushare不可用，BaoStock无数据）"
 
         last_row = rows[-1]
         result = {
@@ -328,17 +465,17 @@ def _fetch_stock_quote(stock_code: str) -> str:
             "成交量": last_row[6] if len(last_row) > 6 else "",
             "涨跌幅": last_row[9] if len(last_row) > 9 else "",
             "换手率": last_row[8] if len(last_row) > 8 else "",
-            "数据来源": "BaoStock(降级)",
+            "数据来源": "BaoStock(保底)",
         }
         return json.dumps(result, ensure_ascii=False, indent=2)
     except ImportError:
-        return f"未找到股票 {stock_code} 的行情数据：数据库无数据，AKShare未安装，BaoStock未安装"
+        return f"未找到股票 {stock_code} 的行情数据：数据库无数据，Tushare不可用，BaoStock未安装"
     except Exception as e2:
-        return f"获取行情数据失败: 数据库无数据，AKShare不可用，BaoStock({e2})"
+        return f"获取行情数据失败: 数据库无数据，Tushare不可用，BaoStock({e2})"
 
 
 def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60) -> str:
-    """获取股票历史K线数据（数据库优先 + AKShare 降级）"""
+    """获取股票历史K线数据（数据库优先 + Tushare 降级）"""
     t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
@@ -349,35 +486,20 @@ def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60)
                      stock_code, len(db_data), db_data[0].get("data_source"))
         return json.dumps(db_data, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_history] 数据库无数据，尝试 AKShare: code=%s", stock_code)
+    logger.info("[fetch_stock_history] 数据库无数据，尝试 Tushare: code=%s", stock_code)
 
-    # === 2. AKShare 查询 ===
-    try:
-        import akshare as ak
+    # === 2. Tushare 查询 ===
+    tushare_data = _tushare_history(stock_code, days)
+    if tushare_data:
+        logger.info("[耗时] _fetch_stock_history(Tushare): %.3fs, code=%s", time.time() - t0, stock_code)
+        return json.dumps(tushare_data, ensure_ascii=False, indent=2)
 
-        df = ak.stock_zh_a_hist(symbol=stock_code, period=period, adjust="qfq")
-        if df.empty:
-            return f"未找到股票代码 {stock_code} 的历史数据（数据库和AKShare均无数据）"
-
-        # 只取最近 days 天
-        df = df.tail(days)
-        records = df.to_dict(orient="records")
-        # 转换值为字符串以确保 JSON 可序列化
-        for record in records:
-            for key in record:
-                record[key] = str(record[key])
-
-        logger.info("[耗时] _fetch_stock_history(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
-        return json.dumps(records, ensure_ascii=False, indent=2)
-    except ImportError:
-        return "AKShare 未安装，无法获取历史数据（数据库也无数据）"
-    except Exception as e:
-        logger.error("[fetch_stock_history] 获取历史数据失败: %s", e)
-        return f"获取历史数据失败: {e}（数据库无数据，AKShare调用出错）"
+    # === 3. 都不可用 ===
+    return f"未找到股票代码 {stock_code} 的历史数据（数据库和Tushare均无数据，请确认已同步数据）"
 
 
 def _fetch_stock_financial(stock_code: str) -> str:
-    """获取股票财务指标数据（数据库优先 + AKShare 降级）"""
+    """获取股票财务指标数据（数据库优先 + Tushare 降级）"""
     t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
@@ -388,34 +510,24 @@ def _fetch_stock_financial(stock_code: str) -> str:
                      stock_code, len(db_data), db_data[0].get("data_source"))
         return json.dumps(db_data, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_financial] 数据库无数据，尝试 AKShare: code=%s", stock_code)
+    logger.info("[fetch_stock_financial] 数据库无数据，尝试 Tushare: code=%s", stock_code)
 
-    # === 2. AKShare 查询 ===
-    try:
-        import akshare as ak
+    # === 2. Tushare 查询 ===
+    tushare_data = _tushare_financial(stock_code)
+    if tushare_data:
+        logger.info("[耗时] _fetch_stock_financial(Tushare): %.3fs, code=%s", time.time() - t0, stock_code)
+        return json.dumps(tushare_data, ensure_ascii=False, indent=2)
 
-        # 获取个股财务指标
-        df = ak.stock_financial_abstract_ths(symbol=stock_code, indicator="按报告期")
-        if df.empty:
-            return f"未找到股票代码 {stock_code} 的财务数据（数据库和AKShare均无数据）"
-
-        df = df.head(4)  # 最近4个报告期
-        records = df.to_dict(orient="records")
-        for record in records:
-            for key in record:
-                record[key] = str(record[key])
-
-        logger.info("[耗时] _fetch_stock_financial(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
-        return json.dumps(records, ensure_ascii=False, indent=2)
-    except ImportError:
-        return "AKShare 未安装，无法获取财务数据（数据库也无数据）"
-    except Exception as e:
-        logger.error("[fetch_stock_financial] 获取财务数据失败: %s", e)
-        return f"获取财务数据失败: {e}（数据库无数据，AKShare调用出错）"
+    # === 3. 都不可用 ===
+    return f"未找到股票代码 {stock_code} 的财务数据（数据库和Tushare均无数据，请确认已同步数据）"
 
 
 def _fetch_stock_news(stock_code: str) -> str:
-    """获取个股最新新闻/公告数据"""
+    """获取个股最新新闻/公告数据
+
+    注意: Tushare 暂无好用的新闻接口，此处保留 AKShare 作为唯一来源。
+    如果 AKShare 不可用，则返回提示信息。
+    """
     t0 = time.time()
     try:
         import akshare as ak
@@ -436,8 +548,8 @@ def _fetch_stock_news(stock_code: str) -> str:
     except ImportError:
         return "AKShare 未安装，无法获取新闻数据"
     except Exception as e:
-        logger.error("[fetch_stock_news] 获取新闻数据失败: %s", e)
-        return f"获取新闻数据失败: {e}"
+        logger.warning("[fetch_stock_news] 获取新闻数据失败: %s", e)
+        return f"获取新闻数据失败: {e}（AKShare调用出错，新闻数据不可用）"
 
 
 # === LangChain Tool 定义 ===

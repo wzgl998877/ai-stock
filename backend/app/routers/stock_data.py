@@ -37,7 +37,7 @@ async def get_stock_basic(
 ):
     """Get stock basic information (highest priority source)."""
     # Check cache
-    cached = await redis_cache.get(f"stock:basic:{code}")
+    cached = redis_cache.get(f"stock:basic:{code}")
     if cached:
         return {"data": cached}
 
@@ -56,7 +56,7 @@ async def get_stock_basic(
     }
 
     # Cache for 24 hours
-    await redis_cache.set(f"stock:basic:{code}", result, ttl=86400)
+    redis_cache.set(f"stock:basic:{code}", result, ttl=86400)
 
     return {"data": result}
 
@@ -68,7 +68,7 @@ async def get_stock_quote(
 ):
     """Get latest market quote for a stock."""
     # Check cache
-    cached = await redis_cache.get(f"stock:quote:{code}")
+    cached = redis_cache.get(f"stock:quote:{code}")
     if cached:
         return {"data": cached}
 
@@ -94,7 +94,7 @@ async def get_stock_quote(
     }
 
     # Cache for 5 minutes
-    await redis_cache.set(f"stock:quote:{code}", result, ttl=300)
+    redis_cache.set(f"stock:quote:{code}", result, ttl=300)
 
     return {"data": result}
 
@@ -110,7 +110,7 @@ async def get_stock_daily(
     """Get historical K-line data."""
     # Build cache key
     cache_key = f"stock:daily:{code}:{start_date}:{end_date}:{period}"
-    cached = await redis_cache.get(cache_key)
+    cached = redis_cache.get(cache_key)
     if cached:
         return {"data": cached}
 
@@ -137,7 +137,7 @@ async def get_stock_daily(
     }
 
     # Cache for 24 hours
-    await redis_cache.set(cache_key, result, ttl=86400)
+    redis_cache.set(cache_key, result, ttl=86400)
 
     return {"data": result}
 
@@ -148,7 +148,7 @@ async def get_stock_financial(
     repo: StockDataRepository = Depends(_get_repo),
 ):
     """Get financial data for a stock."""
-    cached = await redis_cache.get(f"stock:financial:{code}")
+    cached = redis_cache.get(f"stock:financial:{code}")
     if cached:
         return {"data": cached}
 
@@ -173,6 +173,6 @@ async def get_stock_financial(
     }
 
     # Cache for 24 hours
-    await redis_cache.set(f"stock:financial:{code}", result, ttl=86400)
+    redis_cache.set(f"stock:financial:{code}", result, ttl=86400)
 
     return {"data": result}

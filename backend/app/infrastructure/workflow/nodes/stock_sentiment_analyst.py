@@ -91,6 +91,7 @@ def create_sentiment_analyst_node(ai_service, max_tool_calls: int = 3):
         # 最终获取完整分析报告
         t_stream = time.time()
         full_text = ""
+        content_queue = state.get("_content_queue")
         try:
             async for chunk in ai_service.stream_chat(
                 system_prompt="",
@@ -101,6 +102,8 @@ def create_sentiment_analyst_node(ai_service, max_tool_calls: int = 3):
             ):
                 if chunk.type == "content":
                     full_text += chunk.text
+                    if content_queue:
+                        await content_queue.put(chunk.text)
         except Exception as e:
             logger.error("[sentiment_analyst] stream_chat 失败: %s", e)
             full_text = f"情绪分析生成失败: {e}"

@@ -41,6 +41,7 @@ def create_research_manager_node(ai_service):
         deep_model = settings.llm_deep_model or None
 
         full_text = ""
+        content_queue = state.get("_content_queue")
         try:
             async for chunk in ai_service.stream_chat(
                 system_prompt="",
@@ -52,6 +53,8 @@ def create_research_manager_node(ai_service):
             ):
                 if chunk.type == "content":
                     full_text += chunk.text
+                    if content_queue:
+                        await content_queue.put(chunk.text)
         except Exception as e:
             logger.error("[research_manager] stream_chat 失败: %s", e)
             full_text = f"投资计划生成失败: {e}"

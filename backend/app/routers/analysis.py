@@ -9,6 +9,7 @@ from typing import AsyncGenerator, List
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.dtos.analysis_dto import (
@@ -242,8 +243,8 @@ async def list_analysis_records(
     db: AsyncSession = Depends(get_db),
 ):
     """获取分析记录列表"""
-    # TODO: 从认证上下文获取 user_id，暂时用固定值
-    user_id = "default_user"
+    # TODO: 从认证上下文获取 user_id，暂时用固定值（与 chat.py 保持一致）
+    user_id = "default"
 
     repo = MySQLArticleRepository(db)
     articles, total = await repo.list_analysis_records(
@@ -259,9 +260,10 @@ async def list_analysis_records(
         ad = a.analysis_data or {}
         mode = ad.get("mode", "full")
 
-        # 计算进度
-        agents_done = len([k for k, v in ad.get("agents", {}).items() if isinstance(v, dict) and v.get("status") == "done"])
-        total_agents = 2 if mode == "quick" else 12
+        # 计算进度：分析师阶段 4 个 agent（full 模式）或 2 个 agent（quick 模式）
+        agents = ad.get("agents", {})
+        total_agents = 4 if mode == "full" else 2
+        agents_done = len([k for k, v in agents.items() if isinstance(v, dict) and v.get("status") == "done"])
 
         items.append({
             "id": a.article_id,
@@ -312,6 +314,92 @@ async def get_analysis_record(record_id: str, db: AsyncSession = Depends(get_db)
         "stocks": [{"code": s.stock_code, "name": s.stock_name} for s in article.stocks],
         "industries": [{"code": i.industry_code} for i in article.industries],
         "analysis_data": ad,
+        "created_at": article.create_time.isoformat() if article.create_time else "",
+        "updated_at": article.update_time.isoformat() if article.update_time else "",
+    }
+
+
+@router.get("/records/{record_id}/progress")
+async def get_analysis_progress(record_id: str, db: AsyncSession = Depends(get_db)):
+    """获取分析进度（用于分析中断后轮询恢复）"""
+    from fastapi import HTTPException
+    from app.infrastructure.db.models import AnalysisArticle, ArticleStock
+
+    stmt = select(AnalysisArticle, ArticleStock).join(
+        ArticleStock, AnalysisArticle.article_id == ArticleStock.article_id, isouter=True
+    ).where(
+        AnalysisArticle.article_id == record_id,
+        AnalysisArticle.deleted == "0",
+    )
+    result = await db.execute(stmt)
+    rows = result.fetchall()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="分析记录不存在")
+
+    article, _ = rows[0]
+    ad = article.analysis_data or {}
+    mode = ad.get("mode", "full")
+
+    # 计算已完成阶段
+    agents = ad.get("agents", {})
+    agents_done = len([k for k, v in agents.items() if isinstance(v, dict) and v.get("status") == "done"])
+
+    phases = {
+        "analysts": {"done": False, "agents_done": 0, "agents_total": 2 if mode == "quick" else 4},
+        "debate": {"done": False, "rounds": 0},
+        "trader": {"done": False},
+        "risk": {"done": False},
+    }
+
+    if mode != "quick":
+        phases["analysts"]["agents_total"] = 4
+        # 分析师完成判断
+        expected = ["market", "fundamentals", "news", "sentiment"]
+        phases["analysts"]["agents_done"] = len([k for k in expected if agents.get(k, {}).get("status") == "done"])
+        phases["analysts"]["done"] = phases["analysts"]["agents_done"] >= phases["analysts"]["agents_total"]
+
+        # 辩论完成判断
+        if ad.get("debate", {}).get("rounds", 0) > 0 or ad.get("investment_plan"):
+            phases["debate"]["done"] = True
+            phases["debate"]["rounds"] = len(ad.get("debates", []))
+
+        # 交易员完成判断
+        if ad.get("decision", {}).get("action"):
+            phases["trader"]["done"] = True
+
+        # 风险完成判断
+        if ad.get("risk_debate"):
+            phases["risk"]["done"] = True
+    else:
+        expected = ["market", "fundamentals"]
+        phases["analysts"]["agents_done"] = len([k for k in expected if agents.get(k, {}).get("status") == "done"])
+        phases["analysts"]["done"] = phases["analysts"]["agents_done"] >= 2
+
+    # 当前进行中的阶段
+    current_phase = ad.get("current_phase", "analysts")
+
+    # 决定整体状态
+    if article.status == "completed":
+        overall_status = "done"
+    elif article.status == "stopped":
+        overall_status = "stopped"
+    else:
+        overall_status = "running"
+
+    return {
+        "id": article.article_id,
+        "status": overall_status,
+        "analysis_mode": mode,
+        "current_phase": current_phase,
+        "phases": phases,
+        "title": ad.get("title", ""),
+        "summary": ad.get("summary", ""),
+        "industries": ad.get("industries", []),
+        "decision": ad.get("decision"),
+        "debates": ad.get("debates", []),
+        "agents": {k: v for k, v in agents.items() if isinstance(v, dict)},
+        "stocks": [{"code": s.stock_code, "name": s.stock_name} for _, s in rows if s and s.stock_code],
         "created_at": article.create_time.isoformat() if article.create_time else "",
         "updated_at": article.update_time.isoformat() if article.update_time else "",
     }

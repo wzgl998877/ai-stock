@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AutoComplete, Typography, Tag } from "antd";
-import { SearchOutlined, StockOutlined } from "@ant-design/icons";
+import { SearchOutlined, StockOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
 import * as stockAnalysisService from "../../services/stockAnalysisService";
 import type { StockValidationResult } from "../../domain/types";
@@ -138,6 +138,14 @@ const StockSearchInput: React.FC = () => {
     }
   };
 
+  const handleClear = useCallback(() => {
+    setKeyword("");
+    setSelected(false);
+    setOptions([]);
+    setStock("", "");
+    setValidation(false, false);
+  }, [setStock, setValidation]);
+
   return (
     <div style={{ width: "100%" }}>
       <AutoComplete
@@ -177,15 +185,10 @@ const StockSearchInput: React.FC = () => {
           >
             {stockName} ({stockCode})
           </Tag>
-          <Text
-            style={{
-              fontSize: 12,
-              color: "#15be53",
-              fontFeatureSettings: "'ss01' on",
-            }}
-          >
-            已选择
-          </Text>
+          <CloseCircleOutlined
+            style={{ fontSize: 14, color: "#94a3b8", cursor: "pointer" }}
+            onClick={handleClear}
+          />
         </div>
       )}
     </div>

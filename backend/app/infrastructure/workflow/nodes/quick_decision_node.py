@@ -52,6 +52,7 @@ def create_quick_decision_node(ai_service):
         ]
 
         full_text = ""
+        content_queue = state.get("_content_queue")
         try:
             async for chunk in ai_service.stream_chat(
                 system_prompt="",
@@ -62,6 +63,8 @@ def create_quick_decision_node(ai_service):
             ):
                 if chunk.type == "content":
                     full_text += chunk.text
+                    if content_queue:
+                        await content_queue.put(chunk.text)
         except Exception as e:
             logger.error("[quick_decision] stream_chat 失败: %s", e)
             return _default_quick_result(f"快速决策生成失败: {e}")

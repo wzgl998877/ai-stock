@@ -46,12 +46,16 @@ interface StockAnalysisState {
   // 结果
   title: string;
   summary: string;
+  fullContent: string;
   industries: string[];
   error: string;
 
   // 查看模式（从记录回看）
   viewMode: boolean;
   viewRecordId: string;
+
+  // 上次分析中的股票（用于 idle 界面提示）
+  lastAnalyzingStock: { code: string; name: string; recordId: string } | null;
 
   // Actions
   setStock: (code: string, name: string) => void;
@@ -68,6 +72,7 @@ interface StockAnalysisState {
   updateStreamingContent: (agent: string, type: "content" | "reasoning", text: string) => void;
   setTitle: (title: string) => void;
   setSummary: (summary: string) => void;
+  setFullContent: (content: string) => void;
   setIndustries: (industries: string[]) => void;
   setError: (error: string) => void;
   setQuickResult: (result: QuickAnalysisResult) => void;
@@ -76,15 +81,28 @@ interface StockAnalysisState {
     recordId: string;
     title: string;
     summary: string;
+    fullContent?: string;
     industries: string[];
     agentReports: Record<string, string>;
     debates: DebateEvent[];
     decision: DecisionEvent | null;
     agentCompletedAt?: Record<string, number>;
     analysisMode?: AnalysisMode;
+    status?: string;  // 记录实际状态：in_progress / completed / stopped
+  }) => void;
+  loadRunningState: (data: {
+    currentPhase: string;
+    agents: Record<string, { status: string; summary?: string; full_report?: string }>;
+    debates: any[];
+    decision: any;
+    title: string;
+    summary: string;
+    industries: string[];
+    fullContent?: string;
   }) => void;
   setAnalysisState: (state: "idle" | "running" | "done" | "error") => void;
   setCurrentPhase: (phase: string) => void;
+  setLastAnalyzingStock: (stock: { code: string; name: string; recordId: string } | null) => void;
   reset: () => void;
 }
 
@@ -110,10 +128,12 @@ const initialState = {
   historyRefreshKey: 0,
   title: "",
   summary: "",
+  fullContent: "",
   industries: [],
   error: "",
   viewMode: false,
   viewRecordId: "",
+  lastAnalyzingStock: null,
 };
 
 export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
@@ -139,6 +159,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       quickAnalysisResult: null,
       title: "",
       summary: "",
+      fullContent: "",
       industries: [],
       error: "",
       dataSource: "",
@@ -189,6 +210,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
 
   setTitle: (title) => set({ title }),
   setSummary: (summary) => set({ summary }),
+  setFullContent: (content) => set({ fullContent: content }),
   setIndustries: (industries) => set({ industries }),
   setError: (error) => set({ analysisState: "error", error }),
 
@@ -197,11 +219,12 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
 
   loadFromRecord: (data) =>
     set({
-      analysisState: "done",
+      analysisState: data.status === "in_progress" || data.status === "running" ? "running" : "done",
       viewMode: true,
       viewRecordId: data.recordId,
       title: data.title || "",
       summary: data.summary || "",
+      fullContent: data.fullContent || "",
       industries: data.industries || [],
       agentReports: data.agentReports || {},
       debates: data.debates || [],
@@ -210,8 +233,45 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       analysisMode: data.analysisMode || AnalysisMode.FULL,
     }),
 
+  loadRunningState: (data: {
+    currentPhase: string;
+    agents: Record<string, { status: string; summary?: string; full_report?: string }>;
+    debates: any[];
+    decision: any;
+    title: string;
+    summary: string;
+    industries: string[];
+  }) =>
+    set((state) => {
+      const agentReports: Record<string, string> = { ...state.agentReports };
+      const agentStatuses: Record<string, string> = {};
+      for (const [key, val] of Object.entries(data.agents)) {
+        if (val.summary || val.full_report) {
+          agentReports[key] = val.summary || val.full_report || "";
+        }
+        agentStatuses[key] = val.status || "done";
+      }
+      return {
+        currentPhase: data.currentPhase || state.currentPhase,
+        agentReports,
+        agentStatuses,
+        debates: data.debates || state.debates,
+        decision: data.decision || state.decision,
+        title: data.title || state.title,
+        summary: data.summary || state.summary,
+        industries: data.industries || state.industries,
+      };
+    }),
+
   setAnalysisState: (state) => set({ analysisState: state }),
   setCurrentPhase: (phase) => set({ currentPhase: phase }),
+  setLastAnalyzingStock: (stock) => set({ lastAnalyzingStock: stock }),
 
-  reset: () => set(initialState),
+  reset: () => set((state) => ({
+    ...initialState,
+    lastAnalyzingStock: state.lastAnalyzingStock, // 保留上次分析股票信息
+    stockCode: state.stockCode, // 保留已选股票代码
+    stockName: state.stockName, // 保留已选股票名称
+    validationValid: state.validationValid,
+  })),
 }));

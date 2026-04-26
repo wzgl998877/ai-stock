@@ -123,3 +123,9 @@ export async function getAnalysisRecord(recordId: string): Promise<AnalysisRecor
   const res = await api.get(`${ANALYSIS_BASE}/records/${recordId}`);
   return res.data;
 }
+
+/** 获取分析进度（用于轮询恢复） */
+export async function getAnalysisProgress(recordId: string) {
+  const res = await api.get(`${ANALYSIS_BASE}/records/${recordId}/progress`);
+  return res.data;
+}
