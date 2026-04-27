@@ -1,11 +1,13 @@
 import React from "react";
-import { Card, Typography, Tag, Collapse } from "antd";
-import { CheckCircleFilled, CloseCircleFilled, LoadingOutlined, ClockCircleOutlined } from "@ant-design/icons";
+import { Card, Typography, Tag, Button } from "antd";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CheckCircleFilled, CloseCircleFilled, LoadingOutlined, ClockCircleOutlined, FileTextOutlined } from "@ant-design/icons";
 import { AGENT_DISPLAY_NAMES, AGENT_PROFILES } from "../../domain/constants";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
-import { extractFirstSentence, extractRemainingText, highlightNumbers } from "../../utils/textUtils";
+import { extractFirstSentence } from "../../utils/textUtils";
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 /** 格式化完成时间戳为 HH:mm */
 const formatTime = (ts?: number) => {
@@ -25,16 +27,17 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; labe
 interface AgentReportCardProps {
   agent: string;
   summary: string;
-  fullReport?: string;
   isRunning?: boolean;
   thinkingMessage?: string;
   dataSource?: string;
   gridMode?: boolean;
 }
 
-const AgentReportCard: React.FC<AgentReportCardProps> = ({ agent, summary, fullReport, isRunning, thinkingMessage, dataSource, gridMode }) => {
+const AgentReportCard: React.FC<AgentReportCardProps> = ({ agent, summary, isRunning, thinkingMessage, dataSource, gridMode }) => {
   const agentCompletedAt = useStockAnalysisStore((s) => s.agentCompletedAt);
   const agentStatuses = useStockAnalysisStore((s) => s.agentStatuses);
+  const agentFullReports = useStockAnalysisStore((s) => s.agentFullReports);
+  const setSelectedReportAgent = useStockAnalysisStore((s) => s.setSelectedReportAgent);
   const profile = AGENT_PROFILES[agent];
   const displayName = AGENT_DISPLAY_NAMES[agent] || agent;
   const colors = profile
@@ -46,7 +49,6 @@ const AgentReportCard: React.FC<AgentReportCardProps> = ({ agent, summary, fullR
 
   // 首句切分
   const headline = extractFirstSentence(summary);
-  const detail = extractRemainingText(summary);
 
   const cardStyle: React.CSSProperties = {
     borderRadius: 6,
@@ -154,54 +156,38 @@ const AgentReportCard: React.FC<AgentReportCardProps> = ({ agent, summary, fullR
         )}
       </div>
 
-      {/* 核心结论摘要行 — 加粗 + 数字高亮 */}
+      {/* 核心结论摘要行 — Markdown 渲染 */}
       {headline && (
-        <Paragraph
+        <div
+          className="markdown-body"
           style={{
             fontSize: 13,
             fontWeight: 500,
             color: "#061b31",
             lineHeight: 1.6,
-            margin: 0,
-            marginBottom: detail ? 0 : 8,
-            fontFeatureSettings: "'ss01' on",
+            marginBottom: 8,
           }}
         >
-          {highlightNumbers(headline)}
-        </Paragraph>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{headline}</ReactMarkdown>
+        </div>
       )}
 
-      {/* 推理详情 — 默认折叠 */}
-      {detail && (
-        <Collapse
-          ghost
-          size="small"
-          style={{ marginTop: 4 }}
-          items={[{
-            key: "detail",
-            label: <Text style={{ fontSize: 11, color: "#533afd", cursor: "pointer" }}>查看详细推理</Text>,
-            children: (
-              <Paragraph style={{ fontSize: 12, color: "#273951", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>
-                {highlightNumbers(detail)}
-              </Paragraph>
-            ),
-          }]}
-        />
-      )}
-
-      {/* 兜底：fullReport（后端扩展后启用） */}
-      {fullReport && fullReport !== summary && (
-        <Collapse
-          ghost
-          size="small"
-          style={{ marginTop: 4 }}
-          items={[{
-            key: "full",
-            label: <Text style={{ fontSize: 11, color: "#533afd", cursor: "pointer" }}>查看完整报告</Text>,
-            children: <Paragraph style={{ fontSize: 12, color: "#273951", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{fullReport}</Paragraph>,
-          }]}
-        />
-      )}
+      {/* 查看完整报告按钮 */}
+      {(() => {
+        const fullReport = agentFullReports[agent];
+        if (!fullReport || fullReport === summary) return null;
+        return (
+          <Button
+            type="link"
+            size="small"
+            icon={<FileTextOutlined />}
+            style={{ fontSize: 11, color: "#533afd", padding: 0, marginTop: 4, height: "auto" }}
+            onClick={() => setSelectedReportAgent(agent)}
+          >
+            查看完整报告
+          </Button>
+        );
+      })()}
     </Card>
   );
 };

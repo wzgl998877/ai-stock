@@ -214,6 +214,14 @@ export const AGENT_PHASE_MAPPING: Record<string, string> = {
   risk_judge: "risk",
 };
 
+/** 各阶段 Agent 的固定展示顺序 */
+export const PHASE_AGENT_ORDER: Record<string, string[]> = {
+  analysts: ["market_analyst", "fundamentals_analyst", "news_analyst", "sentiment_analyst"],
+  debate: ["bull_researcher", "bear_researcher", "research_manager"],
+  trader: ["trader"],
+  risk: ["risky_debator", "safe_debator", "neutral_debator", "risk_judge"],
+};
+
 export const ANALYSIS_PHASE_LABELS: Record<string, string> = {
   analysts: "分析师阶段",
   debate: "投资辩论",

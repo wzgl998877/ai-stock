@@ -58,6 +58,9 @@ interface StockAnalysisState {
   // 上次分析中的股票（用于 idle 界面提示）
   lastAnalyzingStock: { code: string; name: string; recordId: string } | null;
 
+  // 完整报告 Drawer
+  selectedReportAgent: string | null;
+
   // Actions
   setStock: (code: string, name: string) => void;
   setDataSource: (source: string) => void;
@@ -105,6 +108,7 @@ interface StockAnalysisState {
   setAnalysisState: (state: "idle" | "running" | "done" | "error") => void;
   setCurrentPhase: (phase: string) => void;
   setLastAnalyzingStock: (stock: { code: string; name: string; recordId: string } | null) => void;
+  setSelectedReportAgent: (agent: string | null) => void;
   reset: () => void;
 }
 
@@ -137,6 +141,7 @@ const initialState = {
   viewMode: false,
   viewRecordId: "",
   lastAnalyzingStock: null,
+  selectedReportAgent: null as string | null,
 };
 
 export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
@@ -278,6 +283,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
   setAnalysisState: (state) => set({ analysisState: state }),
   setCurrentPhase: (phase) => set({ currentPhase: phase }),
   setLastAnalyzingStock: (stock) => set({ lastAnalyzingStock: stock }),
+  setSelectedReportAgent: (agent) => set({ selectedReportAgent: agent }),
 
   reset: () => set((state) => ({
     ...initialState,

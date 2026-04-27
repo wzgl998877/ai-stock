@@ -25,6 +25,7 @@ import SystemStatusBar from "../components/stock-analysis/SystemStatusBar";
 import ModeSelectionCards from "../components/stock-analysis/ModeSelectionCards";
 import AgentProgressPanel from "../components/stock-analysis/AgentProgressPanel";
 import AgentReportCard from "../components/stock-analysis/AgentReportCard";
+import AgentReportDrawer from "../components/stock-analysis/AgentReportDrawer";
 import DebateTimeline from "../components/stock-analysis/DebateTimeline";
 import DecisionCard from "../components/stock-analysis/DecisionCard";
 import AnalysisHistoryList from "../components/stock-analysis/AnalysisHistoryList";
@@ -33,7 +34,9 @@ import RiskAssessmentSection from "../components/stock-analysis/RiskAssessmentSe
 import SummaryCard from "../components/stock-analysis/SummaryCard";
 import SectionHeader from "../components/stock-analysis/SectionHeader";
 import ThinkingChain from "../components/chat/ThinkingChain";
-import { AGENT_PROFILES, AGENT_DISPLAY_NAMES } from "../domain/constants";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { AGENT_PROFILES, AGENT_DISPLAY_NAMES, PHASE_AGENT_ORDER } from "../domain/constants";
 import { useStockAnalysisStore } from "../store/stockAnalysisStore";
 import * as stockAnalysisService from "../services/stockAnalysisService";
 import { getAnalysisRecord } from "../services/stockAnalysisService";
@@ -44,7 +47,7 @@ import {
 import { AnalysisMode } from "../domain/types";
 import type { StockSSEEvent, AgentStatusEvent, DebateEvent, DecisionEvent, AgentReportEvent, ThinkingStepData } from "../domain/types";
 
-const { Text, Title, Paragraph } = Typography;
+const { Text, Title } = Typography;
 
 /** 分析阶段顺序 */
 const PHASE_ORDER = ["analysts", "debate", "trader", "risk"];
@@ -621,20 +624,21 @@ const StockAnalysisPage: React.FC = () => {
         }
         return (
           <div>
-            {Object.entries(store.agentReports).map(([agent, summary]) => {
-              if (isQuickMode && agent !== "market_analyst" && agent !== "fundamentals_analyst") return null;
-              const profile = AGENT_PROFILES[agent];
-              return (
-                <AgentReportCard
-                  key={agent}
-                  agent={agent}
-                  summary={summary}
-                  fullReport={store.agentFullReports[agent] || summary}
-                  isRunning={store.agentStatuses[agent] === "running"}
-                  thinkingMessage={profile?.thinkingMessage}
-                />
-              );
-            })}
+            {PHASE_AGENT_ORDER.analysts
+              .filter((agent) => isQuickMode ? agent === "market_analyst" || agent === "fundamentals_analyst" : true)
+              .filter((agent) => store.agentReports[agent] || store.agentStatuses[agent])
+              .map((agent) => {
+                const profile = AGENT_PROFILES[agent];
+                return (
+                  <AgentReportCard
+                    key={agent}
+                    agent={agent}
+                    summary={store.agentReports[agent] || ""}
+                    isRunning={store.agentStatuses[agent] === "running"}
+                    thinkingMessage={profile?.thinkingMessage}
+                  />
+                );
+              })}
           </div>
         );
 
@@ -1234,10 +1238,12 @@ const StockAnalysisPage: React.FC = () => {
                     label: <span><TeamOutlined style={{ marginRight: 4 }} />分析师报告</span>,
                     children: Object.keys(store.agentReports).length > 0 ? (
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-                        {Object.entries(store.agentReports).map(([agent, summary]) => {
-                          if (isQuickMode && agent !== "market_analyst" && agent !== "fundamentals_analyst") return null;
-                          return <AgentReportCard key={agent} agent={agent} summary={summary} fullReport={store.agentFullReports[agent] || summary} gridMode />;
-                        })}
+                        {PHASE_AGENT_ORDER.analysts
+                          .filter((agent) => isQuickMode ? agent === "market_analyst" || agent === "fundamentals_analyst" : true)
+                          .filter((agent) => store.agentReports[agent])
+                          .map((agent) => (
+                            <AgentReportCard key={agent} agent={agent} summary={store.agentReports[agent]} gridMode />
+                          ))}
                       </div>
                     ) : (
                       <div style={{ textAlign: "center", padding: 40 }}>
@@ -1271,21 +1277,8 @@ const StockAnalysisPage: React.FC = () => {
                     key: "detail",
                     label: <span><FileTextOutlined style={{ marginRight: 4 }} />完整报告</span>,
                     children: store.fullContent ? (
-                      <div style={{ padding: "16px 0" }}>
-                        {store.fullContent.split("\n").filter(Boolean).map((line, i) => {
-                          if (line.startsWith("## ")) {
-                            return (
-                              <Title key={i} level={4} style={{ marginTop: 24, marginBottom: 8, color: "#273951" }}>
-                                {line.replace("## ", "")}
-                              </Title>
-                            );
-                          }
-                          return (
-                            <Paragraph key={i} style={{ fontSize: 14, color: "#061b31", lineHeight: 1.8, whiteSpace: "pre-wrap", marginBottom: 8 }}>
-                              {line}
-                            </Paragraph>
-                          );
-                        })}
+                      <div className="markdown-body" style={{ padding: "16px 0", fontSize: 14, lineHeight: 1.8 }}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{store.fullContent}</ReactMarkdown>
                       </div>
                     ) : (
                       <div style={{ textAlign: "center", padding: 40 }}>
@@ -1328,6 +1321,9 @@ const StockAnalysisPage: React.FC = () => {
             </div>
           </>
         )}
+
+        {/* 完整报告 Drawer（Running/Done 均可使用） */}
+        <AgentReportDrawer />
 
         {/* 合规提示 */}
         <div
