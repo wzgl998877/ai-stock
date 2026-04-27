@@ -250,16 +250,36 @@ export interface StockSSEEvent {
 }
 
 // === 分析记录 ===
+export interface AnalysisDetailItem {
+  agent_name: string;
+  phase: string;
+  status: string;
+  summary: string;
+  full_report: string;
+  thinking_steps?: Record<string, unknown>[];
+  debate_data?: Record<string, unknown>;
+  completed_at: string | null;
+}
+
+export interface AnalysisDecision {
+  action: string;
+  target_price: number;
+  confidence: number;
+  risk_score: number;
+  reasoning: string;
+}
+
 export interface AnalysisRecordListItem {
   id: string;
   title: string;
   summary: string;
-  status: "in_progress" | "completed" | "stopped";
+  status: "in_progress" | "completed" | "stopped" | "pending" | "failed";
   analysis_mode: "quick" | "full";
   stocks: { code: string; name: string }[];
   industries: { code: string }[];
   progress: { completed: number; total: number };
-  analysis_data: Record<string, unknown>;
+  details: AnalysisDetailItem[];
+  decision: AnalysisDecision | null;
   created_at: string;
   updated_at: string;
 }
@@ -269,26 +289,14 @@ export interface AnalysisRecordDetail {
   title: string;
   summary: string;
   content: string;
-  status: "in_progress" | "completed" | "stopped";
+  status: "in_progress" | "completed" | "stopped" | "pending" | "failed";
   analysis_mode: "quick" | "full";
+  current_phase?: string;
   raw_input: string;
   stocks: { code: string; name: string }[];
   industries: { code: string }[];
-  analysis_data: {
-    mode?: "quick" | "full";
-    agents?: Record<string, { status?: string; summary?: string; full_report?: string; completed_at?: number }>;
-    debates?: DebateEvent[];
-    decision?: {
-      action?: string;
-      target_price?: number;
-      confidence?: number;
-      risk_score?: number;
-      reasoning?: string;
-    };
-    title?: string;
-    summary?: string;
-    industries?: string[];
-  };
+  details: AnalysisDetailItem[];
+  decision: AnalysisDecision | null;
   created_at: string;
   updated_at: string;
 }

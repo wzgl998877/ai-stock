@@ -17,6 +17,12 @@ interface HistoryItem {
   title: string;
   summary: string;
   created_at: string;
+  decision?: {
+    action?: string;
+    target_price?: number;
+    confidence?: number;
+    risk_score?: number;
+  };
   analysis_data?: {
     decision?: {
       action?: string;
@@ -62,7 +68,7 @@ const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, on
       size="small"
       dataSource={items}
       renderItem={(item) => {
-        const decision = item.analysis_data?.decision;
+        const decision = item.decision || item.analysis_data?.decision;
         return (
           <List.Item
             style={{ cursor: "pointer", padding: "8px 12px", borderRadius: 4 }}

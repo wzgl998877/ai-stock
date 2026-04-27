@@ -89,10 +89,12 @@ interface StockAnalysisState {
     industries: string[];
     agentReports: Record<string, string>;
     agentFullReports?: Record<string, string>;
+    agentStatuses?: Record<string, string>;
     debates: DebateEvent[];
     decision: DecisionEvent | null;
     agentCompletedAt?: Record<string, number>;
     analysisMode?: AnalysisMode;
+    currentPhase?: string;
     status?: string;  // 记录实际状态：in_progress / completed / stopped
   }) => void;
   loadRunningState: (data: {
@@ -237,10 +239,12 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       industries: data.industries || [],
       agentReports: data.agentReports || {},
       agentFullReports: data.agentFullReports || {},
+      agentStatuses: data.agentStatuses || {},
       debates: data.debates || [],
       decision: data.decision || null,
       agentCompletedAt: data.agentCompletedAt || {},
       analysisMode: data.analysisMode || AnalysisMode.FULL,
+      currentPhase: data.currentPhase || (data.status === "completed" ? "done" : "analysts"),
     }),
 
   loadRunningState: (data: {

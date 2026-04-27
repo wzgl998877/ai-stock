@@ -388,6 +388,83 @@ class StockDailyQuoteModel(Base):
 
 
 # ---------------------------------------------------------------------------
+# 16. t_stock_analysis（个股分析主表）
+# ---------------------------------------------------------------------------
+
+class StockAnalysisModel(AuditMixin, Base):
+    __tablename__ = "t_stock_analysis"
+
+    analysis_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    stock_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    analysis_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="full")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    current_phase: Mapped[str] = mapped_column(String(20), nullable=False, default="analysts")
+    title: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    summary: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    full_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    decision_action: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    target_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    confidence: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(5, 4), nullable=True)
+    risk_score: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(5, 4), nullable=True)
+    reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    industries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    data_source: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    article_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    session_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    user_id: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )
+
+    details = relationship(
+        "StockAnalysisDetailModel",
+        backref="analysis",
+        lazy="selectin",
+        order_by="StockAnalysisDetailModel.display_order",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        Index("idx_sa_stock_code", "stock_code"),
+        Index("idx_sa_status", "status"),
+        Index("idx_sa_user_id", "user_id"),
+        Index("idx_sa_create_time", "create_time"),
+        Index("idx_sa_article_id", "article_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 17. t_stock_analysis_detail（分析详情表）
+# ---------------------------------------------------------------------------
+
+class StockAnalysisDetailModel(AuditMixin, Base):
+    __tablename__ = "t_stock_analysis_detail"
+
+    detail_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    analysis_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("t_stock_analysis.analysis_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    agent_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    phase: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    full_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    thinking_steps: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    debate_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("idx_sad_analysis_id", "analysis_id"),
+        Index("idx_sad_agent_name", "agent_name"),
+        Index("idx_sad_phase", "phase"),
+        Index("idx_sad_status", "status"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # 15. t_stock_financial
 # ---------------------------------------------------------------------------
 

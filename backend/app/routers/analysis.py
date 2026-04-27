@@ -27,6 +27,7 @@ from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.infrastructure.ai.ai_service import AIService
 from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
 from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
+from app.infrastructure.repositories.mysql_stock_analysis_repo import MySQLStockAnalysisRepository
 
 logger = logging.getLogger(__name__)
 
@@ -200,36 +201,15 @@ async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
 @router.get("/stock-recent")
 async def check_recent_analysis(stock_code: str, minutes: int = 5, db: AsyncSession = Depends(get_db)):
     """检查某只股票近期是否有分析"""
-    from datetime import datetime, timedelta
-    from sqlalchemy import select, and_
-    from app.infrastructure.db.models import AnalysisArticle, ArticleStock
+    repo = MySQLStockAnalysisRepository(db)
+    sa = await repo.get_recent_by_stock(stock_code, user_id="default", minutes=minutes)
 
-    cutoff = datetime.now() - timedelta(minutes=minutes)
-
-    stmt = (
-        select(AnalysisArticle, ArticleStock)
-        .join(ArticleStock, AnalysisArticle.article_id == ArticleStock.article_id)
-        .where(
-            and_(
-                ArticleStock.stock_code == stock_code,
-                AnalysisArticle.article_type == "stock_analysis",
-                AnalysisArticle.create_time >= cutoff,
-                AnalysisArticle.deleted == "0",
-            )
-        )
-        .order_by(AnalysisArticle.create_time.desc())
-        .limit(1)
-    )
-    result = await db.execute(stmt)
-    row = result.first()
-
-    if row:
-        article, stock_ref = row
+    if sa:
         return {
             "has_recent": True,
-            "article_id": article.article_id,
-            "title": article.title,
-            "created_at": article.create_time.isoformat() if article.create_time else "",
+            "article_id": sa.analysis_id,
+            "title": sa.title,
+            "created_at": sa.create_time.isoformat() if sa.create_time else "",
         }
 
     return {"has_recent": False}
@@ -243,43 +223,55 @@ async def list_analysis_records(
     db: AsyncSession = Depends(get_db),
 ):
     """获取分析记录列表"""
-    # TODO: 从认证上下文获取 user_id，暂时用固定值（与 chat.py 保持一致）
     user_id = "default"
 
-    repo = MySQLArticleRepository(db)
-    articles, total = await repo.list_analysis_records(
+    repo = MySQLStockAnalysisRepository(db)
+    records, total = await repo.list_by_user(
         user_id=user_id,
         page=page,
         page_size=page_size,
-        article_type="stock_analysis",
         status=status,
     )
 
     items = []
-    for a in articles:
-        ad = a.analysis_data or {}
-        mode = ad.get("mode", "full")
-
-        # 计算进度：分析师阶段 4 个 agent（full 模式）或 2 个 agent（quick 模式）
-        agents = ad.get("agents", {})
+    for sa in records:
+        # 从 details 计算进度
+        mode = sa.analysis_mode
         total_agents = 4 if mode == "full" else 2
-        agents_done = len([k for k, v in agents.items() if isinstance(v, dict) and v.get("status") == "done"])
+        agents_done = len([d for d in sa.details if d.phase == "analysts" and d.status == "done"])
 
         items.append({
-            "id": a.article_id,
-            "title": a.title,
-            "summary": a.summary,
-            "status": a.status,
+            "id": sa.analysis_id,
+            "title": sa.title,
+            "summary": sa.summary,
+            "status": sa.status,
             "analysis_mode": mode,
-            "stocks": [{"code": s.stock_code, "name": s.stock_name} for s in a.stocks],
-            "industries": [{"code": i.industry_code} for i in a.industries],
+            "stocks": [{"code": sa.stock_code, "name": sa.stock_name}],
+            "industries": [{"code": c} for c in (sa.industries or [])],
             "progress": {
                 "completed": agents_done,
                 "total": total_agents,
             },
-            "analysis_data": ad,
-            "created_at": a.create_time.isoformat() if a.create_time else "",
-            "updated_at": a.update_time.isoformat() if a.update_time else "",
+            "details": [
+                {
+                    "agent_name": d.agent_name,
+                    "phase": d.phase,
+                    "status": d.status,
+                    "summary": d.summary or "",
+                    "full_report": d.full_report or "",
+                    "completed_at": d.completed_at.isoformat() if d.completed_at else None,
+                }
+                for d in sa.details
+            ],
+            "decision": {
+                "action": sa.decision_action or "",
+                "target_price": float(sa.target_price) if sa.target_price else 0.0,
+                "confidence": float(sa.confidence) if sa.confidence else 0.0,
+                "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
+                "reasoning": sa.reasoning or "",
+            } if sa.decision_action else None,
+            "created_at": sa.create_time.isoformat() if sa.create_time else "",
+            "updated_at": sa.update_time.isoformat() if sa.update_time else "",
         })
 
     return {
@@ -293,29 +285,47 @@ async def list_analysis_records(
 @router.get("/records/{record_id}")
 async def get_analysis_record(record_id: str, db: AsyncSession = Depends(get_db)):
     """获取单条分析记录详情"""
-    repo = MySQLArticleRepository(db)
-    article = await repo.get_by_id(record_id)
+    from fastapi import HTTPException
 
-    if not article or article.article_type != "stock_analysis":
-        from fastapi import HTTPException
+    repo = MySQLStockAnalysisRepository(db)
+    sa = await repo.get_by_id(record_id)
+
+    if not sa:
         raise HTTPException(status_code=404, detail="分析记录不存在")
 
-    ad = article.analysis_data or {}
-    mode = ad.get("mode", "full")
-
     return {
-        "id": article.article_id,
-        "title": article.title,
-        "summary": article.summary,
-        "content": article.content,
-        "status": article.status,
-        "analysis_mode": mode,
-        "raw_input": article.raw_input,
-        "stocks": [{"code": s.stock_code, "name": s.stock_name} for s in article.stocks],
-        "industries": [{"code": i.industry_code} for i in article.industries],
-        "analysis_data": ad,
-        "created_at": article.create_time.isoformat() if article.create_time else "",
-        "updated_at": article.update_time.isoformat() if article.update_time else "",
+        "id": sa.analysis_id,
+        "title": sa.title,
+        "summary": sa.summary,
+        "content": sa.full_content or "",
+        "status": sa.status,
+        "analysis_mode": sa.analysis_mode,
+        "current_phase": sa.current_phase or "analysts",
+        "raw_input": f"{sa.stock_code} {sa.stock_name}",
+        "stocks": [{"code": sa.stock_code, "name": sa.stock_name}],
+        "industries": [{"code": c} for c in (sa.industries or [])],
+        "details": [
+            {
+                "agent_name": d.agent_name,
+                "phase": d.phase,
+                "status": d.status,
+                "summary": d.summary or "",
+                "full_report": d.full_report or "",
+                "thinking_steps": d.thinking_steps,
+                "debate_data": d.debate_data,
+                "completed_at": d.completed_at.isoformat() if d.completed_at else None,
+            }
+            for d in sa.details
+        ],
+        "decision": {
+            "action": sa.decision_action or "",
+            "target_price": float(sa.target_price) if sa.target_price else 0.0,
+            "confidence": float(sa.confidence) if sa.confidence else 0.0,
+            "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
+            "reasoning": sa.reasoning or "",
+        } if sa.decision_action else None,
+        "created_at": sa.create_time.isoformat() if sa.create_time else "",
+        "updated_at": sa.update_time.isoformat() if sa.update_time else "",
     }
 
 
@@ -323,28 +333,26 @@ async def get_analysis_record(record_id: str, db: AsyncSession = Depends(get_db)
 async def get_analysis_progress(record_id: str, db: AsyncSession = Depends(get_db)):
     """获取分析进度（用于分析中断后轮询恢复）"""
     from fastapi import HTTPException
-    from app.infrastructure.db.models import AnalysisArticle, ArticleStock
 
-    stmt = select(AnalysisArticle, ArticleStock).join(
-        ArticleStock, AnalysisArticle.article_id == ArticleStock.article_id, isouter=True
-    ).where(
-        AnalysisArticle.article_id == record_id,
-        AnalysisArticle.deleted == "0",
-    )
-    result = await db.execute(stmt)
-    rows = result.fetchall()
+    repo = MySQLStockAnalysisRepository(db)
+    sa = await repo.get_by_id(record_id)
 
-    if not rows:
+    if not sa:
         raise HTTPException(status_code=404, detail="分析记录不存在")
 
-    article, _ = rows[0]
-    ad = article.analysis_data or {}
-    mode = ad.get("mode", "full")
+    mode = sa.analysis_mode
+    current_phase = sa.current_phase
+
+    # 构建 agents 字典（从 details）
+    agents = {}
+    for d in sa.details:
+        agents[d.agent_name] = {
+            "status": d.status,
+            "summary": d.summary or "",
+            "full_report": d.full_report or "",
+        }
 
     # 计算已完成阶段
-    agents = ad.get("agents", {})
-    agents_done = len([k for k, v in agents.items() if isinstance(v, dict) and v.get("status") == "done"])
-
     phases = {
         "analysts": {"done": False, "agents_done": 0, "agents_total": 2 if mode == "quick" else 4},
         "debate": {"done": False, "rounds": 0},
@@ -352,54 +360,53 @@ async def get_analysis_progress(record_id: str, db: AsyncSession = Depends(get_d
         "risk": {"done": False},
     }
 
-    if mode != "quick":
-        phases["analysts"]["agents_total"] = 4
-        # 分析师完成判断
-        expected = ["market", "fundamentals", "news", "sentiment"]
-        phases["analysts"]["agents_done"] = len([k for k in expected if agents.get(k, {}).get("status") == "done"])
-        phases["analysts"]["done"] = phases["analysts"]["agents_done"] >= phases["analysts"]["agents_total"]
+    # 分析师阶段
+    analyst_agents = [d for d in sa.details if d.phase == "analysts"]
+    phases["analysts"]["agents_done"] = len([d for d in analyst_agents if d.status == "done"])
+    phases["analysts"]["done"] = phases["analysts"]["agents_done"] >= phases["analysts"]["agents_total"]
 
-        # 辩论完成判断
-        if ad.get("debate", {}).get("rounds", 0) > 0 or ad.get("investment_plan"):
-            phases["debate"]["done"] = True
-            phases["debate"]["rounds"] = len(ad.get("debates", []))
+    # 辩论阶段
+    debate_agents = [d for d in sa.details if d.phase == "debate" and d.status == "done"]
+    if debate_agents:
+        phases["debate"]["done"] = True
 
-        # 交易员完成判断
-        if ad.get("decision", {}).get("action"):
-            phases["trader"]["done"] = True
+    # 交易员阶段
+    trader_agents = [d for d in sa.details if d.phase == "trader" and d.status == "done"]
+    if trader_agents:
+        phases["trader"]["done"] = True
 
-        # 风险完成判断
-        if ad.get("risk_debate"):
-            phases["risk"]["done"] = True
-    else:
-        expected = ["market", "fundamentals"]
-        phases["analysts"]["agents_done"] = len([k for k in expected if agents.get(k, {}).get("status") == "done"])
-        phases["analysts"]["done"] = phases["analysts"]["agents_done"] >= 2
-
-    # 当前进行中的阶段
-    current_phase = ad.get("current_phase", "analysts")
+    # 风险阶段
+    risk_agents = [d for d in sa.details if d.phase == "risk" and d.status == "done"]
+    if risk_agents:
+        phases["risk"]["done"] = True
 
     # 决定整体状态
-    if article.status == "completed":
+    if sa.status == "completed":
         overall_status = "done"
-    elif article.status == "stopped":
+    elif sa.status == "stopped":
         overall_status = "stopped"
     else:
         overall_status = "running"
 
     return {
-        "id": article.article_id,
+        "id": sa.analysis_id,
         "status": overall_status,
         "analysis_mode": mode,
         "current_phase": current_phase,
         "phases": phases,
-        "title": ad.get("title", ""),
-        "summary": ad.get("summary", ""),
-        "industries": ad.get("industries", []),
-        "decision": ad.get("decision"),
-        "debates": ad.get("debates", []),
-        "agents": {k: v for k, v in agents.items() if isinstance(v, dict)},
-        "stocks": [{"code": s.stock_code, "name": s.stock_name} for _, s in rows if s and s.stock_code],
-        "created_at": article.create_time.isoformat() if article.create_time else "",
-        "updated_at": article.update_time.isoformat() if article.update_time else "",
+        "title": sa.title,
+        "summary": sa.summary,
+        "industries": sa.industries or [],
+        "decision": {
+            "action": sa.decision_action or "",
+            "target_price": float(sa.target_price) if sa.target_price else 0.0,
+            "confidence": float(sa.confidence) if sa.confidence else 0.0,
+            "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
+            "reasoning": sa.reasoning or "",
+        } if sa.decision_action else None,
+        "debates": [],
+        "agents": agents,
+        "stocks": [{"code": sa.stock_code, "name": sa.stock_name}],
+        "created_at": sa.create_time.isoformat() if sa.create_time else "",
+        "updated_at": sa.update_time.isoformat() if sa.update_time else "",
     }

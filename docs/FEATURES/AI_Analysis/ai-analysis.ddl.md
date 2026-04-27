@@ -503,6 +503,86 @@ CREATE TABLE t_stock_financial (
 
 ---
 
+## 16. 个股分析主表 `t_stock_analysis`
+
+```sql
+CREATE TABLE t_stock_analysis (
+    analysis_id VARCHAR(32) PRIMARY KEY COMMENT '分析UUID',
+    stock_code VARCHAR(10) NOT NULL COMMENT '股票代码',
+    stock_name VARCHAR(50) NOT NULL COMMENT '股票简称',
+    analysis_mode VARCHAR(10) NOT NULL DEFAULT 'full' COMMENT '分析模式: quick/full',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/in_progress/completed/stopped/failed',
+    current_phase VARCHAR(20) NOT NULL DEFAULT 'analysts' COMMENT '当前阶段: analysts/debate/trader/risk/done',
+    title VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'AI生成标题',
+    summary VARCHAR(500) NOT NULL DEFAULT '' COMMENT 'AI生成摘要',
+    full_content TEXT COMMENT '完整报告Markdown',
+    decision_action VARCHAR(20) COMMENT '决策: 买入/持有/卖出',
+    target_price DECIMAL(12,3) COMMENT '目标价',
+    confidence DECIMAL(5,4) COMMENT '置信度 0-1',
+    risk_score DECIMAL(5,4) COMMENT '风险评分 0-1',
+    reasoning TEXT COMMENT '决策理由',
+    industries JSON COMMENT '关联行业列表',
+    data_source VARCHAR(20) NOT NULL DEFAULT '' COMMENT '数据来源',
+    article_id VARCHAR(32) COMMENT '同步到知识库后的article_id',
+    session_id VARCHAR(32) COMMENT '关联会话ID',
+    user_id VARCHAR(32) NOT NULL COMMENT '用户ID（逻辑关联，无外键约束）',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间',
+    create_user VARCHAR(64) COMMENT '记录创建人',
+    update_user VARCHAR(64) COMMENT '记录更新人',
+    deleted CHAR(1) NOT NULL DEFAULT '0' COMMENT '是否删除(0=未删除,1=已删除)'
+) ENGINE=InnoDB COMMENT='个股分析主表';
+
+CREATE INDEX idx_sa_stock_code ON t_stock_analysis(stock_code);
+CREATE INDEX idx_sa_status ON t_stock_analysis(status);
+CREATE INDEX idx_sa_user_id ON t_stock_analysis(user_id);
+CREATE INDEX idx_sa_create_time ON t_stock_analysis(create_time);
+CREATE INDEX idx_sa_article_id ON t_stock_analysis(article_id);
+```
+
+---
+
+## 17. 个股分析详情表 `t_stock_analysis_detail`
+
+```sql
+CREATE TABLE t_stock_analysis_detail (
+    detail_id VARCHAR(32) PRIMARY KEY COMMENT '详情UUID',
+    analysis_id VARCHAR(32) NOT NULL COMMENT '关联主表',
+    agent_name VARCHAR(50) NOT NULL COMMENT 'Agent名称: 如market_analyst',
+    phase VARCHAR(20) NOT NULL COMMENT '阶段: analysts/debate/trader/risk',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/running/done/failed',
+    summary VARCHAR(500) COMMENT 'Agent摘要',
+    full_report TEXT COMMENT 'Agent完整报告',
+    thinking_steps JSON COMMENT '思考步骤',
+    debate_data JSON COMMENT '辩论数据',
+    error_message TEXT COMMENT '错误信息',
+    completed_at DATETIME COMMENT '完成时间',
+    display_order INT NOT NULL DEFAULT 0 COMMENT '显示顺序',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间',
+    create_user VARCHAR(64) COMMENT '记录创建人',
+    update_user VARCHAR(64) COMMENT '记录更新人',
+    deleted CHAR(1) NOT NULL DEFAULT '0' COMMENT '是否删除(0=未删除,1=已删除)',
+    FOREIGN KEY (analysis_id) REFERENCES t_stock_analysis(analysis_id) ON DELETE CASCADE
+) ENGINE=InnoDB COMMENT='个股分析详情表';
+
+CREATE INDEX idx_sad_analysis_id ON t_stock_analysis_detail(analysis_id);
+CREATE INDEX idx_sad_agent_name ON t_stock_analysis_detail(agent_name);
+CREATE INDEX idx_sad_phase ON t_stock_analysis_detail(phase);
+CREATE INDEX idx_sad_status ON t_stock_analysis_detail(status);
+```
+
+---
+
+## 迁移脚本 — 005 分支（新增 t_stock_analysis + t_stock_analysis_detail）
+
+```sql
+-- 见 Alembic 迁移: c3d4e5f6a7b8
+-- 存量数据迁移: python -m scripts.migrate_analysis_data
+```
+
+---
+
 ## 表清单总览
 
 | # | 表名 | 说明 | 来源 |
@@ -522,3 +602,5 @@ CREATE TABLE t_stock_financial (
 | 13 | `t_market_quote` | 实时行情 | **004 新增** |
 | 14 | `t_stock_daily_quote` | 历史K线 | **004 新增** |
 | 15 | `t_stock_financial` | 财务数据 | **004 新增** |
+| 16 | `t_stock_analysis` | 个股分析主表 | **005 新增** |
+| 17 | `t_stock_analysis_detail` | 个股分析详情表 | **005 新增** |

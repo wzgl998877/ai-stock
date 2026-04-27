@@ -16,6 +16,8 @@ from app.infrastructure.db.models import (  # noqa: F401 — ensure all models r
     EventReminder,
     Industry,
     Stock,
+    StockAnalysisDetailModel,
+    StockAnalysisModel,
     StockIndustry,
     User,
 )

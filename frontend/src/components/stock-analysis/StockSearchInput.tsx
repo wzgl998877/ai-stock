@@ -93,7 +93,6 @@ const StockSearchInput: React.FC = () => {
         // 唯一匹配：直接选中
         if (result.stock_code && result.stock_name) {
           setStock(result.stock_code, result.stock_name);
-          setKeyword(result.stock_name);
           setSelected(true);
           setOptions([]);
           setValidation(false, true);
@@ -121,22 +120,22 @@ const StockSearchInput: React.FC = () => {
     (val: string) => {
       const [code, name] = val.split("|");
       setStock(code, name);
-      setKeyword(name);
       setSelected(true);
+      setKeyword("");
       setOptions([]);
       setValidation(false, true);
     },
     [setStock, setValidation]
   );
 
-  const handleSearch = (val: string) => {
+  const handleSearch = useCallback((val: string) => {
     setKeyword(val);
     setSelected(false);
     if (!val.trim()) {
       setOptions([]);
       setStock("", "");
     }
-  };
+  }, [setStock]);
 
   const handleClear = useCallback(() => {
     setKeyword("");
@@ -148,32 +147,21 @@ const StockSearchInput: React.FC = () => {
 
   return (
     <div style={{ width: "100%" }}>
-      <AutoComplete
-        value={keyword}
-        options={options}
-        onSearch={handleSearch}
-        onSelect={handleSelect}
-        style={{ width: "100%" }}
-        placeholder="输入股票代码或名称，如 600519 或 贵州茅台"
-        suffixIcon={validationLoading ? undefined : <SearchOutlined style={{ color: "#94a3b8" }} />}
-        notFoundContent={
-          keyword.trim() && !validationLoading && !selected ? (
-            <Text style={{ fontSize: 12, color: "#94a3b8" }}>未找到匹配的股票</Text>
-          ) : null
-        }
-      />
-      {selected && stockCode && (
+      {selected && stockCode ? (
+        /* 选中状态：显示 Tag + 清除按钮 */
         <div
           style={{
-            marginTop: 8,
             display: "flex",
             alignItems: "center",
             gap: 8,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #d6d9fc",
+            background: "#fafaff",
           }}
         >
           <Tag
             icon={<StockOutlined />}
-            color="purple"
             style={{
               fontSize: 13,
               padding: "2px 8px",
@@ -181,15 +169,49 @@ const StockSearchInput: React.FC = () => {
               background: "#f0efff",
               color: "#533afd",
               border: "1px solid #d6d9fc",
+              margin: 0,
             }}
           >
             {stockName} ({stockCode})
           </Tag>
-          <CloseCircleOutlined
-            style={{ fontSize: 14, color: "#94a3b8", cursor: "pointer" }}
+          <div
             onClick={handleClear}
-          />
+            style={{
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 24,
+              height: 24,
+              borderRadius: 4,
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = "#fee2e2";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = "transparent";
+            }}
+          >
+            <CloseCircleOutlined style={{ fontSize: 14, color: "#94a3b8" }} />
+          </div>
         </div>
+      ) : (
+        /* 未选中状态：搜索输入框 */
+        <AutoComplete
+          value={keyword}
+          options={options}
+          onSearch={handleSearch}
+          onSelect={handleSelect}
+          style={{ width: "100%" }}
+          placeholder="输入股票代码或名称，如 600519 或 贵州茅台"
+          suffixIcon={validationLoading ? undefined : <SearchOutlined style={{ color: "#94a3b8" }} />}
+          notFoundContent={
+            keyword.trim() && !validationLoading ? (
+              <Text style={{ fontSize: 12, color: "#94a3b8" }}>未找到匹配的股票</Text>
+            ) : null
+          }
+        />
       )}
     </div>
   );

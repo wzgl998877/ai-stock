@@ -10,8 +10,10 @@ from app.application.dtos.stock_analysis_dto import StockAnalysisConfigDTO
 from app.domain.entities.article import Article, StockRef
 from app.domain.entities.chat_session import ChatSession
 from app.domain.entities.chat_message import ChatMessage
+from app.domain.entities.stock_analysis import StockAnalysis
 from app.domain.repositories.article_repo import ArticleRepository
 from app.domain.repositories.chat_repo import ChatRepository
+from app.domain.repositories.stock_analysis_repo import StockAnalysisRepository
 from app.domain.services.analysis_parser import AnalysisParser
 from app.domain.services.signal_extractor import SignalExtractor
 from app.domain.value_objects.agent_type import AGENT_DISPLAY_NAMES
@@ -33,11 +35,13 @@ class StockAnalysisUseCase:
         ai_service: AIService,
         stock_analysis_graph=None,
         article_repo: Optional[ArticleRepository] = None,
+        stock_analysis_repo: Optional[StockAnalysisRepository] = None,
     ):
         self.chat_repo = chat_repo
         self.ai_service = ai_service
         self.stock_analysis_graph = stock_analysis_graph
         self.article_repo = article_repo
+        self.stock_analysis_repo = stock_analysis_repo
         self.parser = AnalysisParser()
         self.signal_extractor = SignalExtractor()
 
@@ -49,7 +53,7 @@ class StockAnalysisUseCase:
         """
         执行个股深度分析，SSE 流式返回。
 
-        流程：初始化 → 运行 LangGraph → 流式 yield 事件 → 解析结果 → 保存
+        流程：初始化 → 创建分析记录 → 运行 LangGraph → 流式 yield 事件 → 解析结果 → 保存 → 同步到知识库
 
         流式输出机制：
         - 创建 sse_queue（SSE 事件队列）和 content_queue（内容 chunk 队列）
@@ -82,31 +86,26 @@ class StockAnalysisUseCase:
         await self.chat_repo.add_message(user_msg)
         logger.info("[耗时] 保存用户消息: %.3fs", time.time() - t0)
 
-        # 1.5 创建分析记录（增量存档）
+        # 1.5 创建分析记录（写入新表 t_stock_analysis）
         t0 = time.time()
-        article_id = uuid.uuid4().hex
-        analysis_article = None
-        if self.article_repo:
+        analysis_id = uuid.uuid4().hex
+        if self.stock_analysis_repo:
             try:
-                analysis_article = Article(
-                    article_id=article_id,
-                    title=f"{stock_name}分析中...",
-                    summary="",
-                    content="",
-                    event_type="other",
-                    raw_input=f"{stock_code} {stock_name}",
+                sa = StockAnalysis(
+                    analysis_id=analysis_id,
+                    stock_code=stock_code,
+                    stock_name=stock_name,
                     user_id=session.user_id,
-                    article_type="stock_analysis",
-                    analysis_data={"mode": analysis_mode, "agents": {}, "debates": [], "decision": {}},
+                    analysis_mode=analysis_mode,
                     status="in_progress",
-                    stocks=[StockRef(stock_code=stock_code, stock_name=stock_name)],
+                    current_phase="analysts",
+                    session_id=session_id,
                 )
-                analysis_article = await self.article_repo.save(analysis_article)
-                article_id = analysis_article.article_id
+                await self.stock_analysis_repo.create(sa)
+                analysis_id = sa.analysis_id
                 await self.chat_repo.session.commit()
             except Exception as e:
                 logger.warning("创建分析记录失败（不影响分析流程）: %s", e)
-                analysis_article = None
         logger.info("[耗时] 创建分析记录: %.3fs", time.time() - t0)
 
         # 2. 运行 StockAnalysisGraph
@@ -207,6 +206,16 @@ class StockAnalysisUseCase:
                                 })
                                 full_content += f"\n## {AGENT_DISPLAY_NAMES.get(agent_id, agent_key)}\n{report}\n"
 
+                                # 写入新表 detail
+                                if self.stock_analysis_repo:
+                                    try:
+                                        await self.stock_analysis_repo.update_detail_by_agent(
+                                            analysis_id, agent_id,
+                                            status="done", summary=summary, full_report=report,
+                                        )
+                                    except Exception as e:
+                                        logger.warning("更新agent detail失败: %s", e)
+
                         # 提取辩论和风险辩论
                         investment_plan = state_update.get("investment_plan")
                         if investment_plan:
@@ -241,16 +250,15 @@ class StockAnalysisUseCase:
                             },
                         })
 
-                        # 增量更新存档（每阶段完成时）
-                        if self.article_repo and analysis_article:
+                        # 增量更新存档（每阶段完成时 → 写新表）
+                        if self.stock_analysis_repo:
                             try:
-                                analysis_data["current_phase"] = current_phase
-                                await self.article_repo.update_analysis_data(
-                                    article_id, analysis_data, "in_progress"
+                                await self.stock_analysis_repo.update_status(
+                                    analysis_id, "in_progress", current_phase
                                 )
                                 await self.chat_repo.session.flush()
                             except Exception as e:
-                                logger.warning("增量更新分析记录失败: %s", e)
+                                logger.warning("增量更新分析状态失败: %s", e)
 
                         thinking_steps.append({
                             "step": current_agent,
@@ -274,10 +282,10 @@ class StockAnalysisUseCase:
                 graph_timed_out = True
                 logger.warning("StockAnalysisGraph 执行超时 (%ds)，保存部分结果", DEFAULT_TIMEOUT)
                 await sse_queue.put({"type": "error", "data": "分析超时，已完成的部分结果已保存"})
-                if self.article_repo and analysis_article:
+                if self.stock_analysis_repo:
                     try:
-                        await self.article_repo.update_analysis_data(
-                            article_id, analysis_data, "stopped"
+                        await self.stock_analysis_repo.update_status(
+                            analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
                         )
                         await self.chat_repo.session.flush()
                     except Exception as e:
@@ -285,10 +293,10 @@ class StockAnalysisUseCase:
                 await sse_queue.put({"type": "graph_done", "data": None})
             except Exception as e:
                 logger.error("StockAnalysisGraph 执行异常: %s", e, exc_info=True)
-                if self.article_repo and analysis_article:
+                if self.stock_analysis_repo:
                     try:
-                        await self.article_repo.update_analysis_data(
-                            article_id, analysis_data, "stopped"
+                        await self.stock_analysis_repo.update_status(
+                            analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
                         )
                         await self.chat_repo.session.flush()
                     except Exception:
@@ -372,18 +380,25 @@ class StockAnalysisUseCase:
         await self.chat_repo.add_message(ai_msg)
         logger.info("[耗时] 保存AI消息: %.3fs", time.time() - t0)
 
-        # 4.5 更新分析记录为已完成
+        # 4.5 更新分析结果到新表 + 同步到知识库
         t0 = time.time()
-        if self.article_repo and analysis_article:
+        if self.stock_analysis_repo:
             try:
-                analysis_data["title"] = title
-                analysis_data["summary"] = summary
-                analysis_data["industries"] = industries
-                await self.article_repo.update_analysis_data(
-                    article_id, analysis_data, "completed"
+                decision = analysis_data.get("decision", {})
+                await self.stock_analysis_repo.update_result(
+                    analysis_id,
+                    title=title,
+                    summary=summary,
+                    full_content=full_content or "分析完成",
+                    decision_action=decision.get("action"),
+                    target_price=decision.get("target_price"),
+                    confidence=decision.get("confidence"),
+                    risk_score=decision.get("risk_score"),
+                    reasoning=decision.get("reasoning"),
+                    industries=industries,
                 )
-                # 同时更新 title、summary、content 字段
-                await self.article_repo.update(article_id, title=title, summary=summary, content=full_content or "分析完成")
+                # 同步到知识库 t_analysis_article
+                await self.stock_analysis_repo.sync_to_article(analysis_id)
                 await self.chat_repo.session.flush()
             except Exception as e:
                 logger.warning("更新分析记录为完成状态失败: %s", e)

@@ -15,6 +15,13 @@ interface ComparisonItem {
   id: string;
   title: string;
   created_at: string;
+  decision?: {
+    action?: string;
+    target_price?: number;
+    confidence?: number;
+    risk_score?: number;
+    reasoning?: string;
+  };
   analysis_data?: {
     decision?: {
       action?: string;
@@ -37,8 +44,8 @@ const AnalysisComparison: React.FC<AnalysisComparisonProps> = ({ open, onClose, 
 
   const left = items[0];
   const right = items[1];
-  const leftDecision = left.analysis_data?.decision || {};
-  const rightDecision = right.analysis_data?.decision || {};
+  const leftDecision = left.decision || left.analysis_data?.decision || {};
+  const rightDecision = right.decision || right.analysis_data?.decision || {};
 
   const columns: ColumnsType<{ field: string; left: any; right: any }> = [
     { title: "对比项", dataIndex: "field", key: "field", width: 100, render: (t: string) => <Text style={{ fontSize: 12, color: "#64748d" }}>{t}</Text> },

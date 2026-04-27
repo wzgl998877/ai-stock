@@ -169,6 +169,57 @@ const AnalystReadyCardItem: React.FC<{ card: AnalystReadyCard }> = ({ card }) =>
 // Running 态专用子组件
 // ============================================================
 
+/** 假进度条 — 每个 Agent 开始时从 0% 缓慢增长到 90%，完成后跳 100% */
+const FakeProgress: React.FC<{ agentName: string; agentDone: boolean }> = ({ agentName, agentDone }) => {
+  const [percent, setPercent] = useState(0);
+  const agentKeyRef = useRef(agentName);
+
+  // Agent 切换时重置进度
+  useEffect(() => {
+    if (agentName !== agentKeyRef.current) {
+      agentKeyRef.current = agentName;
+      setPercent(0);
+    }
+  }, [agentName]);
+
+  // 假进度：0 → 90%，每次 +1~3%
+  useEffect(() => {
+    if (agentDone) {
+      setPercent(100);
+      return;
+    }
+    const timer = setInterval(() => {
+      setPercent((prev) => {
+        if (prev >= 90) return prev; // 到 90% 停住
+        const inc = Math.floor(Math.random() * 3) + 1; // +1~3%
+        return Math.min(prev + inc, 90);
+      });
+    }, 800 + Math.random() * 600); // 0.8~1.4秒跳一次
+    return () => clearInterval(timer);
+  }, [agentDone]);
+
+  return (
+    <div style={{ marginBottom: 20, padding: "16px 20px", background: "#fff", borderRadius: 8, border: "1px solid #e8e0ff" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: 500, color: "#273951" }}>
+          {agentName}工作中
+        </Text>
+        <Text style={{ fontSize: 12, color: "#533afd", fontFeatureSettings: "'tnum'" }}>
+          {percent}%
+        </Text>
+      </div>
+      <Progress
+        percent={percent}
+        status={agentDone ? "success" : "active"}
+        showInfo={false}
+        strokeColor={agentDone ? "#52c41a" : { "0%": "#533afd", "100%": "#8b5cf6" }}
+        trailColor="#f0f0f0"
+        size="small"
+      />
+    </div>
+  );
+};
+
 /** 阶段导航项 */
 const PhaseNavItem: React.FC<{
   phase: string;
@@ -294,25 +345,33 @@ const StockAnalysisPage: React.FC = () => {
       const loadRecord = async () => {
         try {
           const record = await getAnalysisRecord(recordId);
-          const ad = record.analysis_data || {};
-          const agents = ad.agents || {};
-          const debates = ad.debates || [];
-          const decision = ad.decision || null;
 
-          // 构建 agentReports 和 agentFullReports
+          // 从 details 数组构建 agentReports、agentFullReports、agentStatuses
           const agentReports: Record<string, string> = {};
           const agentFullReports: Record<string, string> = {};
           const agentCompletedAt: Record<string, number> = {};
-          for (const [key, val] of Object.entries(agents)) {
-            const v = val as { summary?: string; full_report?: string; completed_at?: number };
-            if (v.summary) {
-              agentReports[key + "_analyst"] = v.summary;
+          const agentStatuses: Record<string, string> = {};
+          const debates: DebateEvent[] = [];
+
+          for (const d of record.details || []) {
+            agentStatuses[d.agent_name] = d.status || "pending";
+            if (d.summary) {
+              agentReports[d.agent_name] = d.summary;
             }
-            if (v.full_report) {
-              agentFullReports[key + "_analyst"] = v.full_report;
+            if (d.full_report) {
+              agentFullReports[d.agent_name] = d.full_report;
             }
-            if (v.completed_at) {
-              agentCompletedAt[key + "_analyst"] = v.completed_at;
+            if (d.completed_at) {
+              agentCompletedAt[d.agent_name] = new Date(d.completed_at).getTime();
+            }
+            // 提取辩论数据
+            if (d.debate_data) {
+              const dd = d.debate_data;
+              if (dd.round && dd.bull_argument !== undefined) {
+                debates.push(dd as unknown as DebateEvent);
+              } else if (Array.isArray(dd)) {
+                debates.push(...(dd as unknown as DebateEvent[]));
+              }
             }
           }
 
@@ -322,18 +381,47 @@ const StockAnalysisPage: React.FC = () => {
             useStockAnalysisStore.getState().setStock(stockInfo.code, stockInfo.name);
           }
 
+          // 从 industries 提取名称列表
+          const industryNames = (record.industries || []).map(i => i.code);
+
+          // 使用后端返回的 current_phase，仅在缺失时推断
+          let currentPhase: string;
+          if (record.current_phase) {
+            currentPhase = record.current_phase;
+          } else if (record.status === "completed" || record.status === "stopped") {
+            currentPhase = "done";
+          } else {
+            // 兜底推断
+            const hasRunning = Object.values(agentStatuses).some(s => s === "running");
+            if (hasRunning) {
+              const details = record.details || [];
+              const runningDetail = details.find(d => d.status === "running");
+              currentPhase = runningDetail?.phase || "analysts";
+            } else {
+              const details = record.details || [];
+              const doneDetails = details.filter(d => d.status === "done");
+              if (doneDetails.length > 0) {
+                currentPhase = doneDetails[doneDetails.length - 1].phase || "analysts";
+              } else {
+                currentPhase = "analysts";
+              }
+            }
+          }
+
           store.loadFromRecord({
             recordId: record.id,
-            title: record.title || ad.title || "",
-            summary: record.summary || ad.summary || "",
-            fullContent: record.content || "",
-            industries: ad.industries || [],
+            title: record.title,
+            summary: record.summary,
+            fullContent: record.content,
+            industries: industryNames,
             agentReports,
             agentFullReports,
+            agentStatuses,
             debates,
-            decision: decision as any,
+            decision: record.decision as any,
             agentCompletedAt,
-            analysisMode: (record.analysis_mode || ad.mode) as AnalysisMode,
+            analysisMode: record.analysis_mode as AnalysisMode,
+            currentPhase,
             status: record.status,
           });
         } catch (err) {
@@ -391,12 +479,21 @@ const StockAnalysisPage: React.FC = () => {
           industries: progress.industries || [],
         });
         if (progress.status === "done") {
-          // 获取完整报告内容
+          // 获取完整报告内容 + agent fullReports
           getAnalysisRecord(pollRecordIdRef.current)
             .then((record) => {
-              if (record?.content) {
-                useStockAnalysisStore.getState().setFullContent(record.content);
+              if (!record) return;
+              const s = useStockAnalysisStore.getState();
+              if (record.content) {
+                s.setFullContent(record.content);
               }
+              const fullReports: Record<string, string> = { ...s.agentFullReports };
+              for (const d of record.details || []) {
+                if (d.full_report) {
+                  fullReports[d.agent_name] = d.full_report;
+                }
+              }
+              useStockAnalysisStore.setState({ agentFullReports: fullReports });
             })
             .catch(() => {});
           useStockAnalysisStore.setState({ analysisState: "done" });
@@ -423,12 +520,21 @@ const StockAnalysisPage: React.FC = () => {
             industries: progress.industries || [],
           });
           if (progress.status === "done") {
-            // 获取完整报告内容
+            // 获取完整报告内容 + agent fullReports
             getAnalysisRecord(pollRecordIdRef.current)
               .then((record) => {
-                if (record?.content) {
-                  useStockAnalysisStore.getState().setFullContent(record.content);
+                if (!record) return;
+                const s = useStockAnalysisStore.getState();
+                if (record.content) {
+                  s.setFullContent(record.content);
                 }
+                const fullReports: Record<string, string> = { ...s.agentFullReports };
+                for (const d of record.details || []) {
+                  if (d.full_report) {
+                    fullReports[d.agent_name] = d.full_report;
+                  }
+                }
+                useStockAnalysisStore.setState({ agentFullReports: fullReports });
               })
               .catch(() => {});
             useStockAnalysisStore.setState({ analysisState: "done" });
@@ -534,15 +640,25 @@ const StockAnalysisPage: React.FC = () => {
               break;
             case "done":
               if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-              // 获取完整报告内容
+              // 获取完整报告内容 + agent fullReports
               {
                 const recordId = useStockAnalysisStore.getState().viewRecordId;
                 if (recordId) {
                   getAnalysisRecord(recordId)
                     .then((record) => {
-                      if (record?.content) {
-                        useStockAnalysisStore.getState().setFullContent(record.content);
+                      if (!record) return;
+                      const s = useStockAnalysisStore.getState();
+                      if (record.content) {
+                        s.setFullContent(record.content);
                       }
+                      // 从 details 补充 agentFullReports（SSE 只推了 summary，没推 full_report）
+                      const fullReports: Record<string, string> = { ...s.agentFullReports };
+                      for (const d of record.details || []) {
+                        if (d.full_report) {
+                          fullReports[d.agent_name] = d.full_report;
+                        }
+                      }
+                      useStockAnalysisStore.setState({ agentFullReports: fullReports });
                     })
                     .catch(() => {});
                 }
@@ -996,27 +1112,16 @@ const StockAnalysisPage: React.FC = () => {
 
             {/* 中栏：当前阶段内容 */}
             <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56, maxWidth: 900, margin: "0 auto" }}>
-              {/* 动态进度条 */}
+              {/* 动态假进度条 */}
               {(() => {
                 const runningAgent = Object.entries(store.agentStatuses).find(([, s]) => s === "running");
-                const currentAgentName = runningAgent ? AGENT_DISPLAY_NAMES[runningAgent[0]] : null;
+                if (!runningAgent) return null;
 
-                if (!currentAgentName) return null;
+                const agentKey = runningAgent[0];
+                const agentName = AGENT_DISPLAY_NAMES[agentKey] || agentKey;
+                const agentDone = store.agentStatuses[agentKey] === "done";
 
-                return (
-                  <div style={{ marginBottom: 20, padding: "16px 20px", background: "#fff", borderRadius: 8, border: "1px solid #e8e0ff" }}>
-                    <Text style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 10 }}>
-                      {currentAgentName}正在分析中...
-                    </Text>
-                    <Progress
-                      percent={70}
-                      status="active"
-                      showInfo={false}
-                      strokeColor={{ "0%": "#533afd", "100%": "#8b5cf6" }}
-                      trailColor="#f0f0f0"
-                    />
-                  </div>
-                );
+                return <FakeProgress agentName={agentName} agentDone={agentDone} />;
               })()}
 
               {/* 加载初始态 */}
