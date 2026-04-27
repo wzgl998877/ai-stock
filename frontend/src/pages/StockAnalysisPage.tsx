@@ -170,17 +170,19 @@ const AnalystReadyCardItem: React.FC<{ card: AnalystReadyCard }> = ({ card }) =>
 // ============================================================
 
 /** 假进度条 — 每个 Agent 开始时从 0% 缓慢增长到 90%，完成后跳 100% */
-const FakeProgress: React.FC<{ agentName: string; agentDone: boolean }> = ({ agentName, agentDone }) => {
+const FakeProgress: React.FC<{ agentName: string; agentDone: boolean; agentKey: string }> = ({ agentName, agentDone, agentKey }) => {
   const [percent, setPercent] = useState(0);
-  const agentKeyRef = useRef(agentName);
+  const agentKeyRef = useRef(agentKey);
+
+  const profile = AGENT_PROFILES[agentKey];
 
   // Agent 切换时重置进度
   useEffect(() => {
-    if (agentName !== agentKeyRef.current) {
-      agentKeyRef.current = agentName;
+    if (agentKey !== agentKeyRef.current) {
+      agentKeyRef.current = agentKey;
       setPercent(0);
     }
-  }, [agentName]);
+  }, [agentKey]);
 
   // 假进度：0 → 90%，每次 +1~3%
   useEffect(() => {
@@ -190,21 +192,67 @@ const FakeProgress: React.FC<{ agentName: string; agentDone: boolean }> = ({ age
     }
     const timer = setInterval(() => {
       setPercent((prev) => {
-        if (prev >= 90) return prev; // 到 90% 停住
-        const inc = Math.floor(Math.random() * 3) + 1; // +1~3%
+        if (prev >= 90) return prev;
+        const inc = Math.floor(Math.random() * 3) + 1;
         return Math.min(prev + inc, 90);
       });
-    }, 800 + Math.random() * 600); // 0.8~1.4秒跳一次
+    }, 800 + Math.random() * 600);
     return () => clearInterval(timer);
   }, [agentDone]);
 
   return (
-    <div style={{ marginBottom: 20, padding: "16px 20px", background: "#fff", borderRadius: 8, border: "1px solid #e8e0ff" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <Text style={{ fontSize: 13, fontWeight: 500, color: "#273951" }}>
-          {agentName}工作中
-        </Text>
-        <Text style={{ fontSize: 12, color: "#533afd", fontFeatureSettings: "'tnum'" }}>
+    <div style={{
+      marginBottom: 20,
+      padding: "20px 24px",
+      background: "linear-gradient(135deg, #faf8ff 0%, #f5f0ff 100%)",
+      borderRadius: 12,
+      border: "1px solid #e8e0ff",
+      position: "relative",
+      overflow: "hidden",
+    }}>
+      {/* 装饰性背景光晕 */}
+      <div style={{
+        position: "absolute",
+        top: -20,
+        right: -20,
+        width: 120,
+        height: 120,
+        borderRadius: "50%",
+        background: `${profile?.color || "#533afd"}08`,
+        pointerEvents: "none",
+      }} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: `${profile?.color || "#533afd"}15`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 16,
+            flexShrink: 0,
+          }}>
+            {profile?.emoji || "🤖"}
+          </div>
+          <div>
+            <Text style={{ fontSize: 14, fontWeight: 600, color: "#1f2937", display: "block" }}>
+              {agentName}工作中
+            </Text>
+            <Text style={{ fontSize: 12, color: "#8c8c8c" }}>
+              {agentDone ? "分析完成" : "正在深度分析数据..."}
+            </Text>
+          </div>
+        </div>
+        <Text style={{
+          fontSize: 24,
+          fontWeight: 700,
+          color: agentDone ? "#15be53" : profile?.color || "#533afd",
+          fontFeatureSettings: "'tnum'",
+          lineHeight: 1,
+        }}>
           {percent}%
         </Text>
       </div>
@@ -212,9 +260,10 @@ const FakeProgress: React.FC<{ agentName: string; agentDone: boolean }> = ({ age
         percent={percent}
         status={agentDone ? "success" : "active"}
         showInfo={false}
-        strokeColor={agentDone ? "#52c41a" : { "0%": "#533afd", "100%": "#8b5cf6" }}
-        trailColor="#f0f0f0"
+        strokeColor={agentDone ? "#15be53" : { "0%": profile?.color || "#533afd", "100%": profile?.bgColor || "#8b5cf6" }}
+        trailColor="#e8e0ff"
         size="small"
+        style={{ marginBottom: 0 }}
       />
     </div>
   );
@@ -239,34 +288,34 @@ const PhaseNavItem: React.FC<{
     <div
       onClick={onClick}
       style={{
-        padding: "12px 14px",
+        padding: "14px 16px",
         borderRadius: 10,
         border: `1.5px solid ${isActive ? c.border : "transparent"}`,
         background: isActive ? c.bg : "transparent",
         cursor: status === "upcoming" ? "default" : "pointer",
         transition: "all 0.2s ease",
-        marginBottom: 6,
+        marginBottom: 8,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <div
           style={{
-            width: 10,
-            height: 10,
+            width: 14,
+            height: 14,
             borderRadius: "50%",
             background: c.icon,
             flexShrink: 0,
             ...(status === "running" ? { animation: "agentPulse 1.5s ease-in-out infinite" } : {}),
           }}
         />
-        <span style={{ fontSize: 13, fontWeight: isActive ? 600 : 500, color: status === "upcoming" ? "#bfbfbf" : "#1f2937" }}>
+        <span style={{ fontSize: 15, fontWeight: isActive ? 600 : 500, color: status === "upcoming" ? "#bfbfbf" : "#1f2937" }}>
           {ANALYSIS_PHASE_LABELS[phase] || phase}
         </span>
-        {status === "completed" && <CheckCircleOutlined style={{ fontSize: 11, color: "#52c41a", marginLeft: "auto" }} />}
-        {status === "running" && <span style={{ marginLeft: "auto", fontSize: 10, color: "#533afd" }}>进行中</span>}
+        {status === "completed" && <CheckCircleOutlined style={{ fontSize: 14, color: "#52c41a", marginLeft: "auto" }} />}
+        {status === "running" && <span style={{ marginLeft: "auto", fontSize: 12, color: "#533afd", fontWeight: 500 }}>进行中</span>}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", paddingLeft: 18 }}>
-        <span style={{ fontSize: 11, color: "#8c8c8c" }}>{agentCount} 位 Agent</span>
+      <div style={{ display: "flex", justifyContent: "space-between", paddingLeft: 24 }}>
+        <span style={{ fontSize: 12, color: "#8c8c8c" }}>{agentCount} 位 Agent</span>
       </div>
     </div>
   );
@@ -1079,10 +1128,10 @@ const StockAnalysisPage: React.FC = () => {
             )}
 
             {/* 左栏：阶段导航 */}
-            <div style={{ width: 280, flexShrink: 0, borderRight: "1px solid #e5edf5", overflowY: "auto", padding: "16px 12px", background: "#fafbfc" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
-                <ThunderboltOutlined style={{ color: "#533afd", fontSize: 14 }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#273951" }}>分析阶段</span>
+            <div style={{ width: 300, flexShrink: 0, borderRight: "1px solid #e5edf5", overflowY: "auto", padding: "16px 14px", background: "#fafbfc" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+                <ThunderboltOutlined style={{ color: "#533afd", fontSize: 16 }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#273951" }}>分析阶段</span>
                 {store.thinkingSteps.length > 0 && (
                   <Badge count={store.thinkingSteps.length} style={{ background: "#e5edf5", color: "#64748d" }} />
                 )}
@@ -1121,7 +1170,7 @@ const StockAnalysisPage: React.FC = () => {
                 const agentName = AGENT_DISPLAY_NAMES[agentKey] || agentKey;
                 const agentDone = store.agentStatuses[agentKey] === "done";
 
-                return <FakeProgress agentName={agentName} agentDone={agentDone} />;
+                return <FakeProgress agentName={agentName} agentDone={agentDone} agentKey={agentKey} />;
               })()}
 
               {/* 加载初始态 */}
@@ -1199,8 +1248,8 @@ const StockAnalysisPage: React.FC = () => {
             </div>
 
             {/* 右栏：Agent 进度（原侧边栏保留） */}
-            <div style={{ width: 280, flexShrink: 0, borderLeft: "1px solid #e5edf5", overflowY: "auto", padding: "8px 12px", background: "#fafbfc", paddingBottom: 48 }}>
-              <Text style={{ fontSize: 12, color: "#64748d", display: "block", marginBottom: 8, fontFeatureSettings: "'ss01' on" }}>
+            <div style={{ width: 300, flexShrink: 0, borderLeft: "1px solid #e5edf5", overflowY: "auto", padding: "10px 14px", background: "#fafbfc", paddingBottom: 48 }}>
+              <Text style={{ fontSize: 14, fontWeight: 600, color: "#273951", display: "block", marginBottom: 10 }}>
                 分析进度
               </Text>
               <AgentProgressPanel />

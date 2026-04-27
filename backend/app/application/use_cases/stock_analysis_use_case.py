@@ -240,6 +240,139 @@ class StockAnalysisUseCase:
                             await sse_queue.put({"type": "decision", "data": decision})
                             full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 置信度: {decision['confidence']*100:.0f}% | 风险评分: {decision['risk_score']*100:.0f}%\n{decision['reasoning']}"
 
+                        # === 非 Analyst 阶段的 agent detail 写入 ===
+                        if self.stock_analysis_repo and current_agent not in (
+                            "market_analyst", "fundamentals_analyst",
+                            "news_analyst", "sentiment_analyst",
+                        ):
+                            try:
+                                report_text = ""
+                                debate_data_val = None
+
+                                # Debate 阶段：bull / bear
+                                if current_agent == "bull_researcher":
+                                    ds = state_update.get("investment_debate_state", {})
+                                    report_text = ds.get("bull_arguments", "")
+                                    if report_text:
+                                        round_num = ds.get("round", 0)
+                                        debate_data_val = {"round": round_num, "bull_argument": report_text}
+                                        analysis_data["debate"]["bull_arguments"].append(report_text)
+                                        await sse_queue.put({
+                                            "type": "debate",
+                                            "data": {
+                                                "round": round_num,
+                                                "agent": "bull_researcher",
+                                                "stance": "bull",
+                                                "argument": report_text,
+                                            },
+                                        })
+                                        full_content += f"\n### 看多论据 (Round {round_num})\n{report_text}\n"
+
+                                elif current_agent == "bear_researcher":
+                                    ds = state_update.get("investment_debate_state", {})
+                                    report_text = ds.get("bear_arguments", "")
+                                    if report_text:
+                                        round_num = ds.get("round", 0)
+                                        debate_data_val = {"round": round_num, "bear_argument": report_text}
+                                        analysis_data["debate"]["bear_arguments"].append(report_text)
+                                        await sse_queue.put({
+                                            "type": "debate",
+                                            "data": {
+                                                "round": round_num,
+                                                "agent": "bear_researcher",
+                                                "stance": "bear",
+                                                "argument": report_text,
+                                            },
+                                        })
+                                        full_content += f"\n### 看空论据 (Round {round_num})\n{report_text}\n"
+
+                                elif current_agent == "research_manager":
+                                    report_text = investment_plan or ""
+
+                                elif current_agent == "trader":
+                                    report_text = trader_plan or ""
+
+                                elif current_agent == "risky_debator":
+                                    rs = state_update.get("risk_debate_state", {})
+                                    report_text = rs.get("risky_view", "")
+                                    if report_text:
+                                        round_num = rs.get("round", 0)
+                                        debate_data_val = {"round": round_num, "risky_view": report_text}
+                                        analysis_data["risk_debate"]["risky_view"] = report_text
+                                        await sse_queue.put({
+                                            "type": "debate",
+                                            "data": {
+                                                "round": round_num,
+                                                "agent": "risky_debator",
+                                                "stance": "risky",
+                                                "argument": report_text,
+                                            },
+                                        })
+                                        full_content += f"\n### 激进观点 (Round {round_num})\n{report_text}\n"
+
+                                elif current_agent == "safe_debator":
+                                    rs = state_update.get("risk_debate_state", {})
+                                    report_text = rs.get("safe_view", "")
+                                    if report_text:
+                                        round_num = rs.get("round", 0)
+                                        debate_data_val = {"round": round_num, "safe_view": report_text}
+                                        analysis_data["risk_debate"]["safe_view"] = report_text
+                                        await sse_queue.put({
+                                            "type": "debate",
+                                            "data": {
+                                                "round": round_num,
+                                                "agent": "safe_debator",
+                                                "stance": "safe",
+                                                "argument": report_text,
+                                            },
+                                        })
+                                        full_content += f"\n### 保守观点 (Round {round_num})\n{report_text}\n"
+
+                                elif current_agent == "neutral_debator":
+                                    rs = state_update.get("risk_debate_state", {})
+                                    report_text = rs.get("neutral_view", "")
+                                    if report_text:
+                                        round_num = rs.get("round", 0)
+                                        debate_data_val = {"round": round_num, "neutral_view": report_text}
+                                        analysis_data["risk_debate"]["neutral_view"] = report_text
+                                        await sse_queue.put({
+                                            "type": "debate",
+                                            "data": {
+                                                "round": round_num,
+                                                "agent": "neutral_debator",
+                                                "stance": "neutral",
+                                                "argument": report_text,
+                                            },
+                                        })
+                                        full_content += f"\n### 中立观点 (Round {round_num})\n{report_text}\n"
+
+                                elif current_agent == "risk_judge":
+                                    # risk_judge 将裁决内容追加到 messages
+                                    new_msgs = state_update.get("messages", [])
+                                    judge_msg = next(
+                                        (m for m in (new_msgs or []) if m.get("agent") == "risk_judge"),
+                                        None,
+                                    )
+                                    if judge_msg:
+                                        report_text = judge_msg.get("content", "")
+                                        full_content += f"\n## 风险裁决\n{report_text}\n"
+
+                                # 写入 detail 记录
+                                if report_text:
+                                    summary = report_text[:100] + ("..." if len(report_text) > 100 else "")
+                                    kwargs = {
+                                        "status": "done",
+                                        "summary": summary,
+                                        "full_report": report_text,
+                                    }
+                                    if debate_data_val:
+                                        kwargs["debate_data"] = debate_data_val
+                                    await self.stock_analysis_repo.update_detail_by_agent(
+                                        analysis_id, current_agent, **kwargs,
+                                    )
+                            except Exception as e:
+                                logger.warning("更新agent detail失败 [%s]: %s", current_agent, e)
+
                         # 发送 agent_status done
                         await sse_queue.put({
                             "type": "agent_status",
