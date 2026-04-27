@@ -27,6 +27,7 @@ interface StockAnalysisState {
   currentPhase: string;
   agentStatuses: Record<string, string>;  // agent -> pending/running/done/failed
   agentReports: Record<string, string>;   // agent -> summary
+  agentFullReports: Record<string, string>; // agent -> full report
   agentCompletedAt: Record<string, number>; // agent -> 完成时间戳(ms)
   debates: DebateEvent[];
   decision: DecisionEvent | null;
@@ -84,6 +85,7 @@ interface StockAnalysisState {
     fullContent?: string;
     industries: string[];
     agentReports: Record<string, string>;
+    agentFullReports?: Record<string, string>;
     debates: DebateEvent[];
     decision: DecisionEvent | null;
     agentCompletedAt?: Record<string, number>;
@@ -117,6 +119,7 @@ const initialState = {
   currentPhase: "",
   agentStatuses: {},
   agentReports: {},
+  agentFullReports: {},
   agentCompletedAt: {},
   debates: [],
   decision: null,
@@ -150,6 +153,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       currentPhase: "analysts",
       agentStatuses: {},
       agentReports: {},
+      agentFullReports: {},
       debates: [],
       decision: null,
       content: "",
@@ -227,6 +231,7 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       fullContent: data.fullContent || "",
       industries: data.industries || [],
       agentReports: data.agentReports || {},
+      agentFullReports: data.agentFullReports || {},
       debates: data.debates || [],
       decision: data.decision || null,
       agentCompletedAt: data.agentCompletedAt || {},
@@ -241,25 +246,32 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
     title: string;
     summary: string;
     industries: string[];
+    fullContent?: string;
   }) =>
     set((state) => {
       const agentReports: Record<string, string> = { ...state.agentReports };
+      const agentFullReports: Record<string, string> = { ...state.agentFullReports };
       const agentStatuses: Record<string, string> = {};
       for (const [key, val] of Object.entries(data.agents)) {
-        if (val.summary || val.full_report) {
-          agentReports[key] = val.summary || val.full_report || "";
+        if (val.summary) {
+          agentReports[key] = val.summary;
+        }
+        if (val.full_report) {
+          agentFullReports[key] = val.full_report;
         }
         agentStatuses[key] = val.status || "done";
       }
       return {
         currentPhase: data.currentPhase || state.currentPhase,
         agentReports,
+        agentFullReports,
         agentStatuses,
         debates: data.debates || state.debates,
         decision: data.decision || state.decision,
         title: data.title || state.title,
         summary: data.summary || state.summary,
         industries: data.industries || state.industries,
+        fullContent: data.fullContent || state.fullContent,
       };
     }),
 

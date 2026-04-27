@@ -296,13 +296,17 @@ const StockAnalysisPage: React.FC = () => {
           const debates = ad.debates || [];
           const decision = ad.decision || null;
 
-          // 构建 agentReports
+          // 构建 agentReports 和 agentFullReports
           const agentReports: Record<string, string> = {};
+          const agentFullReports: Record<string, string> = {};
           const agentCompletedAt: Record<string, number> = {};
           for (const [key, val] of Object.entries(agents)) {
             const v = val as { summary?: string; full_report?: string; completed_at?: number };
-            if (v.summary || v.full_report) {
-              agentReports[key + "_analyst"] = v.summary || v.full_report || "";
+            if (v.summary) {
+              agentReports[key + "_analyst"] = v.summary;
+            }
+            if (v.full_report) {
+              agentFullReports[key + "_analyst"] = v.full_report;
             }
             if (v.completed_at) {
               agentCompletedAt[key + "_analyst"] = v.completed_at;
@@ -322,6 +326,7 @@ const StockAnalysisPage: React.FC = () => {
             fullContent: record.content || "",
             industries: ad.industries || [],
             agentReports,
+            agentFullReports,
             debates,
             decision: decision as any,
             agentCompletedAt,
@@ -624,6 +629,7 @@ const StockAnalysisPage: React.FC = () => {
                   key={agent}
                   agent={agent}
                   summary={summary}
+                  fullReport={store.agentFullReports[agent] || summary}
                   isRunning={store.agentStatuses[agent] === "running"}
                   thinkingMessage={profile?.thinkingMessage}
                 />
@@ -988,26 +994,19 @@ const StockAnalysisPage: React.FC = () => {
             <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56, maxWidth: 900, margin: "0 auto" }}>
               {/* 动态进度条 */}
               {(() => {
-                const totalAgents = isQuickMode ? 2 : 4;
-                const completedAgents = Object.values(store.agentStatuses).filter(s => s === "done").length;
                 const runningAgent = Object.entries(store.agentStatuses).find(([, s]) => s === "running");
-                const percent = Math.min(Math.round((completedAgents / totalAgents) * 100), 90);
                 const currentAgentName = runningAgent ? AGENT_DISPLAY_NAMES[runningAgent[0]] : null;
 
-                if (completedAgents === 0 && !runningAgent) return null;
+                if (!currentAgentName) return null;
 
                 return (
                   <div style={{ marginBottom: 20, padding: "16px 20px", background: "#fff", borderRadius: 8, border: "1px solid #e8e0ff" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <Text style={{ fontSize: 13, fontWeight: 500, color: "#273951" }}>
-                        {currentAgentName ? `${currentAgentName}正在分析中...` : "正在初始化分析流程..."}
-                      </Text>
-                      <Text style={{ fontSize: 12, color: "#8c8c8c" }}>
-                        已完成 {completedAgents}/{totalAgents} 位分析师
-                      </Text>
-                    </div>
+                    <Text style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 10 }}>
+                      {currentAgentName}正在分析中...
+                    </Text>
                     <Progress
-                      percent={percent}
+                      percent={70}
+                      status="active"
                       showInfo={false}
                       strokeColor={{ "0%": "#533afd", "100%": "#8b5cf6" }}
                       trailColor="#f0f0f0"
@@ -1237,7 +1236,7 @@ const StockAnalysisPage: React.FC = () => {
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
                         {Object.entries(store.agentReports).map(([agent, summary]) => {
                           if (isQuickMode && agent !== "market_analyst" && agent !== "fundamentals_analyst") return null;
-                          return <AgentReportCard key={agent} agent={agent} summary={summary} gridMode />;
+                          return <AgentReportCard key={agent} agent={agent} summary={summary} fullReport={store.agentFullReports[agent] || summary} gridMode />;
                         })}
                       </div>
                     ) : (
