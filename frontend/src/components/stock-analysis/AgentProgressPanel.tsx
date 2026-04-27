@@ -153,7 +153,7 @@ const AgentProgressPanel: React.FC = () => {
                   <div style={{
                     flex: 1,
                     minWidth: 0,
-                    padding: `${isFirst ? 2 : 6}px 8px ${isLast ? 6 : 2}px`,
+                    padding: `${isFirst ? 4 : 6}px 8px ${isLast ? 6 : 4}px`,
                     marginBottom: 4,
                     borderRadius: 8,
                     background: isRunning
@@ -172,25 +172,28 @@ const AgentProgressPanel: React.FC = () => {
                           : isDone ? "#15803d"
                           : isFailed ? "#dc2626"
                           : "#9ca3af",
+                        flex: 1,
                       }}>
                         {AGENT_DISPLAY_NAMES[agent] || agent}
                       </Text>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, paddingLeft: 24 }}>
-                      {isRunning && <LoadingOutlined style={{ fontSize: 13, color: "#3b82f6" }} spin />}
-                      {isDone && <CheckCircleFilled style={{ fontSize: 13, color: "#15be53" }} />}
-                      {isPending && <ClockCircleOutlined style={{ fontSize: 13, color: "#d1d5db" }} />}
-                      {isFailed && <CloseCircleFilled style={{ fontSize: 13, color: "#ea2261" }} />}
-                      <Text style={{
-                        fontSize: 12,
-                        fontWeight: isRunning ? 500 : 400,
-                        color: isRunning ? "#3b82f6" : isDone ? "#16a34a" : isFailed ? "#dc2626" : "#c6c6c6",
-                      }}>
-                        {isRunning && "分析中..."}
-                        {isDone && (completedAt ? formatTime(completedAt) : "完成")}
-                        {isPending && "等待中"}
-                        {isFailed && "失败"}
-                      </Text>
+                      {/* 状态标签 — 和名称同一行 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        {isRunning && <LoadingOutlined style={{ fontSize: 12, color: "#3b82f6" }} spin />}
+                        {isDone && <CheckCircleFilled style={{ fontSize: 12, color: "#15be53" }} />}
+                        {isPending && <ClockCircleOutlined style={{ fontSize: 12, color: "#d1d5db" }} />}
+                        {isFailed && <CloseCircleFilled style={{ fontSize: 12, color: "#ea2261" }} />}
+                        <Text style={{
+                          fontSize: 12,
+                          fontWeight: isRunning ? 500 : 400,
+                          color: isRunning ? "#3b82f6" : isDone ? "#16a34a" : isFailed ? "#dc2626" : "#c6c6c6",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {isRunning && "分析中"}
+                          {isDone && (completedAt ? formatTime(completedAt) : "完成")}
+                          {isPending && "等待"}
+                          {isFailed && "失败"}
+                        </Text>
+                      </div>
                     </div>
                   </div>
                 </div>

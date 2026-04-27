@@ -291,6 +291,7 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
             if industries is not None:
                 model.industries = industries
             await self.session.flush()
+            await self.session.commit()
 
     async def update_detail_by_agent(
         self,
@@ -416,4 +417,5 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
             sa_model.article_id = article_id
 
         await self.session.flush()
+        await self.session.commit()
         return article_id

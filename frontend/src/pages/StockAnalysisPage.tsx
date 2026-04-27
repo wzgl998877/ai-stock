@@ -1164,13 +1164,17 @@ const StockAnalysisPage: React.FC = () => {
               {/* 动态假进度条 */}
               {(() => {
                 const runningAgent = Object.entries(store.agentStatuses).find(([, s]) => s === "running");
-                if (!runningAgent) return null;
-
-                const agentKey = runningAgent[0];
-                const agentName = AGENT_DISPLAY_NAMES[agentKey] || agentKey;
-                const agentDone = store.agentStatuses[agentKey] === "done";
-
-                return <FakeProgress agentName={agentName} agentDone={agentDone} agentKey={agentKey} />;
+                if (runningAgent) {
+                  const agentKey = runningAgent[0];
+                  const agentName = AGENT_DISPLAY_NAMES[agentKey] || agentKey;
+                  const agentDone = store.agentStatuses[agentKey] === "done";
+                  return <FakeProgress agentName={agentName} agentDone={agentDone} agentKey={agentKey} />;
+                }
+                // 没有 running agent 但分析仍在进行 → 显示初始化进度
+                if (store.agentStatuses && Object.keys(store.agentStatuses).length === 0) {
+                  return <FakeProgress agentName="系统" agentDone={false} agentKey="system" />;
+                }
+                return null;
               })()}
 
               {/* 加载初始态 */}
