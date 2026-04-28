@@ -1,54 +1,43 @@
 import React, { useEffect, useState } from "react";
-import { List, Typography, Tag, Empty, Spin } from "antd";
-import { ClockCircleOutlined } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
-import * as knowledgeService from "../../services/knowledgeService";
+import { Typography, Tag, Empty, Spin } from "antd";
+import { ThunderboltOutlined, ExperimentOutlined } from "@ant-design/icons";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import * as stockAnalysisService from "../../services/stockAnalysisService";
+import type { AnalysisRecordListItem } from "../../domain/types";
 
 const { Text } = Typography;
 
 const ACTION_TAG_COLOR: Record<string, string> = {
-  "买入": "green",
-  "卖出": "red",
-  "持有": "blue",
+  "买入": "#15be53",
+  "卖出": "#ea2261",
+  "持有": "#3b82f6",
+  "观望": "#64748d",
 };
 
-interface HistoryItem {
-  id: string;
-  title: string;
-  summary: string;
-  created_at: string;
-  decision?: {
-    action?: string;
-    target_price?: number;
-    confidence?: number;
-    risk_score?: number;
-  };
-  analysis_data?: {
-    decision?: {
-      action?: string;
-      target_price?: number;
-      confidence?: number;
-      risk_score?: number;
-    };
-  };
-}
+const ACTION_TAG_BG: Record<string, string> = {
+  "买入": "rgba(21,190,83,0.1)",
+  "卖出": "rgba(234,34,97,0.1)",
+  "持有": "rgba(59,130,246,0.1)",
+  "观望": "rgba(100,116,141,0.1)",
+};
 
 interface AnalysisHistoryListProps {
   stockCode: string;
-  onRefresh?: number;  // 递增触发刷新
+  onRefresh?: number;
 }
 
 const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, onRefresh }) => {
-  const [items, setItems] = useState<HistoryItem[]>([]);
+  const [items, setItems] = useState<AnalysisRecordListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     if (!stockCode) return;
     setLoading(true);
-    knowledgeService
-      .getArticles({ article_type: "stock_analysis", stock_code: stockCode, page: 1, page_size: 3 })
-      .then((res: any) => {
+    stockAnalysisService
+      .listAnalysisRecords({ stockCode, pageSize: 10 })
+      .then((res) => {
         setItems(res.items || []);
       })
       .catch(() => setItems([]))
@@ -63,44 +52,158 @@ const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, on
     return <Empty description="暂无历史分析记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
+  const currentRecordId = searchParams.get("recordId");
+
+  const handleClick = (id: string) => {
+    navigate(`/stock-analysis?recordId=${id}`);
+  };
+
   return (
-    <List
-      size="small"
-      dataSource={items}
-      renderItem={(item) => {
-        const decision = item.decision || item.analysis_data?.decision;
-        return (
-          <List.Item
-            style={{ cursor: "pointer", padding: "8px 12px", borderRadius: 4 }}
-            onClick={() => navigate(`/stock-analysis?recordId=${item.id}`)}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 13, color: "#061b31", display: "block", marginBottom: 4 }}>{item.title}</Text>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <ClockCircleOutlined style={{ fontSize: 11, color: "#94a3b8" }} />
-                  <Text style={{ fontSize: 11, color: "#94a3b8" }}>{item.created_at?.slice(0, 10)}</Text>
-                </div>
+    <div style={{ position: "relative", paddingLeft: 16 }}>
+      {/* 时间线竖线 */}
+      <div
+        style={{
+          position: "absolute",
+          left: 5,
+          top: 8,
+          bottom: 8,
+          width: 2,
+          background: "linear-gradient(to bottom, #e2e8f0, #f1f5f9)",
+          borderRadius: 1,
+        }}
+      />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {items.map((item) => {
+          const isCurrent = item.id === currentRecordId;
+          return (
+            <div
+              key={item.id}
+              onClick={() => handleClick(item.id)}
+              style={{
+                position: "relative",
+                cursor: "pointer",
+                padding: "8px 10px",
+                borderRadius: 6,
+                background: isCurrent ? "rgba(83,58,253,0.04)" : "transparent",
+                border: isCurrent ? "1px solid rgba(83,58,253,0.12)" : "1px solid transparent",
+                transition: "background 0.2s, border-color 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (!isCurrent) {
+                  e.currentTarget.style.background = "rgba(0,0,0,0.02)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isCurrent) {
+                  e.currentTarget.style.background = "transparent";
+                }
+              }}
+            >
+              {/* 时间线圆点 */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: -15,
+                  top: 14,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  background: isCurrent ? "#533afd" : "#cbd5e1",
+                  border: isCurrent ? "2px solid rgba(83,58,253,0.3)" : "2px solid #fff",
+                  boxShadow: isCurrent ? "0 0 0 2px rgba(83,58,253,0.15)" : "none",
+                }}
+              />
+
+              {/* 第一行：日期 + 分析模式 */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, color: "#94a3b8", fontFeatureSettings: "'tnum'" }}>
+                  {item.created_at?.slice(0, 16).replace("T", " ")}
+                </Text>
+                {item.analysis_mode === "quick" ? (
+                  <Tag
+                    icon={<ThunderboltOutlined />}
+                    style={{
+                      fontSize: 10,
+                      lineHeight: "16px",
+                      padding: "0 4px",
+                      margin: 0,
+                      borderRadius: 3,
+                      color: "#f59e0b",
+                      background: "rgba(245,158,11,0.08)",
+                      border: "none",
+                    }}
+                  >
+                    快速
+                  </Tag>
+                ) : (
+                  <Tag
+                    icon={<ExperimentOutlined />}
+                    style={{
+                      fontSize: 10,
+                      lineHeight: "16px",
+                      padding: "0 4px",
+                      margin: 0,
+                      borderRadius: 3,
+                      color: "#533afd",
+                      background: "rgba(83,58,253,0.08)",
+                      border: "none",
+                    }}
+                  >
+                    深度
+                  </Tag>
+                )}
               </div>
-              {decision && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  {decision.action && (
-                    <Tag color={ACTION_TAG_COLOR[decision.action] || "default"} style={{ fontSize: 12, borderRadius: 4, margin: 0 }}>
-                      {decision.action}
-                    </Tag>
+
+              {/* 第二行：标题 */}
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: "#061b31",
+                  display: "block",
+                  marginBottom: 4,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.title || `${item.stocks?.[0]?.name || ""}分析`}
+              </Text>
+
+              {/* 第三行：决策信息 */}
+              {item.decision && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {item.decision.action && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: ACTION_TAG_COLOR[item.decision.action] || "#64748d",
+                        background: ACTION_TAG_BG[item.decision.action] || "rgba(100,116,141,0.1)",
+                        padding: "1px 6px",
+                        borderRadius: 3,
+                      }}
+                    >
+                      {item.decision.action}
+                    </span>
                   )}
-                  {decision.target_price ? (
-                    <Text style={{ fontSize: 12, color: "#061b31", fontFeatureSettings: "'tnum'" }}>
-                      目标价 {decision.target_price.toFixed(2)}
+                  {item.decision.target_price > 0 && (
+                    <Text style={{ fontSize: 11, color: "#273951", fontFeatureSettings: "'tnum'" }}>
+                      目标 ¥{item.decision.target_price.toFixed(2)}
                     </Text>
-                  ) : null}
+                  )}
+                  {item.decision.confidence > 0 && (
+                    <Text style={{ fontSize: 11, color: "#64748d", fontFeatureSettings: "'tnum'" }}>
+                      置信度 {(item.decision.confidence * 100).toFixed(0)}%
+                    </Text>
+                  )}
                 </div>
               )}
             </div>
-          </List.Item>
-        );
-      }}
-    />
+          );
+        })}
+      </div>
+    </div>
   );
 };
 

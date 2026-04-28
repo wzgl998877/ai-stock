@@ -220,18 +220,28 @@ async def list_analysis_records(
     page: int = 1,
     page_size: int = 20,
     status: str = None,
+    stock_code: str = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """获取分析记录列表"""
+    """获取分析记录列表，支持按股票代码筛选"""
     user_id = "default"
 
     repo = MySQLStockAnalysisRepository(db)
-    records, total = await repo.list_by_user(
-        user_id=user_id,
-        page=page,
-        page_size=page_size,
-        status=status,
-    )
+
+    if stock_code:
+        records, total = await repo.list_by_stock(
+            stock_code=stock_code,
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+        )
+    else:
+        records, total = await repo.list_by_user(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+            status=status,
+        )
 
     items = []
     for sa in records:
@@ -266,6 +276,7 @@ async def list_analysis_records(
             "decision": {
                 "action": sa.decision_action or "",
                 "target_price": float(sa.target_price) if sa.target_price else 0.0,
+                "stop_loss_price": float(sa.stop_loss_price) if sa.stop_loss_price else 0.0,
                 "confidence": float(sa.confidence) if sa.confidence else 0.0,
                 "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
                 "reasoning": sa.reasoning or "",
@@ -320,6 +331,7 @@ async def get_analysis_record(record_id: str, db: AsyncSession = Depends(get_db)
         "decision": {
             "action": sa.decision_action or "",
             "target_price": float(sa.target_price) if sa.target_price else 0.0,
+            "stop_loss_price": float(sa.stop_loss_price) if sa.stop_loss_price else 0.0,
             "confidence": float(sa.confidence) if sa.confidence else 0.0,
             "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
             "reasoning": sa.reasoning or "",
@@ -400,6 +412,7 @@ async def get_analysis_progress(record_id: str, db: AsyncSession = Depends(get_d
         "decision": {
             "action": sa.decision_action or "",
             "target_price": float(sa.target_price) if sa.target_price else 0.0,
+            "stop_loss_price": float(sa.stop_loss_price) if sa.stop_loss_price else 0.0,
             "confidence": float(sa.confidence) if sa.confidence else 0.0,
             "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
             "reasoning": sa.reasoning or "",

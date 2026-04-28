@@ -70,6 +70,7 @@ class StockAnalysisRepository(ABC):
         full_content: str,
         decision_action: Optional[str] = None,
         target_price: Optional[float] = None,
+        stop_loss_price: Optional[float] = None,
         confidence: Optional[float] = None,
         risk_score: Optional[float] = None,
         reasoning: Optional[str] = None,

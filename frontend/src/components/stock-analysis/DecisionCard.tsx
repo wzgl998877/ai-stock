@@ -14,12 +14,15 @@ const ACTION_CONFIG: Record<string, { color: string; bg: string; border: string;
 
 /** 风险评分色阶：0-30绿 / 31-60黄 / 61-80橙 / 81-100红 */
 const getRiskColor = (score: number): string => {
-  const pct = Math.round(score * 100);
+  const pct = score > 1 ? Math.round(score) : Math.round(score * 100);
   if (pct <= 30) return "#15be53";
   if (pct <= 60) return "#f59e0b";
   if (pct <= 80) return "#f97316";
   return "#ea2261";
 };
+
+/** 统一百分比值（0-1 → 0-100） */
+const toPercent = (val: number) => val > 1 ? val : val * 100;
 
 interface DecisionCardProps {
   decision: DecisionEvent;
@@ -69,14 +72,14 @@ const DecisionCard: React.FC<DecisionCardProps> = ({ decision }) => {
           <Text style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 6 }}>置信度</Text>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Progress
-              percent={Math.round((decision.confidence || 0) * 100)}
+              percent={Math.round(toPercent(decision.confidence || 0))}
               strokeColor="#533afd"
               size="small"
               showInfo={false}
               style={{ flex: 1, marginBottom: 0 }}
             />
             <Text style={{ fontSize: 12, color: "#061b31", fontFeatureSettings: "'tnum' on", fontWeight: 500, flexShrink: 0 }}>
-              {Math.round((decision.confidence || 0) * 100)}%
+              {Math.round(toPercent(decision.confidence || 0))}%
             </Text>
           </div>
         </Col>
@@ -84,14 +87,14 @@ const DecisionCard: React.FC<DecisionCardProps> = ({ decision }) => {
           <Text style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 6 }}>风险评分</Text>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Progress
-              percent={Math.round((decision.risk_score || 0) * 100)}
+              percent={Math.round(toPercent(decision.risk_score || 0))}
               strokeColor={riskColor}
               size="small"
               showInfo={false}
               style={{ flex: 1, marginBottom: 0 }}
             />
             <Text style={{ fontSize: 12, color: riskColor, fontFeatureSettings: "'tnum' on", fontWeight: 500, flexShrink: 0 }}>
-              {Math.round((decision.risk_score || 0) * 100)}
+              {Math.round(toPercent(decision.risk_score || 0))}%
             </Text>
           </div>
         </Col>

@@ -215,6 +215,7 @@ export interface AgentReportEvent {
 export interface DecisionEvent {
   action: string;
   target_price: number;
+  stop_loss_price: number;
   confidence: number;
   risk_score: number;
   reasoning: string;
@@ -264,6 +265,7 @@ export interface AnalysisDetailItem {
 export interface AnalysisDecision {
   action: string;
   target_price: number;
+  stop_loss_price: number;
   confidence: number;
   risk_score: number;
   reasoning: string;

@@ -77,6 +77,7 @@ def _to_entity(model: StockAnalysisModel) -> StockAnalysis:
         full_content=model.full_content,
         decision_action=model.decision_action,
         target_price=model.target_price,
+        stop_loss_price=model.stop_loss_price,
         confidence=model.confidence,
         risk_score=model.risk_score,
         reasoning=model.reasoning,
@@ -264,6 +265,7 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
         full_content: str,
         decision_action: Optional[str] = None,
         target_price: Optional[float] = None,
+        stop_loss_price: Optional[float] = None,
         confidence: Optional[float] = None,
         risk_score: Optional[float] = None,
         reasoning: Optional[str] = None,
@@ -282,6 +284,8 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
                 model.decision_action = decision_action
             if target_price is not None:
                 model.target_price = Decimal(str(target_price))
+            if stop_loss_price is not None:
+                model.stop_loss_price = Decimal(str(stop_loss_price))
             if confidence is not None:
                 # LLM 可能返回 0~100 的百分比值，数据库 DECIMAL(5,4) 只接受 0~1
                 c = float(confidence)
@@ -365,6 +369,7 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
             "decision": {
                 "action": analysis.decision_action or "",
                 "target_price": float(analysis.target_price) if analysis.target_price else 0.0,
+                "stop_loss_price": float(analysis.stop_loss_price) if analysis.stop_loss_price else 0.0,
                 "confidence": float(analysis.confidence) if analysis.confidence else 0.0,
                 "risk_score": float(analysis.risk_score) if analysis.risk_score else 0.0,
                 "reasoning": analysis.reasoning or "",

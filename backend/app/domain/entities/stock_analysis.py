@@ -40,6 +40,7 @@ class StockAnalysis:
     full_content: Optional[str] = None
     decision_action: Optional[str] = None
     target_price: Optional[Decimal] = None
+    stop_loss_price: Optional[Decimal] = None
     confidence: Optional[Decimal] = None
     risk_score: Optional[Decimal] = None
     reasoning: Optional[str] = None

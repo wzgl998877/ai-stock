@@ -64,6 +64,7 @@ def create_signal_extractor_node(ai_service):
         return {
             "action": signal.get("action", "持有"),
             "target_price": signal.get("target_price", 0),
+            "stop_loss_price": signal.get("stop_loss_price", 0),
             "confidence": signal.get("confidence", 0),
             "risk_score": signal.get("risk_score", 50),
             "reasoning": signal.get("reasoning", ""),
@@ -112,6 +113,7 @@ def _parse_signal_json(text: str) -> dict:
         return {
             "action": str(result.get("action", "持有")),
             "target_price": float(result.get("target_price", 0)),
+            "stop_loss_price": float(result.get("stop_loss_price", 0)),
             "confidence": float(result.get("confidence", 0)),
             "risk_score": float(result.get("risk_score", 50)),
             "reasoning": str(result.get("reasoning", "")),
@@ -126,6 +128,7 @@ def _extract_signal_from_text(text: str) -> dict:
     result = {
         "action": "持有",
         "target_price": 0,
+        "stop_loss_price": 0,
         "confidence": 50,
         "risk_score": 50,
         "reasoning": text[:200],
@@ -140,6 +143,11 @@ def _extract_signal_from_text(text: str) -> dict:
     price_match = re.search(r"target_price[\"':\s]+(\d+\.?\d*)", text)
     if price_match:
         result["target_price"] = float(price_match.group(1))
+
+    # 尝试提取 stop_loss_price
+    stop_loss_match = re.search(r"stop_loss_price[\"':\s]+(\d+\.?\d*)", text)
+    if stop_loss_match:
+        result["stop_loss_price"] = float(stop_loss_match.group(1))
 
     # 尝试提取 confidence
     conf_match = re.search(r"confidence[\"':\s]+(\d+\.?\d*)", text)
@@ -159,6 +167,7 @@ def _default_signal_result(error_msg: str) -> dict:
     return {
         "action": "持有",
         "target_price": 0,
+        "stop_loss_price": 0,
         "confidence": 0,
         "risk_score": 50,
         "reasoning": error_msg,

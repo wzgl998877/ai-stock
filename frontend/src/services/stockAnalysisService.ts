@@ -107,12 +107,14 @@ export async function listAnalysisRecords(params?: {
   page?: number;
   pageSize?: number;
   status?: string;
+  stockCode?: string;
 }): Promise<AnalysisRecordListResponse> {
   const res = await api.get(`${ANALYSIS_BASE}/records`, {
     params: {
       page: params?.page || 1,
       page_size: params?.pageSize || 20,
       status: params?.status,
+      stock_code: params?.stockCode,
     },
   });
   return res.data;

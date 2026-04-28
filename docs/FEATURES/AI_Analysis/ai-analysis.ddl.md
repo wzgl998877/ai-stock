@@ -518,6 +518,7 @@ CREATE TABLE t_stock_analysis (
     full_content TEXT COMMENT '完整报告Markdown',
     decision_action VARCHAR(20) COMMENT '决策: 买入/持有/卖出',
     target_price DECIMAL(12,3) COMMENT '目标价',
+    stop_loss_price DECIMAL(12,3) COMMENT '止损价',
     confidence DECIMAL(5,4) COMMENT '置信度 0-1',
     risk_score DECIMAL(5,4) COMMENT '风险评分 0-1',
     reasoning TEXT COMMENT '决策理由',
@@ -579,6 +580,14 @@ CREATE INDEX idx_sad_status ON t_stock_analysis_detail(status);
 ```sql
 -- 见 Alembic 迁移: c3d4e5f6a7b8
 -- 存量数据迁移: python -m scripts.migrate_analysis_data
+```
+
+### 005 分支增量 — 增加 stop_loss_price 字段
+
+```sql
+-- 见 Alembic 迁移: d4e5f6a7b8c9
+ALTER TABLE t_stock_analysis ADD COLUMN stop_loss_price DECIMAL(12,3) NULL
+    COMMENT '止损价' AFTER target_price;
 ```
 
 ---

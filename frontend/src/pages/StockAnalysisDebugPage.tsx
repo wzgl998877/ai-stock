@@ -273,6 +273,7 @@ const MOCK_DEBATES: DebateEvent[] = [
 const MOCK_DECISION: DecisionEvent = {
   action: "分批建仓（逢跌买入）",
   target_price: 1980,
+  stop_loss_price: 1750,
   confidence: 65,
   risk_score: 35,
   reasoning:

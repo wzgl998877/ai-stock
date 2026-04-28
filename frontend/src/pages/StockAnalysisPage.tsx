@@ -362,6 +362,33 @@ const StockAnalysisPage: React.FC = () => {
   // 记录当前分析中的股票（从接口拉取）
   const [currentAnalyzing, setCurrentAnalyzing] = useState<{ code: string; name: string; recordId: string } | null>(null);
 
+  // 当前股价（用于计算预期收益）
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+
+  // 分析完成且有目标价时，获取当前股价用于预期收益计算
+  useEffect(() => {
+    if (store.analysisState !== "done" || !store.stockCode || !store.decision?.target_price) {
+      setCurrentPrice(null);
+      return;
+    }
+    stockDataService.getStockQuote(store.stockCode).then((quote) => {
+      if (quote?.price) {
+        setCurrentPrice(quote.price);
+      }
+    }).catch(() => {
+      // 获取股价失败不影响展示
+    });
+  }, [store.analysisState, store.stockCode, store.decision?.target_price]);
+
+  // 辅助函数：统一百分比值（0-1 → 0-100）
+  const toPercent = (val: number) => (val > 1 ? val : val * 100);
+
+  // 预期收益计算
+  const expectedReturn = (() => {
+    if (!store.decision?.target_price || !currentPrice || currentPrice <= 0) return null;
+    return ((store.decision.target_price - currentPrice) / currentPrice * 100);
+  })();
+
   // idle 时从接口拉取正在分析中的记录
   useEffect(() => {
     if (!store.analysisState || store.analysisState !== "idle") return;
@@ -1264,12 +1291,14 @@ const StockAnalysisPage: React.FC = () => {
                           <div>
                             <div style={{ fontSize: 11, color: "#8c8c8c", marginBottom: 2 }}>止损价</div>
                             <div style={{ fontSize: 16, fontWeight: 500, color: "#ef4444" }}>
-                              {store.decision.reasoning?.match(/止损价[：:].*?([\d,]+)/)?.[1] || "--"}
+                              {store.decision.stop_loss_price ? `${store.decision.stop_loss_price} 元` : "--"}
                             </div>
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: "#8c8c8c", marginBottom: 2 }}>预期收益</div>
-                            <div style={{ fontSize: 16, fontWeight: 600, color: "#15be53" }}>+17.5%</div>
+                            <div style={{ fontSize: 16, fontWeight: 600, color: expectedReturn !== null ? (expectedReturn >= 0 ? "#15be53" : "#ef4444") : "#8c8c8c" }}>
+                              {expectedReturn !== null ? `${expectedReturn >= 0 ? "+" : ""}${expectedReturn.toFixed(1)}%` : "--"}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1280,10 +1309,10 @@ const StockAnalysisPage: React.FC = () => {
                           <div style={{ position: "relative", width: 64, height: 64 }}>
                             <svg viewBox="0 0 36 36" style={{ transform: "rotate(-90deg)", width: 64, height: 64 }}>
                               <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e8e8e8" strokeWidth="3" />
-                              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#533afd" strokeWidth="3" strokeDasharray={`${store.decision.confidence}, 100`} strokeLinecap="round" />
+                              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#533afd" strokeWidth="3" strokeDasharray={`${toPercent(store.decision.confidence)}, 100`} strokeLinecap="round" />
                             </svg>
                             <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: 16, fontWeight: 700, color: "#533afd" }}>
-                              {store.decision.confidence}
+                              {toPercent(store.decision.confidence).toFixed(0)}%
                             </div>
                           </div>
                           <div style={{ fontSize: 10, color: "#8c8c8c", marginTop: 2 }}>置信度</div>
@@ -1292,10 +1321,10 @@ const StockAnalysisPage: React.FC = () => {
                           <div style={{ position: "relative", width: 64, height: 64 }}>
                             <svg viewBox="0 0 36 36" style={{ transform: "rotate(-90deg)", width: 64, height: 64 }}>
                               <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e8e8e8" strokeWidth="3" />
-                              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#ef4444" strokeWidth="3" strokeDasharray={`${store.decision.risk_score}, 100`} strokeLinecap="round" />
+                              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#ef4444" strokeWidth="3" strokeDasharray={`${toPercent(store.decision.risk_score)}, 100`} strokeLinecap="round" />
                             </svg>
                             <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", fontSize: 16, fontWeight: 700, color: "#ef4444" }}>
-                              {store.decision.risk_score}
+                              {toPercent(store.decision.risk_score).toFixed(0)}%
                             </div>
                           </div>
                           <div style={{ fontSize: 10, color: "#8c8c8c", marginTop: 2 }}>风险分</div>

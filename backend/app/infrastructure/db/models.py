@@ -405,6 +405,7 @@ class StockAnalysisModel(AuditMixin, Base):
     full_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     decision_action: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     target_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    stop_loss_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
     confidence: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(5, 4), nullable=True)
     risk_score: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(5, 4), nullable=True)
     reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

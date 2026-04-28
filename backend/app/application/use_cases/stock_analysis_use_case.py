@@ -232,6 +232,7 @@ class StockAnalysisUseCase:
                             decision = {
                                 "action": action,
                                 "target_price": state_update.get("target_price", 0.0),
+                                "stop_loss_price": state_update.get("stop_loss_price", 0.0),
                                 "confidence": state_update.get("confidence", 0.0),
                                 "risk_score": state_update.get("risk_score", 0.0),
                                 "reasoning": state_update.get("reasoning", ""),
@@ -526,6 +527,7 @@ class StockAnalysisUseCase:
                     full_content=full_content or "分析完成",
                     decision_action=decision.get("action"),
                     target_price=decision.get("target_price"),
+                    stop_loss_price=decision.get("stop_loss_price"),
                     confidence=decision.get("confidence"),
                     risk_score=decision.get("risk_score"),
                     reasoning=decision.get("reasoning"),
