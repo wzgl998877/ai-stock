@@ -1,5 +1,6 @@
 import React from "react";
-import { Drawer, Typography, Tag, Empty } from "antd";
+import { Modal, Typography, Tag, Empty } from "antd";
+import { CloseOutlined } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
@@ -34,58 +35,86 @@ const AgentReportDrawer: React.FC = () => {
   const hasFullReport = fullReport && fullReport !== summary;
 
   return (
-    <Drawer
-      title={null}
-      placement="right"
-      width={520}
+    <Modal
       open={!!selectedAgent}
-      onClose={() => setSelectedReportAgent(null)}
+      onCancel={() => setSelectedReportAgent(null)}
+      footer={null}
+      width={720}
+      centered
+      closable={false}
       styles={{
-        header: { display: "none" },
-        body: { padding: 0 },
+        content: { padding: 0, borderRadius: 12, overflow: "hidden" },
+        body: { padding: 0, maxHeight: "80vh", display: "flex", flexDirection: "column" },
       }}
     >
-      {/* 头部 */}
+      {/* Sticky 头部 — agent 名称固定 */}
       <div style={{
-        padding: "20px 24px 16px",
+        padding: "20px 28px 16px",
         borderBottom: "1px solid #e5edf5",
         display: "flex",
         alignItems: "center",
-        gap: 12,
+        gap: 14,
+        background: "#fff",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        flexShrink: 0,
       }}>
         <div style={{
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: "50%",
           background: profile?.bgColor || "#f0efff",
           border: `1.5px solid ${profile?.borderColor || "#d6d9fc"}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 20,
+          fontSize: 22,
           flexShrink: 0,
         }}>
           {profile?.emoji || "🤖"}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 15, fontWeight: 500, color: "#061b31" }}>{displayName}</Text>
-          <div style={{ marginTop: 2 }}>
+          <Text style={{ fontSize: 17, fontWeight: 600, color: "#061b31" }}>{displayName}</Text>
+          <div style={{ marginTop: 3 }}>
             <Tag style={{ fontSize: 11, borderRadius: 4, background: "#f8fafc", border: `1px solid ${statusConfig.color}33`, color: statusConfig.color }}>
               {statusConfig.label}
             </Tag>
           </div>
         </div>
+        {/* 关闭按钮 */}
+        <div
+          onClick={() => setSelectedReportAgent(null)}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            background: "#f5f5f5",
+            color: "#8c8c8c",
+            fontSize: 14,
+            transition: "all 0.2s",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#e8e8e8"; e.currentTarget.style.color = "#333"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "#f5f5f5"; e.currentTarget.style.color = "#8c8c8c"; }}
+        >
+          <CloseOutlined />
+        </div>
       </div>
 
-      {/* 主体内容 */}
-      <div style={{ padding: "20px 24px" }}>
+      {/* 可滚动的内容区域 */}
+      <div style={{ padding: "24px 28px", overflowY: "auto", flex: 1 }}>
         {hasFullReport ? (
-          <div className="markdown-body" style={{ fontSize: 13, lineHeight: 1.8 }}>
+          <div className="markdown-body" style={{ fontSize: 14, lineHeight: 1.8 }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullReport}</ReactMarkdown>
           </div>
         ) : summary ? (
           <div>
-            <div className="markdown-body" style={{ fontSize: 13, lineHeight: 1.8 }}>
+            <div className="markdown-body" style={{ fontSize: 14, lineHeight: 1.8 }}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
             </div>
             <div style={{ marginTop: 16, padding: "10px 12px", background: "#f8f7ff", borderRadius: 6, border: "1px solid #d6d9fc" }}>
@@ -96,7 +125,7 @@ const AgentReportDrawer: React.FC = () => {
           <Empty description="暂无报告内容" />
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 };
 

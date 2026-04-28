@@ -78,12 +78,13 @@ def create_quick_decision_node(ai_service):
         )
 
         return {
+            "current_agent": "trader",
+            "current_phase": "trader",
             "action": signal.get("action", "持有"),
             "target_price": signal.get("target_price", 0),
             "confidence": signal.get("confidence", 0),
             "risk_score": signal.get("risk_score", 50),
             "reasoning": signal.get("reasoning", ""),
-            "current_phase": "done",
         }
 
     return quick_decision_node
@@ -143,10 +144,11 @@ def _extract_signal_from_text(text: str) -> dict:
 def _default_quick_result(error_msg: str) -> dict:
     """返回默认快速决策结果"""
     return {
+        "current_agent": "trader",
+        "current_phase": "trader",
         "action": "持有",
         "target_price": 0,
         "confidence": 0,
         "risk_score": 50,
         "reasoning": error_msg,
-        "current_phase": "done",
     }

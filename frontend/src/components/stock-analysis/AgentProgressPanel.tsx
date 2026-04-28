@@ -24,7 +24,7 @@ const PHASE_ICONS: Record<string, React.ReactNode> = {
 };
 
 const PHASE_ORDER_FULL = ["analysts", "debate", "trader", "risk"];
-const PHASE_ORDER_QUICK = ["analysts"];
+const PHASE_ORDER_QUICK = ["analysts", "trader"];
 
 const AGENTS_BY_PHASE_FULL: Record<string, string[]> = {
   analysts: ["market_analyst", "fundamentals_analyst", "news_analyst", "sentiment_analyst"],
@@ -35,6 +35,7 @@ const AGENTS_BY_PHASE_FULL: Record<string, string[]> = {
 
 const AGENTS_BY_PHASE_QUICK: Record<string, string[]> = {
   analysts: ["market_analyst", "fundamentals_analyst"],
+  trader: ["trader"],
 };
 
 const formatTime = (ts: number) => {

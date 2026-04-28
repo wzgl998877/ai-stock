@@ -290,7 +290,8 @@ class StockAnalysisUseCase:
                                     report_text = investment_plan or ""
 
                                 elif current_agent == "trader":
-                                    report_text = trader_plan or ""
+                                    # full 模式取 trader_investment_plan，quick 模式取 reasoning
+                                    report_text = trader_plan or state_update.get("reasoning", "")
 
                                 elif current_agent == "risky_debator":
                                     rs = state_update.get("risk_debate_state", {})
@@ -535,6 +536,11 @@ class StockAnalysisUseCase:
                 await self.chat_repo.session.flush()
             except Exception as e:
                 logger.warning("更新分析记录为完成状态失败: %s", e)
+                # rollback 恢复 session 状态，避免后续 commit 抛 PendingRollbackError
+                try:
+                    await self.stock_analysis_repo.session.rollback()
+                except Exception:
+                    pass
 
         await self.chat_repo.session.commit()
         logger.info("[耗时] 更新分析记录+commit: %.3fs", time.time() - t0)

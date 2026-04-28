@@ -52,6 +52,19 @@ const { Text, Title } = Typography;
 /** 分析阶段顺序 */
 const PHASE_ORDER = ["analysts", "debate", "trader", "risk"];
 
+/** 各模式下各阶段的 agent 列表（与后端 QUICK_MODE_AGENTS / FULL_MODE_AGENTS 一致） */
+const PHASE_AGENTS_FULL: Record<string, string[]> = {
+  analysts: ["market_analyst", "fundamentals_analyst", "news_analyst", "sentiment_analyst"],
+  debate: ["bull_researcher", "bear_researcher", "research_manager"],
+  trader: ["trader"],
+  risk: ["risky_debator", "safe_debator", "neutral_debator", "risk_judge"],
+};
+const PHASE_AGENTS_QUICK: Record<string, string[]> = {
+  analysts: ["market_analyst", "fundamentals_analyst"],
+  trader: ["trader"],
+};
+const PHASE_ORDER_QUICK = ["analysts", "trader"];
+
 // ============================================================
 // 分析维度展示配置（只读，随模式切换）
 // ============================================================
@@ -323,13 +336,8 @@ const PhaseNavItem: React.FC<{
 
 /** 获取阶段 Agent 数量 */
 const getPhaseAgentCount = (phase: string, isQuick: boolean) => {
-  switch (phase) {
-    case "analysts": return isQuick ? 2 : 4;
-    case "debate": return 3;
-    case "trader": return 1;
-    case "risk": return 4;
-    default: return 0;
-  }
+  const map = isQuick ? PHASE_AGENTS_QUICK : PHASE_AGENTS_FULL;
+  return (map[phase] || []).length;
 };
 
 // ============================================================
@@ -346,7 +354,6 @@ const StockAnalysisPage: React.FC = () => {
   const [historyItems] = useState<any[]>([]);
   const [starting, setStarting] = useState(false);
   const [searchParams] = useSearchParams();
-  const [collapsedPhases, setCollapsedPhases] = useState<string[]>([]);
   const [activePhase, setActivePhase] = useState<string>("analysts");
   const [doneActiveTab, setDoneActiveTab] = useState("overview");
   const [phaseTransition, setPhaseTransition] = useState<{ from: string; to: string } | null>(null);
@@ -653,7 +660,6 @@ const StockAnalysisPage: React.FC = () => {
                 if (phase && phase !== st.currentPhase) {
                   const prev = st.currentPhase;
                   setPhaseTransition({ from: prev, to: phase });
-                  setCollapsedPhases((p) => p.includes(prev) ? p : [...p, prev]);
                   setActivePhase(phase);
                   st.setCurrentPhase(phase);
                   setTimeout(() => setPhaseTransition(null), 3000);
@@ -755,7 +761,10 @@ const StockAnalysisPage: React.FC = () => {
     });
   }, [store]);
 
-  const currentPhaseIndex = PHASE_ORDER.indexOf(store.currentPhase);
+  const phasesToShow = isQuickMode ? PHASE_ORDER_QUICK : PHASE_ORDER;
+  const phaseAgents = isQuickMode ? PHASE_AGENTS_QUICK : PHASE_AGENTS_FULL;
+
+  const currentPhaseIndex = phasesToShow.indexOf(store.currentPhase);
 
   // 阶段变化时显示过渡提示
   useEffect(() => {
@@ -764,8 +773,6 @@ const StockAnalysisPage: React.FC = () => {
     const curr = store.currentPhase;
     if (prev && prev !== curr) {
       setPhaseTransition({ from: prev, to: curr });
-      // 自动收起已完成阶段
-      setCollapsedPhases((p) => p.includes(prev) ? p : [...p, prev]);
       // 自动切换到当前阶段
       setActivePhase(curr);
       // 3秒后清除过渡提示
@@ -780,12 +787,7 @@ const StockAnalysisPage: React.FC = () => {
     switch (phase) {
       case "analysts":
         if (Object.keys(store.agentReports).length === 0) {
-          return (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 0" }}>
-              <Spin size="small" />
-              <Text style={{ fontSize: 13, color: "#8c8c8c" }}>等待分析师输出...</Text>
-            </div>
-          );
+          return null;
         }
         return (
           <div>
@@ -809,23 +811,13 @@ const StockAnalysisPage: React.FC = () => {
 
       case "debate":
         if (store.debates.length === 0) {
-          return (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 0" }}>
-              <Spin size="small" />
-              <Text style={{ fontSize: 13, color: "#8c8c8c" }}>等待辩论数据...</Text>
-            </div>
-          );
+          return null;
         }
         return <DebateTimeline debates={store.debates} />;
 
       case "trader":
         if (!store.decision) {
-          return (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 0" }}>
-              <Spin size="small" />
-              <Text style={{ fontSize: 13, color: "#8c8c8c" }}>等待决策输出...</Text>
-            </div>
-          );
+          return null;
         }
         return <DecisionCard decision={store.decision} />;
 
@@ -842,17 +834,18 @@ const StockAnalysisPage: React.FC = () => {
     }
   };
 
-  /** 获取阶段状态 */
+  /** 获取阶段状态 — 基于该阶段内 agent 的完成状态判断 */
   const getPhaseStatus = (phase: string): "completed" | "running" | "upcoming" => {
-    if (isDone) return "completed";
-    const idx = PHASE_ORDER.indexOf(phase);
-    const curIdx = PHASE_ORDER.indexOf(store.currentPhase);
-    if (idx < curIdx) return "completed";
-    if (idx === curIdx) return "running";
+    const agents = phaseAgents[phase] || [];
+    if (agents.length === 0) return "upcoming";
+
+    const allDone = agents.every((a) => store.agentStatuses[a] === "done");
+    const anyRunning = agents.some((a) => store.agentStatuses[a] === "running");
+
+    if (allDone) return "completed";
+    if (anyRunning || store.currentPhase === phase) return "running";
     return "upcoming";
   };
-
-  const phasesToShow = isQuickMode ? ["analysts"] : PHASE_ORDER;
 
   // === Idle 态（增强版） ===
   if (isIdle) {
@@ -1161,32 +1154,19 @@ const StockAnalysisPage: React.FC = () => {
 
             {/* 中栏：当前阶段内容 */}
             <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", paddingBottom: 56, maxWidth: 900, margin: "0 auto" }}>
-              {/* 动态假进度条 */}
+              {/* 动态假进度条 — 展示当前激活阶段中正在运行的 agent */}
               {(() => {
-                const runningAgent = Object.entries(store.agentStatuses).find(([, s]) => s === "running");
-                if (runningAgent) {
-                  const agentKey = runningAgent[0];
-                  const agentName = AGENT_DISPLAY_NAMES[agentKey] || agentKey;
-                  const agentDone = store.agentStatuses[agentKey] === "done";
-                  return <FakeProgress agentName={agentName} agentDone={agentDone} agentKey={agentKey} />;
-                }
-                // 没有 running agent 但分析仍在进行 → 显示初始化进度
-                if (store.agentStatuses && Object.keys(store.agentStatuses).length === 0) {
-                  return <FakeProgress agentName="系统" agentDone={false} agentKey="system" />;
+                const currentPhaseAgents = phaseAgents[activePhase] || [];
+                const runningAgent = currentPhaseAgents.find((a) => store.agentStatuses[a] === "running");
+                // 没有 running 的，取第一个未 done 的 agent
+                const activeAgent = runningAgent || currentPhaseAgents.find((a) => store.agentStatuses[a] !== "done");
+                if (activeAgent && store.agentStatuses[activeAgent] !== "done") {
+                  const agentName = AGENT_DISPLAY_NAMES[activeAgent] || activeAgent;
+                  const agentDone = store.agentStatuses[activeAgent] === "done";
+                  return <FakeProgress agentName={agentName} agentDone={agentDone} agentKey={activeAgent} />;
                 }
                 return null;
               })()}
-
-              {/* 加载初始态 */}
-              {Object.keys(store.agentStatuses).length === 0 && store.thinkingSteps.length === 0 && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
-                  <Spin size="large" />
-                  <Text style={{ fontSize: 13, color: "#64748d", marginTop: 16 }}>正在初始化分析流程...</Text>
-                  <div style={{ width: 200, marginTop: 16 }}>
-                    <Progress percent={30} showInfo={false} strokeColor="#533afd" />
-                  </div>
-                </div>
-              )}
 
               {/* 当前激活阶段内容 */}
               {activePhase && (
@@ -1195,50 +1175,6 @@ const StockAnalysisPage: React.FC = () => {
                   {renderPhaseContent(activePhase)}
                 </div>
               )}
-
-              {/* 已完成阶段折叠列表 */}
-              {phasesToShow.filter((p) => getPhaseStatus(p) === "completed").map((phase) => {
-                const phaseLabel = ANALYSIS_PHASE_LABELS[phase] || phase;
-                const isPhaseCollapsed = collapsedPhases.includes(phase);
-                return (
-                  <div key={phase} style={{ marginBottom: 12 }}>
-                    <div
-                      onClick={() => {
-                        setCollapsedPhases((prev) =>
-                          isPhaseCollapsed ? prev.filter((p) => p !== phase) : [...prev, phase]
-                        );
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "10px 14px",
-                        background: "#fafbfc",
-                        borderRadius: 8,
-                        border: "1px solid #f0f0f0",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <CheckCircleOutlined style={{ fontSize: 14, color: "#52c41a" }} />
-                      <Text style={{ fontSize: 13, color: "#52c41a", fontWeight: 500 }}>{phaseLabel}已完成</Text>
-                      <Text style={{ fontSize: 11, color: "#bfbfbf" }}>{isPhaseCollapsed ? "点击展开" : "点击收起"}</Text>
-                      <span style={{
-                        fontSize: 10,
-                        color: "#bfbfbf",
-                        marginLeft: "auto",
-                        transform: isPhaseCollapsed ? "rotate(-90deg)" : "rotate(0)",
-                        transition: "transform 0.2s ease",
-                      }}>▾</span>
-                    </div>
-                    {!isPhaseCollapsed && (
-                      <div style={{ marginTop: 8, paddingLeft: 4 }}>
-                        {renderPhaseContent(phase)}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
 
               {/* 分析内容文本（兜底展示） */}
               {store.content && !store.decision && (

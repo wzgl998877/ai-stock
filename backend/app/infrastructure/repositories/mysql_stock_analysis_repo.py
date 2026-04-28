@@ -283,9 +283,16 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
             if target_price is not None:
                 model.target_price = Decimal(str(target_price))
             if confidence is not None:
-                model.confidence = Decimal(str(confidence))
+                # LLM 可能返回 0~100 的百分比值，数据库 DECIMAL(5,4) 只接受 0~1
+                c = float(confidence)
+                if c > 1:
+                    c = c / 100
+                model.confidence = Decimal(str(round(c, 4)))
             if risk_score is not None:
-                model.risk_score = Decimal(str(risk_score))
+                r = float(risk_score)
+                if r > 1:
+                    r = r / 100
+                model.risk_score = Decimal(str(round(r, 4)))
             if reasoning is not None:
                 model.reasoning = reasoning
             if industries is not None:
