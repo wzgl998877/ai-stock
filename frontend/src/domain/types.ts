@@ -210,6 +210,7 @@ export interface DebateEvent {
 export interface AgentReportEvent {
   agent: string;
   summary: string;
+  full_report?: string;
 }
 
 export interface DecisionEvent {

@@ -68,7 +68,7 @@ interface StockAnalysisState {
   setValidation: (loading: boolean, valid: boolean) => void;
   startAnalysis: () => void;
   updateAgentStatus: (event: AgentStatusEvent) => void;
-  addAgentReport: (agent: string, summary: string) => void;
+  addAgentReport: (agent: string, summary: string, fullReport?: string) => void;
   addThinkingStep: (step: ThinkingStepData) => void;
   addDebate: (event: DebateEvent) => void;
   setDecision: (decision: DecisionEvent) => void;
@@ -188,10 +188,16 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       };
     }),
 
-  addAgentReport: (agent, summary) =>
-    set((state) => ({
-      agentReports: { ...state.agentReports, [agent]: summary },
-    })),
+  addAgentReport: (agent, summary, fullReport?: string) =>
+    set((state) => {
+      const updates: Partial<typeof state> = {
+        agentReports: { ...state.agentReports, [agent]: summary },
+      };
+      if (fullReport) {
+        updates.agentFullReports = { ...state.agentFullReports, [agent]: fullReport };
+      }
+      return updates;
+    }),
 
   addThinkingStep: (step) =>
     set((state) => {

@@ -372,6 +372,11 @@ class StockAnalysisUseCase:
                                     await self.stock_analysis_repo.update_detail_by_agent(
                                         analysis_id, current_agent, **kwargs,
                                     )
+                                    # 同时推送 agent_report SSE 事件，让前端实时显示报告摘要
+                                    await sse_queue.put({
+                                        "type": "agent_report",
+                                        "data": {"agent": current_agent, "summary": summary, "full_report": report_text},
+                                    })
                             except Exception as e:
                                 logger.warning("更新agent detail失败 [%s]: %s", current_agent, e)
 

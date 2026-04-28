@@ -719,7 +719,7 @@ const StockAnalysisPage: React.FC = () => {
             case "agent_report":
               {
                 const report = event.data as AgentReportEvent;
-                st.addAgentReport(report.agent, report.summary);
+                st.addAgentReport(report.agent, report.summary, report.full_report);
               }
               break;
             case "debate":
