@@ -447,14 +447,34 @@ const StockAnalysisPage: React.FC = () => {
             if (d.completed_at) {
               agentCompletedAt[d.agent_name] = new Date(d.completed_at).getTime();
             }
-            // 提取辩论数据
+            // 提取辩论数据：将 debate_data 转换为 DebateEvent 格式 {speaker, round, content}
             if (d.debate_data) {
-              const dd = d.debate_data;
-              if (dd.round && dd.bull_argument !== undefined) {
-                debates.push(dd as unknown as DebateEvent);
-              } else if (Array.isArray(dd)) {
-                debates.push(...(dd as unknown as DebateEvent[]));
+              const dd = d.debate_data as Record<string, unknown>;
+              const round = (dd.round as number) || 0;
+              // 投资辩论
+              if (dd.bull_argument) {
+                debates.push({ speaker: "bull_researcher", round, content: dd.bull_argument as string });
               }
+              if (dd.bear_argument) {
+                debates.push({ speaker: "bear_researcher", round, content: dd.bear_argument as string });
+              }
+              // 风险辩论
+              if (dd.risky_view) {
+                debates.push({ speaker: "risky_debator", round, content: dd.risky_view as string });
+              }
+              if (dd.safe_view) {
+                debates.push({ speaker: "safe_debator", round, content: dd.safe_view as string });
+              }
+              if (dd.neutral_view) {
+                debates.push({ speaker: "neutral_debator", round, content: dd.neutral_view as string });
+              }
+            }
+            // 非辩论阶段 agent 的报告也加入 debates（供 DebateTimeline/RiskAssessmentSection 使用）
+            if (d.phase === "debate" && (d.agent_name === "research_manager") && d.full_report) {
+              debates.push({ speaker: d.agent_name, round: 0, content: d.full_report });
+            }
+            if (d.phase === "risk" && d.agent_name === "risk_judge" && d.full_report) {
+              debates.push({ speaker: d.agent_name, round: 0, content: d.full_report });
             }
           }
 
@@ -852,7 +872,6 @@ const StockAnalysisPage: React.FC = () => {
         return (
           <RiskAssessmentSection
             debates={store.debates}
-            decision={store.decision ?? undefined}
           />
         );
 
@@ -1286,11 +1305,13 @@ const StockAnalysisPage: React.FC = () => {
                         <div style={{ display: "flex", gap: 16 }}>
                           <div>
                             <div style={{ fontSize: 11, color: "#8c8c8c", marginBottom: 2 }}>目标价</div>
-                            <div style={{ fontSize: 16, fontWeight: 600, color: "#15be53" }}>{store.decision.target_price} 元</div>
+                            <div style={{ fontSize: 16, fontWeight: 600, color: store.decision.target_price ? "#15be53" : "#8c8c8c" }}>
+                              {store.decision.target_price ? `${store.decision.target_price} 元` : "--"}
+                            </div>
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: "#8c8c8c", marginBottom: 2 }}>止损价</div>
-                            <div style={{ fontSize: 16, fontWeight: 500, color: "#ef4444" }}>
+                            <div style={{ fontSize: 16, fontWeight: 500, color: store.decision.stop_loss_price ? "#ef4444" : "#8c8c8c" }}>
                               {store.decision.stop_loss_price ? `${store.decision.stop_loss_price} 元` : "--"}
                             </div>
                           </div>
@@ -1359,21 +1380,42 @@ const StockAnalysisPage: React.FC = () => {
                   {
                     key: "overview",
                     label: <span><TeamOutlined style={{ marginRight: 4 }} />分析师报告</span>,
-                    children: Object.keys(store.agentReports).length > 0 ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-                        {PHASE_AGENT_ORDER.analysts
-                          .filter((agent) => isQuickMode ? agent === "market_analyst" || agent === "fundamentals_analyst" : true)
-                          .filter((agent) => store.agentReports[agent])
-                          .map((agent) => (
-                            <AgentReportCard key={agent} agent={agent} summary={store.agentReports[agent]} gridMode />
-                          ))}
-                      </div>
-                    ) : (
-                      <div style={{ textAlign: "center", padding: 40 }}>
-                        <TeamOutlined style={{ fontSize: 32, color: "#d9d9d9", marginBottom: 8 }} />
-                        <div style={{ fontSize: 13, color: "#8c8c8c" }}>暂无分析师报告</div>
-                      </div>
-                    ),
+                    children: (() => {
+                      const analystAgents = PHASE_AGENT_ORDER.analysts
+                        .filter((agent) => isQuickMode ? agent === "market_analyst" || agent === "fundamentals_analyst" : true);
+                      return (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+                          {analystAgents.map((agent) => {
+                            const summary = store.agentReports[agent];
+                            if (summary) {
+                              return <AgentReportCard key={agent} agent={agent} summary={summary} gridMode />;
+                            }
+                            return (
+                              <Card
+                                key={agent}
+                                size="small"
+                                style={{ borderRadius: 6, border: "1px dashed #d9d9d9", background: "#fafafa", height: "100%" }}
+                                styles={{ body: { padding: 12 } }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                  <div style={{
+                                    width: 24, height: 24, borderRadius: "50%",
+                                    background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 12, color: "#8c8c8c",
+                                  }}>
+                                    {AGENT_DISPLAY_NAMES[agent]?.[0] || "?"}
+                                  </div>
+                                  <Text style={{ fontSize: 13, fontWeight: 500, color: "#8c8c8c" }}>
+                                    {AGENT_DISPLAY_NAMES[agent] || agent}
+                                  </Text>
+                                </div>
+                                <Text style={{ fontSize: 12, color: "#bfbfbf" }}>未生成报告（可能因 API 限流导致）</Text>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      );
+                    })(),
                   },
                   ...(isQuickMode ? [] : [
                     {
@@ -1389,10 +1431,25 @@ const StockAnalysisPage: React.FC = () => {
                       ),
                     },
                     {
+                      key: "trader",
+                      label: <span><DollarOutlined style={{ marginRight: 4 }} />交易决策</span>,
+                      children: (() => {
+                        const traderSummary = store.agentReports["trader"];
+                        return traderSummary ? (
+                          <AgentReportCard agent="trader" summary={traderSummary} />
+                        ) : (
+                          <div style={{ textAlign: "center", padding: 40 }}>
+                            <DollarOutlined style={{ fontSize: 32, color: "#d9d9d9", marginBottom: 8 }} />
+                            <div style={{ fontSize: 13, color: "#8c8c8c" }}>暂无交易决策</div>
+                          </div>
+                        );
+                      })(),
+                    },
+                    {
                       key: "risk",
                       label: <span><SafetyCertificateOutlined style={{ marginRight: 4 }} />风险评估</span>,
                       children: (
-                        <RiskAssessmentSection debates={store.debates} decision={store.decision ?? undefined} />
+                        <RiskAssessmentSection debates={store.debates} />
                       ),
                     },
                   ]),

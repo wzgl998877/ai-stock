@@ -735,7 +735,6 @@ const StockAnalysisDebugPage: React.FC = () => {
         return (
           <RiskAssessmentSection
             debates={store.debates}
-            decision={store.decision ?? undefined}
           />
         );
       default:
@@ -1371,7 +1370,7 @@ const StockAnalysisDebugPage: React.FC = () => {
                         key: "risk",
                         label: <span><SafetyCertificateOutlined style={{ marginRight: 4 }} />风险评估</span>,
                         children: (
-                          <RiskAssessmentSection debates={store.debates} decision={store.decision ?? undefined} />
+                          <RiskAssessmentSection debates={store.debates} />
                         ),
                       },
                     ]),

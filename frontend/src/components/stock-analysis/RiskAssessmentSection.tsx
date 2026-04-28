@@ -1,10 +1,10 @@
 import React from "react";
-import { Card, Typography } from "antd";
-import { FireOutlined, SafetyCertificateOutlined, TeamOutlined, AuditOutlined, DollarOutlined } from "@ant-design/icons";
+import { Card, Typography, Button } from "antd";
+import { FireOutlined, SafetyCertificateOutlined, TeamOutlined, AuditOutlined, FileTextOutlined } from "@ant-design/icons";
 import { AGENT_PROFILES } from "../../domain/constants";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
-import { highlightNumbers } from "../../utils/textUtils";
-import type { DebateEvent, DecisionEvent } from "../../domain/types";
+import { extractFirstSentence, highlightNumbers } from "../../utils/textUtils";
+import type { DebateEvent } from "../../domain/types";
 
 const { Text, Paragraph } = Typography;
 
@@ -17,7 +17,6 @@ const formatTime = (ts?: number) => {
 
 /** 风险角色配置 */
 const RISK_ROLES = [
-  { agent: "trader", label: "交易决策官", icon: <DollarOutlined />, phase: "trader" },
   { agent: "risky_debator", label: "激进派", icon: <FireOutlined />, phase: "risk" },
   { agent: "safe_debator", label: "保守派", icon: <SafetyCertificateOutlined />, phase: "risk" },
   { agent: "neutral_debator", label: "中立派", icon: <TeamOutlined />, phase: "risk" },
@@ -26,10 +25,9 @@ const RISK_ROLES = [
 
 interface RiskAssessmentSectionProps {
   debates: DebateEvent[];
-  decision?: DecisionEvent;
 }
 
-/** 单个风险角色卡片 */
+/** 单个风险角色卡片 — 摘要 + 查看报告按钮 */
 const RoleCard: React.FC<{
   agent: string;
   label: string;
@@ -42,9 +40,13 @@ const RoleCard: React.FC<{
   const colors = profile
     ? { bg: profile.bgColor, border: profile.borderColor, color: profile.color }
     : { bg: "#f8fafc", border: "#e5edf5", color: "#64748d" };
+  const setSelectedReportAgent = useStockAnalysisStore((s) => s.setSelectedReportAgent);
 
   const isDone = status === "done";
   const isRunning = status === "running";
+
+  // 只展示首句摘要
+  const headline = content ? extractFirstSentence(content) : null;
 
   return (
     <Card
@@ -84,20 +86,34 @@ const RoleCard: React.FC<{
         </Text>
       </div>
 
-      {/* 内容区 */}
-      {content ? (
-        <Paragraph style={{ fontSize: 12, color: "#273951", lineHeight: 1.6, margin: 0 }}>
-          {highlightNumbers(content)}
+      {/* 摘要首句 */}
+      {headline ? (
+        <Paragraph style={{ fontSize: 12, color: "#273951", lineHeight: 1.6, margin: 0, marginBottom: 6 }}>
+          {highlightNumbers(headline)}
         </Paragraph>
       ) : (
         <Text style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>暂无输出</Text>
+      )}
+
+      {/* 查看完整报告按钮 */}
+      {content && content.length > (headline?.length || 0) + 10 && (
+        <Button
+          type="link"
+          size="small"
+          icon={<FileTextOutlined />}
+          style={{ fontSize: 11, color: "#533afd", padding: 0, marginTop: 2, height: "auto" }}
+          onClick={() => setSelectedReportAgent(agent)}
+        >
+          查看完整报告
+        </Button>
       )}
     </Card>
   );
 };
 
-const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ debates, decision }) => {
-  const { agentStatuses, agentCompletedAt, agentReports } = useStockAnalysisStore();
+const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ debates }) => {
+  const agentStatuses = useStockAnalysisStore((s) => s.agentStatuses);
+  const agentCompletedAt = useStockAnalysisStore((s) => s.agentCompletedAt);
 
   // 提取各角色的辩论内容（合并多轮）
   const getSpeakerContent = (speaker: string): string | null => {
@@ -106,15 +122,10 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ debates, 
     return items.map(d => d.content).join("\n\n");
   };
 
-  // 交易决策官的内容来自 decision 的 reasoning
-  const traderContent = decision?.reasoning || agentReports["trader"] || null;
-
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
       {RISK_ROLES.map((role) => {
-        const content = role.agent === "trader"
-          ? traderContent
-          : getSpeakerContent(role.agent);
+        const content = getSpeakerContent(role.agent);
         const status = agentStatuses[role.agent] || "pending";
         const completedAt = agentCompletedAt[role.agent];
 

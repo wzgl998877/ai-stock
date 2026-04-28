@@ -21,16 +21,28 @@ const AgentReportDrawer: React.FC = () => {
   const agentFullReports = useStockAnalysisStore((s) => s.agentFullReports);
   const agentReports = useStockAnalysisStore((s) => s.agentReports);
   const agentStatuses = useStockAnalysisStore((s) => s.agentStatuses);
+  const debates = useStockAnalysisStore((s) => s.debates);
   const setSelectedReportAgent = useStockAnalysisStore((s) => s.setSelectedReportAgent);
 
   if (!selectedAgent) return null;
 
   const profile = AGENT_PROFILES[selectedAgent];
   const displayName = AGENT_DISPLAY_NAMES[selectedAgent] || selectedAgent;
-  const fullReport = agentFullReports[selectedAgent];
-  const summary = agentReports[selectedAgent] || "";
+
+  // 优先从 agentFullReports/agentReports 取，其次从 debates 合并
+  let fullReport = agentFullReports[selectedAgent];
+  let summary = agentReports[selectedAgent] || "";
   const status = agentStatuses[selectedAgent] || "pending";
   const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+
+  // 如果没有 report 数据，尝试从 debates 中提取
+  if (!fullReport && !summary) {
+    const debateItems = debates.filter(d => d.speaker === selectedAgent);
+    if (debateItems.length > 0) {
+      fullReport = debateItems.map(d => d.content).join("\n\n");
+      summary = fullReport.slice(0, 100) + (fullReport.length > 100 ? "..." : "");
+    }
+  }
 
   const hasFullReport = fullReport && fullReport !== summary;
 
