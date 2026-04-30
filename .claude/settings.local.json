@@ -31,7 +31,9 @@
       "Bash(./node_modules/.bin/tsc:*)",
       "Bash(.specify/scripts/powershell/setup-plan.ps1:*)",
       "Bash(powershell.exe:*)",
-      "Bash(cmd:*)"
+      "Bash(cmd:*)",
+      "Bash(.specify/scripts/powershell/create-new-feature.ps1:*)",
+      "Bash(\"/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell\":*)"
     ]
   }
 }
