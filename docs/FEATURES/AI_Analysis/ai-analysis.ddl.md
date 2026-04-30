@@ -105,7 +105,7 @@ CREATE TABLE t_analysis_article (
     article_id VARCHAR(32) PRIMARY KEY COMMENT '文章UUID(32位)',
     title VARCHAR(50) NOT NULL COMMENT 'AI生成标题(≤15字)',
     summary VARCHAR(200) NOT NULL COMMENT 'AI生成摘要(≤80字,2句话结论)',
-    content TEXT NOT NULL COMMENT '分析正文(Markdown格式)',
+    content MEDIUMTEXT NOT NULL COMMENT '分析正文(Markdown格式)',
     event_type ENUM('geopolitical','policy','earnings','supply_chain','other') NOT NULL COMMENT '事件类型',
     raw_input VARCHAR(500) NOT NULL COMMENT '用户原始输入(最少10字)',
     chain_table JSON COMMENT '产业链传导表(仅supply_chain类型)',
@@ -225,7 +225,7 @@ CREATE TABLE t_chat_message (
     message_id VARCHAR(32) PRIMARY KEY COMMENT '消息UUID',
     session_id VARCHAR(32) NOT NULL COMMENT '所属会话UUID(关联t_chat_session.session_id)',
     role ENUM('user', 'assistant', 'system') NOT NULL COMMENT '角色:user/assistant/system',
-    content TEXT NOT NULL COMMENT '消息内容',
+    content MEDIUMTEXT NOT NULL COMMENT '消息内容',
     agent_data JSON COMMENT '多Agent中间数据(Agent状态/进度等)',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间(顺序)',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间',
@@ -515,7 +515,7 @@ CREATE TABLE t_stock_analysis (
     current_phase VARCHAR(20) NOT NULL DEFAULT 'analysts' COMMENT '当前阶段: analysts/debate/trader/risk/done',
     title VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'AI生成标题',
     summary VARCHAR(500) NOT NULL DEFAULT '' COMMENT 'AI生成摘要',
-    full_content TEXT COMMENT '完整报告Markdown',
+    full_content MEDIUMTEXT COMMENT '完整报告Markdown',
     decision_action VARCHAR(20) COMMENT '决策: 买入/持有/卖出',
     target_price DECIMAL(12,3) COMMENT '目标价',
     stop_loss_price DECIMAL(12,3) COMMENT '止损价',
@@ -553,7 +553,7 @@ CREATE TABLE t_stock_analysis_detail (
     phase VARCHAR(20) NOT NULL COMMENT '阶段: analysts/debate/trader/risk',
     status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/running/done/failed',
     summary VARCHAR(500) COMMENT 'Agent摘要',
-    full_report TEXT COMMENT 'Agent完整报告',
+    full_report MEDIUMTEXT COMMENT 'Agent完整报告',
     thinking_steps JSON COMMENT '思考步骤',
     debate_data JSON COMMENT '辩论数据',
     error_message TEXT COMMENT '错误信息',
@@ -588,6 +588,28 @@ CREATE INDEX idx_sad_status ON t_stock_analysis_detail(status);
 -- 见 Alembic 迁移: d4e5f6a7b8c9
 ALTER TABLE t_stock_analysis ADD COLUMN stop_loss_price DECIMAL(12,3) NULL
     COMMENT '止损价' AFTER target_price;
+```
+
+### 005 分支增量 — content 列扩容为 MEDIUMTEXT
+
+> 深度分析报告内容可能超过 TEXT（65KB）上限，需扩容为 MEDIUMTEXT（16MB）。
+
+```sql
+-- t_analysis_article.content: 分析正文
+ALTER TABLE t_analysis_article MODIFY COLUMN content MEDIUMTEXT NOT NULL
+    COMMENT '分析正文(Markdown格式)';
+
+-- t_chat_message.content: 对话消息内容
+ALTER TABLE t_chat_message MODIFY COLUMN content MEDIUMTEXT NOT NULL
+    COMMENT '消息内容';
+
+-- t_stock_analysis.full_content: 完整报告
+ALTER TABLE t_stock_analysis MODIFY COLUMN full_content MEDIUMTEXT
+    COMMENT '完整报告Markdown';
+
+-- t_stock_analysis_detail.full_report: Agent 完整报告
+ALTER TABLE t_stock_analysis_detail MODIFY COLUMN full_report MEDIUMTEXT
+    COMMENT 'Agent完整报告';
 ```
 
 ---
