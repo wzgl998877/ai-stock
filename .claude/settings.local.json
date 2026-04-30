@@ -30,7 +30,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(./node_modules/.bin/tsc:*)",
       "Bash(.specify/scripts/powershell/setup-plan.ps1:*)",
-      "Bash(powershell.exe:*)"
+      "Bash(powershell.exe:*)",
+      "Bash(cmd:*)"
     ]
   }
 }

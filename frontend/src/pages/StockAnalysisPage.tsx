@@ -27,7 +27,7 @@ import AgentProgressPanel from "../components/stock-analysis/AgentProgressPanel"
 import AgentReportCard from "../components/stock-analysis/AgentReportCard";
 import AgentReportDrawer from "../components/stock-analysis/AgentReportDrawer";
 import DebateTimeline from "../components/stock-analysis/DebateTimeline";
-import DecisionCard from "../components/stock-analysis/DecisionCard";
+
 import AnalysisHistoryList from "../components/stock-analysis/AnalysisHistoryList";
 import AnalysisComparison from "../components/stock-analysis/AnalysisComparison";
 import RiskAssessmentSection from "../components/stock-analysis/RiskAssessmentSection";
@@ -424,6 +424,34 @@ const StockAnalysisPage: React.FC = () => {
   useEffect(() => {
     const recordId = searchParams.get("recordId");
     if (recordId) {
+      // 停止旧轮询
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+
+      // 立即清空显示数据，防止切换记录时闪现旧数据
+      // 保留 stockCode/stockName（同一股票切换不需要重置）
+      useStockAnalysisStore.setState({
+        analysisState: "idle",
+        viewMode: false,
+        viewRecordId: "",
+        title: "",
+        summary: "",
+        fullContent: "",
+        industries: [],
+        agentReports: {},
+        agentFullReports: {},
+        agentStatuses: {},
+        agentCompletedAt: {},
+        debates: [],
+        decision: null,
+        content: "",
+        thinkingSteps: [],
+        contentBlocks: [],
+        error: "",
+      });
+
       // 从记录加载模式
       const loadRecord = async () => {
         try {
@@ -722,9 +750,16 @@ const StockAnalysisPage: React.FC = () => {
                 st.addAgentReport(report.agent, report.summary, report.full_report);
               }
               break;
-            case "debate":
-              st.addDebate(event.data as DebateEvent);
+            case "debate": {
+              // 后端 SSE 发送 {agent, argument}，前端 DebateEvent 需要 {speaker, content}
+              const dd = event.data as unknown as Record<string, unknown>;
+              st.addDebate({
+                speaker: (dd.agent || dd.speaker) as string,
+                round: (dd.round as number) || 0,
+                content: (dd.argument || dd.content || "") as string,
+              });
               break;
+            }
             case "decision":
               st.setDecision(event.data as DecisionEvent);
               break;
@@ -857,16 +892,45 @@ const StockAnalysisPage: React.FC = () => {
         );
 
       case "debate":
-        if (store.debates.length === 0) {
-          return null;
+        if (store.debates.length > 0) {
+          return <DebateTimeline debates={store.debates} />;
         }
-        return <DebateTimeline debates={store.debates} />;
+        // 复用 done 态空状态布局
+        return (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <SwapOutlined style={{ fontSize: 32, color: "#d9d9d9", marginBottom: 12 }} />
+            <div style={{ fontSize: 13, color: "#8c8c8c" }}>
+              {getPhaseStatus("debate") === "running" ? "辩论即将开始..." : "等待分析师报告完成"}
+            </div>
+          </div>
+        );
 
-      case "trader":
-        if (!store.decision) {
-          return null;
+      case "trader": {
+        const traderSummary = store.agentReports["trader"];
+        const traderRunning = store.agentStatuses["trader"] === "running";
+        // 复用 done 态 AgentReportCard 布局
+        if (traderSummary) {
+          return <AgentReportCard agent="trader" summary={traderSummary} />;
         }
-        return <DecisionCard decision={store.decision} />;
+        if (traderRunning) {
+          return (
+            <AgentReportCard
+              agent="trader"
+              summary=""
+              isRunning={true}
+              thinkingMessage="正在基于投资计划生成交易建议..."
+            />
+          );
+        }
+        return (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <DollarOutlined style={{ fontSize: 32, color: "#d9d9d9", marginBottom: 12 }} />
+            <div style={{ fontSize: 13, color: "#8c8c8c" }}>
+              {getPhaseStatus("trader") === "running" ? "交易决策准备中..." : "等待上游分析完成"}
+            </div>
+          </div>
+        );
+      }
 
       case "risk":
         return (

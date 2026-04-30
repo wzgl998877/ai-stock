@@ -22,7 +22,7 @@ from app.infrastructure.ai.ai_service import AIService
 logger = logging.getLogger(__name__)
 
 # 超时配置（秒）
-DEFAULT_TIMEOUT = 300
+DEFAULT_TIMEOUT = 1200  # 20分钟（4分析师+辩论+风险+信号提取，含 AI 调用延迟）
 MAX_TIMEOUT = 600
 
 
@@ -159,29 +159,17 @@ class StockAnalysisUseCase:
                         current_phase = state_update.get("current_phase", "analysts")
                         display_name = AGENT_DISPLAY_NAMES.get(current_agent, node_name)
 
-                        # 发送 agent_status running
-                        await sse_queue.put({
-                            "type": "agent_status",
-                            "data": {
-                                "agent": current_agent,
-                                "phase": current_phase,
-                                "status": "running",
-                            },
-                        })
+                        # 跳过内部路由节点（msg_clear_*），不发送 status 事件
+                        if node_name.startswith("msg_clear"):
+                            continue
 
-                        thinking_steps.append({
-                            "step": current_agent,
-                            "status": "running",
-                            "message": f"{display_name}进行中...",
-                        })
-                        await sse_queue.put({
-                            "type": "thinking",
-                            "data": {
-                                "step": current_agent,
-                                "status": "running",
-                                "message": f"{display_name}进行中...",
-                            },
-                        })
+                        # 注意：stream_mode="updates" 只在节点完成后才 yield，
+                        # 所以这里不发送 agent_status: "running"（会误导前端认为节点刚开始）。
+                        # 只在节点完成时发送 "done" 状态。
+
+                        # 初始化（防止后续引用未定义变量）
+                        report_text = ""
+                        agent_had_error = False  # 标记该 agent 是否内部报错
 
                         # 提取各Agent报告
                         agent_reports = {
@@ -195,8 +183,10 @@ class StockAnalysisUseCase:
                             report = state_update.get(field_name)
                             if report:
                                 summary = report[:100] + ("..." if len(report) > 100 else "")
+                                # 检测是否为节点内部错误（如 AI 调用失败）
+                                is_err = "生成失败" in report or "调用失败" in report
                                 analysis_data["agents"][agent_key] = {
-                                    "status": "done",
+                                    "status": "failed" if is_err else "done",
                                     "summary": summary,
                                     "full_report": report,
                                 }
@@ -211,10 +201,15 @@ class StockAnalysisUseCase:
                                     try:
                                         await self.stock_analysis_repo.update_detail_by_agent(
                                             analysis_id, agent_id,
-                                            status="done", summary=summary, full_report=report,
+                                            status="failed" if is_err else "done",
+                                            summary=summary, full_report=report,
                                         )
                                     except Exception as e:
                                         logger.warning("更新agent detail失败: %s", e)
+
+                                # 如果当前节点正好是该分析师，记录错误状态
+                                if current_agent == agent_id and is_err:
+                                    agent_had_error = True
 
                         # 提取辩论和风险辩论
                         investment_plan = state_update.get("investment_plan")
@@ -362,8 +357,12 @@ class StockAnalysisUseCase:
                                 # 写入 detail 记录
                                 if report_text:
                                     summary = report_text[:100] + ("..." if len(report_text) > 100 else "")
+                                    # 判断是否为错误报告
+                                    is_err = "生成失败" in report_text or "调用失败" in report_text
+                                    if is_err:
+                                        agent_had_error = True
                                     kwargs = {
-                                        "status": "done",
+                                        "status": "failed" if is_err else "done",
                                         "summary": summary,
                                         "full_report": report_text,
                                     }
@@ -372,7 +371,7 @@ class StockAnalysisUseCase:
                                     await self.stock_analysis_repo.update_detail_by_agent(
                                         analysis_id, current_agent, **kwargs,
                                     )
-                                    # 同时推送 agent_report SSE 事件，让前端实时显示报告摘要
+                                    # 同时推送 agent_report SSE 事件
                                     await sse_queue.put({
                                         "type": "agent_report",
                                         "data": {"agent": current_agent, "summary": summary, "full_report": report_text},
@@ -380,13 +379,14 @@ class StockAnalysisUseCase:
                             except Exception as e:
                                 logger.warning("更新agent detail失败 [%s]: %s", current_agent, e)
 
-                        # 发送 agent_status done
+                        # 发送 agent_status done/failed（报错也继续执行，只记录状态）
+                        agent_done_status = "failed" if agent_had_error else "done"
                         await sse_queue.put({
                             "type": "agent_status",
                             "data": {
                                 "agent": current_agent,
                                 "phase": current_phase,
-                                "status": "done",
+                                "status": agent_done_status,
                             },
                         })
 
@@ -402,19 +402,85 @@ class StockAnalysisUseCase:
 
                         thinking_steps.append({
                             "step": current_agent,
-                            "status": "done",
-                            "message": f"{display_name}完成",
+                            "status": agent_done_status,
+                            "message": f"{display_name}{'失败（继续执行）' if agent_had_error else '完成'}",
                         })
                         await sse_queue.put({
                             "type": "thinking",
                             "data": {
                                 "step": current_agent,
-                                "status": "done",
-                                "message": f"{display_name}完成",
+                                "status": agent_done_status,
+                                "message": f"{display_name}{'失败（继续执行）' if agent_had_error else '完成'}",
                             },
                         })
 
                 logger.info("[耗时] LangGraph 工作流总耗时: %.3fs", time.time() - t_graph_start)
+
+                # === 在后台任务中完成保存，不依赖 SSE 连接 ===
+                # 解析标题/摘要
+                t0 = time.time()
+                parse_result = self.parser.parse_stock_analysis(analysis_data)
+                logger.info("[耗时] 解析标题/摘要: %.3fs", time.time() - t0)
+
+                title = parse_result.title or f"{stock_name}深度分析"
+                summary = parse_result.summary or f"{stock_name}多Agent深度分析报告"
+                industries = parse_result.industry_names
+
+                # 保存 AI 消息
+                t0 = time.time()
+                ai_msg = ChatMessage(
+                    message_id=uuid.uuid4().hex,
+                    session_id=session_id,
+                    role="assistant",
+                    content=full_content or "分析完成",
+                    thinking_steps=thinking_steps or None,
+                    event_type="stock_analysis",
+                    agent_data={
+                        "current_agent": accumulated.get("current_agent", ""),
+                        "current_phase": accumulated.get("current_phase", "done"),
+                        "agent_statuses": {},
+                    },
+                )
+                await self.chat_repo.add_message(ai_msg)
+                logger.info("[耗时] 保存AI消息: %.3fs", time.time() - t0)
+
+                # 更新分析结果到新表 + 同步到知识库
+                t0 = time.time()
+                if self.stock_analysis_repo:
+                    try:
+                        decision = analysis_data.get("decision", {})
+                        await self.stock_analysis_repo.update_result(
+                            analysis_id,
+                            title=title,
+                            summary=summary,
+                            full_content=full_content or "分析完成",
+                            decision_action=decision.get("action"),
+                            target_price=decision.get("target_price"),
+                            stop_loss_price=decision.get("stop_loss_price"),
+                            confidence=decision.get("confidence"),
+                            risk_score=decision.get("risk_score"),
+                            reasoning=decision.get("reasoning"),
+                            industries=industries,
+                        )
+                        await self.stock_analysis_repo.sync_to_article(analysis_id)
+                        await self.chat_repo.session.flush()
+                    except Exception as e:
+                        logger.warning("更新分析记录为完成状态失败: %s", e)
+                        try:
+                            await self.stock_analysis_repo.session.rollback()
+                        except Exception:
+                            pass
+
+                await self.chat_repo.session.commit()
+                logger.info("[耗时] 更新分析记录+commit: %.3fs", time.time() - t0)
+
+                # 将 title/summary/industries 推送到 SSE（主循环会 yield 给客户端）
+                await sse_queue.put({"type": "title", "data": title})
+                await sse_queue.put({"type": "summary", "data": summary})
+                if industries:
+                    await sse_queue.put({"type": "industries", "data": industries})
+
+                logger.info("[耗时] 个股分析总耗时: %.2fs", time.time() - t_start)
                 # 标记 graph 完成
                 await sse_queue.put({"type": "graph_done", "data": None})
             except asyncio.TimeoutError:
@@ -427,9 +493,14 @@ class StockAnalysisUseCase:
                         await self.stock_analysis_repo.update_status(
                             analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
                         )
-                        await self.chat_repo.session.flush()
+                        await self.chat_repo.session.commit()
+                        logger.info("超时后已提交已完成的部分结果")
                     except Exception as e:
                         logger.warning("超时后更新记录状态失败: %s", e)
+                        try:
+                            await self.chat_repo.session.rollback()
+                        except Exception:
+                            pass
                 await sse_queue.put({"type": "graph_done", "data": None})
             except Exception as e:
                 logger.error("StockAnalysisGraph 执行异常: %s", e, exc_info=True)
@@ -438,13 +509,31 @@ class StockAnalysisUseCase:
                         await self.stock_analysis_repo.update_status(
                             analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
                         )
-                        await self.chat_repo.session.flush()
-                    except Exception:
-                        pass
+                        await self.chat_repo.session.commit()
+                        logger.info("异常后已提交已完成的部分结果")
+                    except Exception as ex:
+                        logger.warning("异常后更新记录状态失败: %s", ex)
+                        try:
+                            await self.chat_repo.session.rollback()
+                        except Exception:
+                            pass
                 if full_content:
                     await sse_queue.put({"type": "error", "data": f"部分分析完成，但出现错误: {str(e)}"})
                 else:
                     await sse_queue.put({"type": "error", "data": f"分析过程出错: {str(e)}"})
+                await sse_queue.put({"type": "graph_done", "data": None})
+            except asyncio.CancelledError:
+                logger.warning("graph_task 被取消（可能因超时或 SSE 断开）")
+                if self.stock_analysis_repo:
+                    try:
+                        await self.stock_analysis_repo.update_status(
+                            analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
+                        )
+                        await self.chat_repo.session.commit()
+                        logger.info("取消后已保存部分结果")
+                    except Exception:
+                        pass
+                await sse_queue.put({"type": "error", "data": "分析被中断"})
                 await sse_queue.put({"type": "graph_done", "data": None})
 
         # 初始化 accumulated（在闭包中使用）
@@ -452,29 +541,57 @@ class StockAnalysisUseCase:
 
         # 启动后台 graph 任务
         graph_task = asyncio.create_task(_run_graph_task())
+        t_main_start = time.time()
 
-        # 主循环：消费 sse_queue 和 content_queue
+        # 主循环：消费 sse_queue 和 content_queue，带总超时保护
         graph_finished = False
         while not graph_finished:
-            # 优先消费 content_queue 中的字符（实现逐字输出）
-            while not content_queue.empty():
+            # 超时保护：超过 DEFAULT_TIMEOUT 秒强制结束
+            if time.time() - t_main_start > DEFAULT_TIMEOUT:
+                logger.warning("主循环等待超时 (%ds)，强制取消 graph_task", DEFAULT_TIMEOUT)
+                graph_task.cancel()
+                try:
+                    await graph_task
+                except asyncio.CancelledError:
+                    pass
+                yield {"type": "error", "data": f"分析超时（{DEFAULT_TIMEOUT}s），已取消"}
+                break
+
+            # 先消费 sse_queue（结构化事件），确保 agent 状态及时更新
+            while not sse_queue.empty():
+                try:
+                    event = sse_queue.get_nowait()
+                    if event["type"] == "graph_done":
+                        graph_finished = True
+                        break
+                    yield event
+                except asyncio.QueueEmpty:
+                    break
+
+            if graph_finished:
+                break
+
+            # 再消费 content_queue 中的流式文本
+            content_drained = 0
+            while content_drained < 5:  # 每轮最多消费 5 个 chunk，避免长时间阻塞 sse_queue
                 try:
                     chunk = content_queue.get_nowait()
                     if chunk:
                         yield {"type": "content", "data": chunk}
+                    content_drained += 1
                 except asyncio.QueueEmpty:
                     break
 
-            # 消费 sse_queue 中的结构化事件
-            try:
-                event = await asyncio.wait_for(sse_queue.get(), timeout=0.1)
-                if event["type"] == "graph_done":
-                    graph_finished = True
-                else:
-                    yield event
-            except asyncio.TimeoutError:
-                # 超时后再次检查 content_queue
-                continue
+            # 两个队列都空时，等待新事件
+            if sse_queue.empty() and content_queue.empty():
+                try:
+                    event = await asyncio.wait_for(sse_queue.get(), timeout=0.1)
+                    if event["type"] == "graph_done":
+                        graph_finished = True
+                    else:
+                        yield event
+                except asyncio.TimeoutError:
+                    continue
 
         # graph 结束后，消费 content_queue 中可能剩余的 chunk
         while True:
@@ -485,73 +602,17 @@ class StockAnalysisUseCase:
             except asyncio.QueueEmpty:
                 break
 
-        # 等待 graph 任务完成
-        await graph_task
-
-        # 3. 生成标题和摘要
-        t0 = time.time()
-        parse_result = self.parser.parse_stock_analysis(analysis_data)
-        logger.info("[耗时] 解析标题/摘要: %.3fs", time.time() - t0)
-
-        title = parse_result.title or f"{stock_name}深度分析"
-        summary = parse_result.summary or f"{stock_name}多Agent深度分析报告"
-        industries = parse_result.industry_names
-
-        yield {"type": "title", "data": title}
-        yield {"type": "summary", "data": summary}
-        if industries:
-            yield {"type": "industries", "data": industries}
-
-        # 4. 保存 AI 消息
-        t0 = time.time()
-        ai_msg = ChatMessage(
-            message_id=uuid.uuid4().hex,
-            session_id=session_id,
-            role="assistant",
-            content=full_content or "分析完成",
-            thinking_steps=thinking_steps or None,
-            event_type="stock_analysis",
-            agent_data={
-                "current_agent": accumulated.get("current_agent", ""),
-                "current_phase": accumulated.get("current_phase", "done"),
-                "agent_statuses": {},
-            },
-        )
-        await self.chat_repo.add_message(ai_msg)
-        logger.info("[耗时] 保存AI消息: %.3fs", time.time() - t0)
-
-        # 4.5 更新分析结果到新表 + 同步到知识库
-        t0 = time.time()
-        if self.stock_analysis_repo:
+        # 等待 graph 任务完成（保存已在后台任务中完成，不依赖 SSE 连接）
+        if not graph_task.done():
             try:
-                decision = analysis_data.get("decision", {})
-                await self.stock_analysis_repo.update_result(
-                    analysis_id,
-                    title=title,
-                    summary=summary,
-                    full_content=full_content or "分析完成",
-                    decision_action=decision.get("action"),
-                    target_price=decision.get("target_price"),
-                    stop_loss_price=decision.get("stop_loss_price"),
-                    confidence=decision.get("confidence"),
-                    risk_score=decision.get("risk_score"),
-                    reasoning=decision.get("reasoning"),
-                    industries=industries,
-                )
-                # 同步到知识库 t_analysis_article
-                await self.stock_analysis_repo.sync_to_article(analysis_id)
-                await self.chat_repo.session.flush()
-            except Exception as e:
-                logger.warning("更新分析记录为完成状态失败: %s", e)
-                # rollback 恢复 session 状态，避免后续 commit 抛 PendingRollbackError
+                await asyncio.wait_for(graph_task, timeout=10)
+            except asyncio.TimeoutError:
+                logger.warning("等待 graph_task 完成超时，强制取消")
+                graph_task.cancel()
                 try:
-                    await self.stock_analysis_repo.session.rollback()
-                except Exception:
+                    await graph_task
+                except asyncio.CancelledError:
                     pass
-
-        await self.chat_repo.session.commit()
-        logger.info("[耗时] 更新分析记录+commit: %.3fs", time.time() - t0)
 
         # 5. 完成
         yield {"type": "done", "data": ""}
-        logger.info("[耗时] 个股分析总耗时: %.2fs", time.time() - t_start)

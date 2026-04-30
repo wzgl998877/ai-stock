@@ -236,6 +236,9 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
 
   loadFromRecord: (data) =>
     set({
+      // 先完全重置所有显示相关字段，避免残留旧记录数据
+      ...initialState,
+      // 再覆盖新记录的数据
       analysisState: data.status === "in_progress" || data.status === "running" ? "running" : "done",
       viewMode: true,
       viewRecordId: data.recordId,

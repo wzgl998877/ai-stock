@@ -31,6 +31,33 @@ from app.infrastructure.repositories.mysql_stock_analysis_repo import MySQLStock
 
 logger = logging.getLogger(__name__)
 
+
+def _reconstruct_debates(details) -> list:
+    """从 detail 记录中重建前端 DebateEvent 格式的辩论数据"""
+    debates = []
+    for d in details:
+        # 从 debate_data 字段提取辩论内容
+        if d.debate_data:
+            dd = d.debate_data if isinstance(d.debate_data, dict) else {}
+            round_num = dd.get("round", 0)
+            if dd.get("bull_argument"):
+                debates.append({"speaker": "bull_researcher", "round": round_num, "content": dd["bull_argument"]})
+            if dd.get("bear_argument"):
+                debates.append({"speaker": "bear_researcher", "round": round_num, "content": dd["bear_argument"]})
+            if dd.get("risky_view"):
+                debates.append({"speaker": "risky_debator", "round": round_num, "content": dd["risky_view"]})
+            if dd.get("safe_view"):
+                debates.append({"speaker": "safe_debator", "round": round_num, "content": dd["safe_view"]})
+            if dd.get("neutral_view"):
+                debates.append({"speaker": "neutral_debator", "round": round_num, "content": dd["neutral_view"]})
+        # 非辩论阶段的 agent 报告也加入（research_manager, risk_judge）
+        if d.phase == "debate" and d.agent_name == "research_manager" and d.full_report:
+            debates.append({"speaker": d.agent_name, "round": 0, "content": d.full_report})
+        if d.phase == "risk" and d.agent_name == "risk_judge" and d.full_report:
+            debates.append({"speaker": d.agent_name, "round": 0, "content": d.full_report})
+    return debates
+
+
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 
@@ -417,7 +444,7 @@ async def get_analysis_progress(record_id: str, db: AsyncSession = Depends(get_d
             "risk_score": float(sa.risk_score) if sa.risk_score else 0.0,
             "reasoning": sa.reasoning or "",
         } if sa.decision_action else None,
-        "debates": [],
+        "debates": _reconstruct_debates(sa.details),
         "agents": agents,
         "stocks": [{"code": sa.stock_code, "name": sa.stock_name}],
         "created_at": sa.create_time.isoformat() if sa.create_time else "",
