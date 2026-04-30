@@ -426,25 +426,32 @@ class StockAnalysisUseCase:
                 summary = parse_result.summary or f"{stock_name}多Agent深度分析报告"
                 industries = parse_result.industry_names
 
-                # 保存 AI 消息
+                # 保存 AI 消息到聊天记录（允许失败，不影响分析结果保存）
                 t0 = time.time()
-                ai_msg = ChatMessage(
-                    message_id=uuid.uuid4().hex,
-                    session_id=session_id,
-                    role="assistant",
-                    content=full_content or "分析完成",
-                    thinking_steps=thinking_steps or None,
-                    event_type="stock_analysis",
-                    agent_data={
-                        "current_agent": accumulated.get("current_agent", ""),
-                        "current_phase": accumulated.get("current_phase", "done"),
-                        "agent_statuses": {},
-                    },
-                )
-                await self.chat_repo.add_message(ai_msg)
-                logger.info("[耗时] 保存AI消息: %.3fs", time.time() - t0)
+                try:
+                    ai_msg = ChatMessage(
+                        message_id=uuid.uuid4().hex,
+                        session_id=session_id,
+                        role="assistant",
+                        content=(full_content or "分析完成")[:60000],  # 截断防止超限
+                        thinking_steps=thinking_steps or None,
+                        event_type="stock_analysis",
+                        agent_data={
+                            "current_agent": accumulated.get("current_agent", ""),
+                            "current_phase": accumulated.get("current_phase", "done"),
+                            "agent_statuses": {},
+                        },
+                    )
+                    await self.chat_repo.add_message(ai_msg)
+                    logger.info("[耗时] 保存AI消息: %.3fs", time.time() - t0)
+                except Exception as e:
+                    logger.warning("保存AI消息失败（不影响分析结果）: %s", e)
+                    try:
+                        await self.chat_repo.session.rollback()
+                    except Exception:
+                        pass
 
-                # 更新分析结果到新表 + 同步到知识库
+                # 更新分析结果到新表 + 同步到知识库（关键路径，必须成功）
                 t0 = time.time()
                 if self.stock_analysis_repo:
                     try:
@@ -463,7 +470,7 @@ class StockAnalysisUseCase:
                             industries=industries,
                         )
                         await self.stock_analysis_repo.sync_to_article(analysis_id)
-                        await self.chat_repo.session.flush()
+                        await self.chat_repo.session.commit()
                     except Exception as e:
                         logger.warning("更新分析记录为完成状态失败: %s", e)
                         try:
@@ -471,7 +478,6 @@ class StockAnalysisUseCase:
                         except Exception:
                             pass
 
-                await self.chat_repo.session.commit()
                 logger.info("[耗时] 更新分析记录+commit: %.3fs", time.time() - t0)
 
                 # 将 title/summary/industries 推送到 SSE（主循环会 yield 给客户端）
@@ -490,11 +496,12 @@ class StockAnalysisUseCase:
                 await sse_queue.put({"type": "error", "data": "分析超时，已完成的部分结果已保存"})
                 if self.stock_analysis_repo:
                     try:
+                        await self.chat_repo.session.rollback()
                         await self.stock_analysis_repo.update_status(
                             analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
                         )
                         await self.chat_repo.session.commit()
-                        logger.info("超时后已提交已完成的部分结果")
+                        logger.info("超时后已保存部分结果（状态: stopped）")
                     except Exception as e:
                         logger.warning("超时后更新记录状态失败: %s", e)
                         try:
@@ -506,11 +513,13 @@ class StockAnalysisUseCase:
                 logger.error("StockAnalysisGraph 执行异常: %s", e, exc_info=True)
                 if self.stock_analysis_repo:
                     try:
+                        # 先 rollback 清除失败的事务，再开启新事务更新状态
+                        await self.chat_repo.session.rollback()
                         await self.stock_analysis_repo.update_status(
                             analysis_id, "stopped", analysis_data.get("current_phase", "analysts")
                         )
                         await self.chat_repo.session.commit()
-                        logger.info("异常后已提交已完成的部分结果")
+                        logger.info("异常后已保存部分结果（状态: stopped）")
                     except Exception as ex:
                         logger.warning("异常后更新记录状态失败: %s", ex)
                         try:

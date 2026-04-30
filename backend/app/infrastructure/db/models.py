@@ -22,7 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.mysql import DECIMAL, JSON
+from sqlalchemy.dialects.mysql import DECIMAL, JSON, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -141,7 +141,7 @@ class AnalysisArticle(AuditMixin, Base):
     article_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
     summary: Mapped[str] = mapped_column(String(200), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(MEDIUMTEXT, nullable=False)
     event_type: Mapped[str] = mapped_column(
         Enum("geopolitical", "policy", "earnings", "supply_chain", "other"),
         nullable=False,
@@ -274,7 +274,7 @@ class ChatMessage(AuditMixin, Base):
     role: Mapped[str] = mapped_column(
         Enum("user", "assistant", "system"), nullable=False
     )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(MEDIUMTEXT, nullable=False)
     thinking_steps: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     agent_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
@@ -402,7 +402,7 @@ class StockAnalysisModel(AuditMixin, Base):
     current_phase: Mapped[str] = mapped_column(String(20), nullable=False, default="analysts")
     title: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     summary: Mapped[str] = mapped_column(String(500), nullable=False, default="")
-    full_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    full_content: Mapped[Optional[str]] = mapped_column(MEDIUMTEXT, nullable=True)
     decision_action: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     target_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
     stop_loss_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
@@ -450,7 +450,7 @@ class StockAnalysisDetailModel(AuditMixin, Base):
     phase: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    full_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    full_report: Mapped[Optional[str]] = mapped_column(MEDIUMTEXT, nullable=True)
     thinking_steps: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     debate_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -350,6 +350,7 @@ const StockAnalysisPage: React.FC = () => {
   const abortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRecordIdRef = useRef<string>("");
+  const loadVersionRef = useRef<number>(0);  // loadRecord 竞态保护：递增版本号
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [historyItems] = useState<any[]>([]);
   const [starting, setStarting] = useState(false);
@@ -429,13 +430,13 @@ const StockAnalysisPage: React.FC = () => {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
       }
+      pollRecordIdRef.current = "";  // 使飞行中的旧轮询响应失效
 
       // 立即清空显示数据，防止切换记录时闪现旧数据
-      // 保留 stockCode/stockName（同一股票切换不需要重置）
+      // 注意：不重置 analysisState，避免闪现输入页
       useStockAnalysisStore.setState({
-        analysisState: "idle",
-        viewMode: false,
-        viewRecordId: "",
+        viewMode: true,
+        viewRecordId: recordId,  // 立即设置，防止轮询干扰
         title: "",
         summary: "",
         fullContent: "",
@@ -453,9 +454,13 @@ const StockAnalysisPage: React.FC = () => {
       });
 
       // 从记录加载模式
+      const version = ++loadVersionRef.current;  // 递增版本号，过期响应会被丢弃
       const loadRecord = async () => {
         try {
           const record = await getAnalysisRecord(recordId);
+
+          // 竞态保护：如果版本号已过期（用户点击了另一条记录），丢弃本次响应
+          if (loadVersionRef.current !== version) return;
 
           // 从 details 数组构建 agentReports、agentFullReports、agentStatuses
           const agentReports: Record<string, string> = {};
@@ -597,8 +602,11 @@ const StockAnalysisPage: React.FC = () => {
     pollRecordIdRef.current = store.viewRecordId;
 
     // 立即拉一次
-    stockAnalysisService.getAnalysisProgress(store.viewRecordId)
+    const reqRecordId = store.viewRecordId;  // 记住请求时的 recordId
+    stockAnalysisService.getAnalysisProgress(reqRecordId)
       .then((progress) => {
+        // 竞态保护：如果用户已切换到其他记录，丢弃本次响应
+        if (pollRecordIdRef.current !== reqRecordId) return;
         const st = useStockAnalysisStore.getState();
         st.loadRunningState({
           currentPhase: progress.current_phase || "analysts",
@@ -638,8 +646,12 @@ const StockAnalysisPage: React.FC = () => {
 
     // 每 3 秒轮询
     pollTimerRef.current = setInterval(() => {
-      stockAnalysisService.getAnalysisProgress(pollRecordIdRef.current)
+      const pollId = pollRecordIdRef.current;  // 记住本次轮询的 recordId
+      if (!pollId) return;
+      stockAnalysisService.getAnalysisProgress(pollId)
         .then((progress) => {
+          // 竞态保护：如果用户已切换到其他记录，丢弃本次响应
+          if (pollRecordIdRef.current !== pollId) return;
           const st = useStockAnalysisStore.getState();
           st.loadRunningState({
             currentPhase: progress.current_phase || "analysts",
