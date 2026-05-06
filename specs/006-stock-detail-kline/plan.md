@@ -22,7 +22,7 @@
 | **Target Platform** | Web (PC为主) |
 | **Project Type** | Web application (frontend + backend) |
 | **Performance Goals** | K线渲染 ≤2s / 侧边栏展示 ≤1.5s / 搜索响应 ≤500ms |
-| **Constraints** | 数据延迟15-30分钟可接受 / 单用户最多10分组×100股 / 只做A股 |
+| **Constraints** | 数据延迟15-30分钟可接受 / 单用户最多10分组×100股 / 只做A股 / 无登录系统，固定userId="default" |
 | **Scale/Scope** | 5000+股票 / 31个一级行业 / 每股票3年日K约750条 |
 
 ---
@@ -146,7 +146,7 @@ frontend/
 │   │   │   ├── RelatedAnalysisTab.tsx # 新增: 相关分析标签
 │   │   │   ├── IndustryComparison.tsx # 新增: 同行对比
 │   │   │   ├── StockSearch.tsx    # 新增: 搜索组件
-│   │   │   └── WatchlistDrawer.tsx # 新增: 侧边栏抽屉(模块一联动)
+│   │   │   └── StockDetailDrawer.tsx # 新增: 可滑出Drawer(模块一联动，从右侧滑出覆盖内容)
 │   │   ├── watchlist/
 │   │   │   ├── WatchlistGroup.tsx # 新增: 分组组件
 │   │   │   ├── WatchlistItem.tsx  # 新增: 股票行组件

@@ -82,7 +82,7 @@ class IndustryStock:
 @dataclass
 class WatchlistGroup:
     id: Optional[int] = None
-    user_id: str             # FK -> User.id
+    user_id: str             # 固定值 "default"（当前无登录系统）
     name: str                # 分组名称, max 10 chars
     display_order: int = 0   # 排序
     is_default: bool = False # 是否系统默认分组
@@ -365,8 +365,10 @@ class StockIndicatorRepository(ABC):
 ## 5. Validation Rules
 
 ### 5.1 WatchlistGroup
+- `user_id`: 固定值 `"default"`（当前无登录系统）
 - `name`: 必填, 1-10个字符
 - 每用户最多10个分组（含默认3个）
+- 默认3个分组（重仓股/观察股/备选股）首次访问自选股页面时后端自动创建（非migration预置）
 - 默认分组（is_default=true）不允许删除
 - `display_order`: >= 0
 

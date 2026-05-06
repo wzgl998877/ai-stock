@@ -39,9 +39,9 @@ python -m scripts.init_industry_data
 3. 写入 `t_industry_stock` 表
 4. 更新 `t_stock` 表的 `industry_code` 和 `industry_name`
 
-### 1.3 初始化用户默认自选股分组
+### 1.3 自选股分组自动创建
 
-首次登录时，系统会自动为用户创建3个默认分组（重仓股/观察股/备选股）。
+系统无登录功能，使用固定userId `"default"`。首次访问自选股页面时，后端自动为该用户创建3个默认分组（重仓股/观察股/备选股），无需migration预置。
 
 ---
 
@@ -144,4 +144,4 @@ A: 检查 ECharts 配置中的 data 格式（须为 [open, close, low, high, vol
 A: 检查复权方式（默认前复权）；检查公式参数（MACD默认12,26,9；KDJ默认9,3,3）。
 
 ### Q: 自选股分组未自动创建？
-A: 检查用户登录状态；检查 migration 是否执行；查看 `t_watchlist_group` 表数据。
+A: 确认首次访问了自选股页面（触发后端自动创建逻辑）；查看 `t_watchlist_group` 表中是否存在 user_id="default" 的记录。

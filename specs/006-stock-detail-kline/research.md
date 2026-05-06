@@ -131,7 +131,7 @@
 **已有机制**: `frontend/src/components/common/StockCodeLink.tsx` 已存在股票代码高亮组件
 
 **需要新增**:
-- StockCodeLink 点击事件 → 触发侧边栏抽屉打开 → 传递 stock_code
+- StockCodeLink 点击事件 → 触发右侧可滑出Drawer打开 → 传递 stock_code
 - 模块一知识库文章 → 模块二"相关分析"标签的数据关联
 
 ### 3.2 模块二 → 模块一

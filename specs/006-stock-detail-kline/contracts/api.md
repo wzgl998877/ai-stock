@@ -165,6 +165,8 @@ GET /api/v1/stocks/search?q=宁德&limit=10
 
 ### 4. 自选股
 
+> **认证说明**: 当前系统无登录功能，所有自选股接口的 `user_id` 固定为 `"default"`，由后端内部处理，不从前端传参。
+
 #### GET /watchlist/groups
 
 获取当前用户的所有自选股分组。
@@ -265,7 +267,7 @@ GET /api/v1/stocks/search?q=宁德&limit=10
 
 #### POST /watchlist/groups/{group_id}/stocks
 
-向分组添加股票。
+向分组添加股票。幂等处理：同一分组内重复添加同一只股票视为无操作，静默返回已有记录。
 
 **Request Body**:
 ```json
@@ -288,7 +290,7 @@ GET /api/v1/stocks/search?q=宁德&limit=10
 }
 ```
 
-**Validation**: 每组最多100只; 同一分组内不可重复
+**Validation**: 每组最多100只; 同一分组内重复添加幂等（静默返回已有记录，不报错）
 
 ---
 
