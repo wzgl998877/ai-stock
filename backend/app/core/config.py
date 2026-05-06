@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # === 搜索 ===
     tavily_api_key: str = ""
 
+    # === 分时数据源 ===
+    twelvedata_api_key: str = ""       # TwelveData API Key（免费层 800次/天）
+    minute_cache_ttl: int = 120        # 分时数据缓存 TTL（秒）
+
     # === 数据源加密 ===
     datasource_encryption_key: str = ""
 

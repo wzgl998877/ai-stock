@@ -179,7 +179,7 @@ class BaoStockClient:
         end_date: str,
         period: str = "daily",
     ) -> List[Dict[str, Any]]:
-        """获取指定股票的历史日K线行情数据。
+        """获取指定股票的历史K线行情数据。
 
         使用 bs.query_history_k_data_plus() 获取历史K线。
 
@@ -188,7 +188,7 @@ class BaoStockClient:
                   如果传入纯数字，会自动添加前缀。
             start_date: 开始日期，格式 "YYYY-MM-DD"。
             end_date: 结束日期，格式 "YYYY-MM-DD"。
-            period: 周期，"daily"（日线）。
+            period: 周期，"daily"（日线）/"weekly"（周线）/"monthly"（月线）。
 
         Returns:
             List of dicts with keys: code, trade_date, open, high, low, close,
@@ -201,9 +201,13 @@ class BaoStockClient:
         bs_start = self._normalize_date(start_date)
         bs_end = self._normalize_date(end_date)
 
+        # frequency 映射: daily->d, weekly->w, monthly->m
+        bs_freq_map = {"daily": "d", "weekly": "w", "monthly": "m"}
+        frequency = bs_freq_map.get(period, "d")
+
         logger.info(
-            "BaoStock 获取日K线: code=%s, start=%s, end=%s",
-            bs_code, bs_start, bs_end,
+            "BaoStock 获取K线: code=%s, start=%s, end=%s, period=%s, freq=%s",
+            bs_code, bs_start, bs_end, period, frequency,
         )
 
         def _query():
@@ -212,7 +216,7 @@ class BaoStockClient:
                 "date,open,high,low,close,volume,amount",
                 start_date=bs_start,
                 end_date=bs_end,
-                frequency="d",
+                frequency=frequency,
                 adjustflag="2",  # 前复权
             )
 

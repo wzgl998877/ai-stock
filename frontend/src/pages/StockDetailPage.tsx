@@ -10,6 +10,7 @@ import FinancialTab from '../components/stock/FinancialTab';
 import RelatedAnalysisTab from '../components/stock/RelatedAnalysisTab';
 import IndustryComparison from '../components/stock/IndustryComparison';
 import AddToWatchlistButton from '../components/stock/AddToWatchlistButton';
+import SyncKlineButton from '../components/stock/SyncKlineButton';
 
 const StockDetailPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
@@ -19,6 +20,7 @@ const StockDetailPage: React.FC = () => {
     relatedArticles, loading, klineLoading, error,
     activePeriod, showMACD, showKDJ,
     fetchStockDetail, setActivePeriod, toggleMACD, toggleKDJ, clear,
+    fetchKlineData,
   } = useStockDetailStore();
 
   useEffect(() => {
@@ -127,12 +129,21 @@ const StockDetailPage: React.FC = () => {
       <Card size="small" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <PeriodSelector activePeriod={activePeriod} onChange={setActivePeriod} />
-          <IndicatorToggle
-            showMACD={showMACD}
-            showKDJ={showKDJ}
-            onToggleMACD={toggleMACD}
-            onToggleKDJ={toggleKDJ}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IndicatorToggle
+              showMACD={showMACD}
+              showKDJ={showKDJ}
+              onToggleMACD={toggleMACD}
+              onToggleKDJ={toggleKDJ}
+            />
+            {activePeriod !== 'minute' && code && (
+              <SyncKlineButton
+                code={code}
+                period={activePeriod as 'daily' | 'weekly' | 'monthly'}
+                onSuccess={() => fetchKlineData(code, activePeriod)}
+              />
+            )}
+          </div>
         </div>
         <KLineChart
           data={klineData}

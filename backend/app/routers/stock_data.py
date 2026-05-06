@@ -182,14 +182,42 @@ async def get_stock_daily(
             "data_source": q.data_source,
         })
 
+    # MySQL 无数据时，对 weekly/monthly 实时从多源拉取（不入库）
+    if not quotes and period in ("weekly", "monthly"):
+        try:
+            from app.infrastructure.market.daily_kline_client import DailyKlineClient
+            client = DailyKlineClient()
+            raw_items = await client.fetch(code, period)
+            if raw_items:
+                items = []
+                for item in raw_items:
+                    items.append({
+                        "trade_date": item.get("trade_date"),
+                        "open": item.get("open"),
+                        "high": item.get("high"),
+                        "low": item.get("low"),
+                        "close": item.get("close"),
+                        "volume": item.get("volume"),
+                        "amount": item.get("amount"),
+                        "pct_chg": None,
+                        "data_source": "realtime",
+                    })
+                logger.info(
+                    "周K/月K实时拉取成功 code=%s period=%s count=%d",
+                    code, period, len(items),
+                )
+        except Exception as e:
+            logger.warning("周K/月K实时拉取失败 code=%s period=%s: %s", code, period, e)
+
     result = {
         "code": code,
         "period": period,
         "items": items,
     }
 
-    # Cache for 24 hours
-    redis_cache.set(cache_key, result, ttl=86400)
+    # Cache for 1 hour (weekly/monthly) or 24 hours (daily)
+    ttl = 3600 if period in ("weekly", "monthly") else 86400
+    redis_cache.set(cache_key, result, ttl=ttl)
 
     return {"data": result}
 
@@ -243,12 +271,23 @@ from app.application.use_cases.indicator_calc import IndicatorCalcUseCase
 @router.get("/{code}/minute")
 async def get_stock_minute(
     code: str,
-    repo: StockDataRepository = Depends(_get_repo),
 ):
-    """获取当日分时数据（从K线数据中按分钟粒度聚合，简化实现）。"""
-    # 简化：返回最近交易日的分钟级别数据（实际需要数据源支持）
-    # 当前实现：返回空列表，待接入实时分时数据源
-    return {"data": {"code": code, "trade_date": date.today().isoformat(), "items": []}}
+    """获取当日分时数据（多源 fallback + Redis 缓存）。"""
+    from app.application.use_cases.minute_data import MinuteDataUseCase
+
+    uc = MinuteDataUseCase()
+    quotes = await uc.get_minute_data(code)
+
+    items = []
+    for q in quotes:
+        items.append({
+            "time": q.time,
+            "price": float(q.price),
+            "volume": float(q.volume),
+            "avg_price": float(q.avg_price) if q.avg_price else None,
+        })
+
+    return {"data": {"code": code, "trade_date": date.today().isoformat(), "items": items}}
 
 
 @router.get("/{code}/indicators")

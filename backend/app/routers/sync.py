@@ -36,6 +36,7 @@ async def execute_sync(
     symbol: Optional[str] = Query(None, description="指定股票代码（单股同步）"),
     start_date: Optional[str] = Query(None, description="起始日期（仅daily_quote）"),
     end_date: Optional[str] = Query(None, description="结束日期（仅daily_quote）"),
+    period: str = Query("daily", description="K线周期: daily/weekly/monthly"),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger data sync and stream progress via SSE."""
@@ -66,6 +67,7 @@ async def execute_sync(
                 symbol=symbol,
                 start_date=start_date,
                 end_date=end_date,
+                period=period,
             ):
                 # 记录每个 SSE 事件到日志
                 for line in event.split("\n"):

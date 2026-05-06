@@ -82,6 +82,7 @@ class SyncExecutor:
         symbol: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        period: str = "daily",
     ) -> AsyncGenerator[str, None]:
         """Execute a sync task — SSE frontend that consumes progress from background coroutine.
 
@@ -152,7 +153,7 @@ class SyncExecutor:
         bg_task = asyncio.create_task(
             self._run_sync_background(
                 task, source_type, data_type,
-                symbol, start_date, end_date,
+                symbol, start_date, end_date, period,
                 progress_queue, sse_connected, lock,
             )
         )
@@ -196,6 +197,7 @@ class SyncExecutor:
         symbol: Optional[str],
         start_date: Optional[str],
         end_date: Optional[str],
+        period: str,
         progress_queue: asyncio.Queue,
         sse_connected: list,   # [bool] mutable flag
         lock: asyncio.Lock,
@@ -238,7 +240,7 @@ class SyncExecutor:
                     async for event in self._execute_data_sync(
                         bg_stock_data_repo, bg_datasource_repo,
                         source_type, data_type, task,
-                        symbol, start_date, end_date,
+                        symbol, start_date, end_date, period,
                     ):
                         # Parse event data for final stats
                         for line in event.split("\n"):
@@ -367,6 +369,7 @@ class SyncExecutor:
         symbol: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        period: str = "daily",
     ) -> AsyncGenerator[str, None]:
         """Execute the actual data sync. Yields SSE progress events.
 
@@ -499,7 +502,7 @@ class SyncExecutor:
                 raise ValueError("daily_quote sync requires start_date and end_date parameters")
 
             raw_list = client.fetch_daily_quote(
-                code=symbol, start_date=start_date, end_date=end_date, period="daily",
+                code=symbol, start_date=start_date, end_date=end_date, period=period,
             )
             total = len(raw_list)
 
