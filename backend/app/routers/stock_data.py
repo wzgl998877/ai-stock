@@ -215,9 +215,10 @@ async def get_stock_daily(
         "items": items,
     }
 
-    # Cache for 1 hour (weekly/monthly) or 24 hours (daily)
-    ttl = 3600 if period in ("weekly", "monthly") else 86400
-    redis_cache.set(cache_key, result, ttl=ttl)
+    # 仅有数据时才缓存，避免同步前的空结果阻塞后续查询
+    if items:
+        ttl = 3600 if period in ("weekly", "monthly") else 86400
+        redis_cache.set(cache_key, result, ttl=ttl)
 
     return {"data": result}
 

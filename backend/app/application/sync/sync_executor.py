@@ -62,6 +62,36 @@ def _sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _clear_kline_cache(code: str, period: str) -> None:
+    """清除指定股票+周期的 K线 Redis 缓存。
+
+    缓存 key 格式: stock:daily:{code}:{start_date}:{end_date}:{period}
+    start_date/end_date 可能为 None 或具体日期，需 scan 通配清除。
+    """
+    try:
+        from app.infrastructure.cache.redis_cache import redis_cache as _cache
+        if not _cache._available:
+            return
+        client = _cache._ensure_client()
+        if client is None:
+            return
+
+        pattern = f"stock:daily:{code}:*"
+        cursor = 0
+        deleted = 0
+        while True:
+            cursor, keys = client.scan(cursor, match=pattern, count=100)
+            if keys:
+                client.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+        if deleted:
+            logger.info("清除K线缓存: code=%s period=%s deleted=%d", code, period, deleted)
+    except Exception as e:
+        logger.warning("清除K线缓存失败(code=%s period=%s): %s", code, period, e)
+
+
 class SyncExecutor:
     """Executes data synchronization tasks and streams progress via SSE."""
 
@@ -283,6 +313,10 @@ class SyncExecutor:
                         fail_count=fail,
                     )
                     await bg_session.commit()
+
+                    # 清除该股票+周期的 Redis 缓存，确保下次查询读到最新数据
+                    if data_type == DataType.DAILY_QUOTE and symbol:
+                        _clear_kline_cache(symbol, period)
 
                     progress_queue.put_nowait({
                         "_done": True,
