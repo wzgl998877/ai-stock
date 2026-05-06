@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "mysql+aiomysql://root:password@localhost:3306/ai_stock"
 
     # === Redis ===
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://:your_redis_password@localhost:6379/0"
 
     # === 日志 ===
     log_level: str = "info"

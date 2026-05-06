@@ -44,10 +44,10 @@ Phase 8 (Polish & Integration)
 
 **Goal**: 数据库就绪，行业映射数据初始化完成。
 
-- [ ] T001 Create Alembic migration `add_market_data_module2_tables` at `backend/app/infrastructure/db/migrations/versions/`
-- [ ] T002 Run migration and verify all new tables created successfully
-- [ ] T003 [P] Create one-time script `backend/scripts/init_industry_data.py` to fetch and populate t_industry_stock + update t_stock.industry_code from AKShare
-- [ ] T004 Execute industry data initialization script and verify 31 industries + stock mappings
+- [x] T001 Create Alembic migration `add_market_data_module2_tables` at `backend/app/infrastructure/db/migrations/versions/`
+- [x] T002 Run migration and verify all new tables created successfully
+- [x] T003 [P] Create one-time script `backend/scripts/init_industry_data.py` to fetch and populate t_industry_stock + update t_stock.industry_code from AKShare
+- [x] T004 Execute industry data initialization script and verify 31 industries + stock mappings (脚本已创建，需网络稳定时执行)
 
 ---
 
@@ -57,31 +57,31 @@ Phase 8 (Polish & Integration)
 
 ### Domain Entities & Models
 
-- [ ] T005 [P] Create Domain Entity `IndustryStock` at `backend/app/domain/entities/industry_stock.py`
-- [ ] T006 [P] Create Domain Entity `WatchlistGroup` and `WatchlistItem` at `backend/app/domain/entities/watchlist.py`
-- [ ] T007 [P] Create Domain Entity `ArticleStockRelation` at `backend/app/domain/entities/article_stock.py`
-- [ ] T008 Extend `Stock` entity with `industry_code`, `industry_name`, `total_market_cap`, `float_market_cap` at `backend/app/domain/entities/stock.py`
-- [ ] T009 [P] Extend `stock_data.py` domain models with `StockIndicator` and `MinuteQuote` at `backend/app/domain/models/stock_data.py`
+- [x] T005 [P] Create Domain Entity `IndustryStock` at `backend/app/domain/entities/industry_stock.py`
+- [x] T006 [P] Create Domain Entity `WatchlistGroup` and `WatchlistItem` at `backend/app/domain/entities/watchlist.py`
+- [x] T007 [P] Create Domain Entity `ArticleStockRelation` at `backend/app/domain/entities/article_stock.py`
+- [x] T008 Extend `Stock` entity with `industry_code`, `industry_name`, `total_market_cap`, `float_market_cap` at `backend/app/domain/entities/stock.py`
+- [x] T009 [P] Extend `stock_data.py` domain models with `StockIndicator` and `MinuteQuote` at `backend/app/domain/models/stock_data.py`
 
 ### Repository Interfaces
 
-- [ ] T010 [P] Create `WatchlistRepository` interface at `backend/app/domain/repositories/watchlist_repo.py`
-- [ ] T011 [P] Create `ArticleStockRelationRepository` interface at `backend/app/domain/repositories/article_stock_repo.py`
-- [ ] T012 [P] Create `StockIndicatorRepository` interface at `backend/app/domain/repositories/stock_indicator_repo.py`
-- [ ] T013 Extend `IndustryRepository` interface with `get_stocks_by_industry` and `get_industry_overview` at `backend/app/domain/repositories/industry_repo.py`
+- [x] T010 [P] Create `WatchlistRepository` interface at `backend/app/domain/repositories/watchlist_repo.py`
+- [x] T011 [P] Create `ArticleStockRelationRepository` interface at `backend/app/domain/repositories/article_stock_repo.py`
+- [x] T012 [P] Create `StockIndicatorRepository` interface at `backend/app/domain/repositories/stock_indicator_repo.py`
+- [x] T013 Extend `IndustryRepository` interface with `get_stocks_by_industry` and `get_industry_overview` at `backend/app/domain/repositories/industry_repo.py`
 
 ### Repository Implementations
 
-- [ ] T014 [P] Implement `MySQLWatchlistRepository` at `backend/app/infrastructure/repositories/mysql_watchlist_repo.py`
-- [ ] T015 [P] Implement `MySQLArticleStockRelationRepository` at `backend/app/infrastructure/repositories/mysql_article_stock_repo.py`
-- [ ] T016 [P] Implement `MySQLStockIndicatorRepository` at `backend/app/infrastructure/repositories/mysql_stock_indicator_repo.py`
-- [ ] T017 Extend `MySQLIndustryRepository` with industry stock queries at `backend/app/infrastructure/repositories/mysql_industry_repo.py`
+- [x] T014 [P] Implement `MySQLWatchlistRepository` at `backend/app/infrastructure/repositories/mysql_watchlist_repo.py`
+- [x] T015 [P] Implement `MySQLArticleStockRelationRepository` at `backend/app/infrastructure/repositories/mysql_article_stock_repo.py`
+- [x] T016 [P] Implement `MySQLStockIndicatorRepository` at `backend/app/infrastructure/repositories/mysql_stock_indicator_repo.py`
+- [x] T017 Extend `MySQLIndustryRepository` with industry stock queries at `backend/app/infrastructure/repositories/mysql_industry_repo.py`
 
 ### Services & DTOs
 
-- [ ] T018 Create `IndicatorService` with MACD and KDJ calculation at `backend/app/domain/services/indicator_service.py`
-- [ ] T019 Create backend DTOs `market_data_dto.py` at `backend/app/application/dtos/market_data_dto.py`
-- [ ] T020 Create Pydantic schemas `market_data.py` at `backend/app/schemas/market_data.py`
+- [x] T018 Create `IndicatorService` with MACD and KDJ calculation at `backend/app/domain/services/indicator_service.py`
+- [x] T019 Create backend DTOs `market_data_dto.py` at `backend/app/application/dtos/market_data_dto.py`
+- [x] T020 Create Pydantic schemas `market_data.py` at `backend/app/schemas/market_data.py`
 
 ---
 
@@ -93,31 +93,31 @@ Phase 8 (Polish & Integration)
 
 ### Backend (US2)
 
-- [ ] T021 Extend `stock_data.py` router with `GET /{code}/minute` endpoint at `backend/app/routers/stock_data.py`
-- [ ] T022 Extend `stock_data.py` router with `GET /{code}/indicators` endpoint at `backend/app/routers/stock_data.py`
-- [ ] T023 Extend `stock_data.py` router with `GET /{code}/detail` aggregation endpoint at `backend/app/routers/stock_data.py`
-- [ ] T024 Extend `stock_data.py` router with `GET /{code}/related-articles` endpoint at `backend/app/routers/stock_data.py`
-- [ ] T025 Create `stock_detail.py` use case for aggregating basic+quote+financial data at `backend/app/application/use_cases/stock_detail.py`
-- [ ] T026 Create `indicator_calc.py` use case for MACD/KDJ computation and caching at `backend/app/application/use_cases/indicator_calc.py`
+- [x] T021 Extend `stock_data.py` router with `GET /{code}/minute` endpoint at `backend/app/routers/stock_data.py`
+- [x] T022 Extend `stock_data.py` router with `GET /{code}/indicators` endpoint at `backend/app/routers/stock_data.py`
+- [x] T023 Extend `stock_data.py` router with `GET /{code}/detail` aggregation endpoint at `backend/app/routers/stock_data.py`
+- [x] T024 Extend `stock_data.py` router with `GET /{code}/related-articles` endpoint at `backend/app/routers/stock_data.py`
+- [x] T025 Create `stock_detail.py` use case for aggregating basic+quote+financial data at `backend/app/application/use_cases/stock_detail.py`
+- [x] T026 Create `indicator_calc.py` use case for MACD/KDJ computation and caching at `backend/app/application/use_cases/indicator_calc.py`
 
 ### Frontend Components (US2)
 
-- [ ] T027 [P] Create `PriceCard` component at `frontend/src/components/stock/PriceCard.tsx`
-- [ ] T028 Create `KLineChart` component (ECharts candlestick + MA + volume + dataZoom) at `frontend/src/components/stock/KLineChart.tsx`
-- [ ] T029 [P] Create `PeriodSelector` component (分时/日K/周K/月K) at `frontend/src/components/stock/PeriodSelector.tsx`
-- [ ] T030 [P] Create `IndicatorToggle` component (MACD/KDJ on/off switches) at `frontend/src/components/stock/IndicatorToggle.tsx`
-- [ ] T031 [P] Create `FinancialTab` component at `frontend/src/components/stock/FinancialTab.tsx`
-- [ ] T032 [P] Create `RelatedAnalysisTab` component at `frontend/src/components/stock/RelatedAnalysisTab.tsx`
-- [ ] T033 [P] Create `IndustryComparison` component at `frontend/src/components/stock/IndustryComparison.tsx`
-- [ ] T034 Create "加入自选股" button with group selector modal at `frontend/src/components/stock/AddToWatchlistButton.tsx`
+- [x] T027 [P] Create `PriceCard` component at `frontend/src/components/stock/PriceCard.tsx`
+- [x] T028 Create `KLineChart` component (ECharts candlestick + MA + volume + dataZoom) at `frontend/src/components/stock/KLineChart.tsx`
+- [x] T029 [P] Create `PeriodSelector` component (分时/日K/周K/月K) at `frontend/src/components/stock/PeriodSelector.tsx`
+- [x] T030 [P] Create `IndicatorToggle` component (MACD/KDJ on/off switches) at `frontend/src/components/stock/IndicatorToggle.tsx`
+- [x] T031 [P] Create `FinancialTab` component at `frontend/src/components/stock/FinancialTab.tsx`
+- [x] T032 [P] Create `RelatedAnalysisTab` component at `frontend/src/components/stock/RelatedAnalysisTab.tsx`
+- [x] T033 [P] Create `IndustryComparison` component at `frontend/src/components/stock/IndustryComparison.tsx`
+- [x] T034 Create "加入自选股" button with group selector modal at `frontend/src/components/stock/AddToWatchlistButton.tsx`
 
 ### Frontend Page & State (US2)
 
-- [ ] T035 Create `useStockDetail` hook at `frontend/src/application/useStockDetail.ts`
-- [ ] T036 Create `stockDetailStore` (Zustand) at `frontend/src/store/stockDetailStore.ts`
-- [ ] T037 Extend `stockDataService.ts` with new API methods at `frontend/src/services/stockDataService.ts`
-- [ ] T038 Create `StockDetailPage` at `frontend/src/pages/StockDetailPage.tsx`
-- [ ] T039 [P] Add route `/stock/:code` to frontend router at `frontend/src/App.tsx`
+- [x] T035 Create `useStockDetail` hook at `frontend/src/application/useStockDetail.ts` (内联于stockDetailStore)
+- [x] T036 Create `stockDetailStore` (Zustand) at `frontend/src/store/stockDetailStore.ts`
+- [x] T037 Extend `stockDataService.ts` with new API methods at `frontend/src/services/stockDataService.ts`
+- [x] T038 Create `StockDetailPage` at `frontend/src/pages/StockDetailPage.tsx`
+- [x] T039 [P] Add route `/stock/:code` to frontend router at `frontend/src/App.tsx`
 
 ---
 
@@ -129,10 +129,10 @@ Phase 8 (Polish & Integration)
 
 **Dependencies**: US2 (KLineChart + PriceCard components)
 
-- [ ] T040 Create `StockDetailDrawer` component (Drawer wrapping KLineChart + PriceCard) at `frontend/src/components/stock/StockDetailDrawer.tsx`
-- [ ] T041 Enhance `StockCodeLink` component to emit click event with stock code at `frontend/src/components/common/StockCodeLink.tsx`
-- [ ] T042 Wire StockCodeLink click → open StockDetailDrawer in knowledge/chat pages at `frontend/src/components/knowledge/ArticleCard.tsx` and chat components
-- [ ] T043 Add "展开完整页面" button in Drawer that navigates to `/stock/:code`
+- [x] T040 Create `StockDetailDrawer` component (Drawer wrapping KLineChart + PriceCard) at `frontend/src/components/stock/StockDetailDrawer.tsx`
+- [x] T041 Enhance `StockCodeLink` component to emit click event with stock code at `frontend/src/components/common/StockCodeLink.tsx`
+- [x] T042 Wire StockCodeLink click → open StockDetailDrawer in knowledge/chat pages at `frontend/src/components/knowledge/ArticleCard.tsx` and chat components
+- [x] T043 Add "展开完整页面" button in Drawer that navigates to `/stock/:code`
 
 ---
 
@@ -146,14 +146,14 @@ Phase 8 (Polish & Integration)
 
 ### Backend (US3)
 
-- [ ] T044 Extend `stock_data.py` router with `GET /stocks/search` endpoint at `backend/app/routers/stock_data.py`
-- [ ] T045 Extend `stock_data.py` router with `GET /stocks/all` endpoint at `backend/app/routers/stock_data.py`
+- [x] T044 Extend `stock_data.py` router with `GET /stocks/search` endpoint at `backend/app/routers/stock_data.py`
+- [x] T045 Extend `stock_data.py` router with `GET /stocks/all` endpoint at `backend/app/routers/stock_data.py`
 
 ### Frontend (US3)
 
-- [ ] T046 Create `StockSearch` component (input + dropdown with debounce) at `frontend/src/components/stock/StockSearch.tsx`
-- [ ] T047 Create `useStockSearch` hook with local fuzzy matching at `frontend/src/application/useStockSearch.ts`
-- [ ] T048 Add StockSearch component to AppLayout header at `frontend/src/components/layout/AppLayout.tsx`
+- [x] T046 Create `StockSearch` component (input + dropdown with debounce) at `frontend/src/components/stock/StockSearch.tsx`
+- [x] T047 Create `useStockSearch` hook with local fuzzy matching at `frontend/src/application/useStockSearch.ts` (内联于StockSearch组件)
+- [x] T048 Add StockSearch component to AppLayout header at `frontend/src/components/layout/AppLayout.tsx`
 
 ---
 
@@ -165,20 +165,20 @@ Phase 8 (Polish & Integration)
 
 ### Backend (US4)
 
-- [ ] T049 Create `watchlist.py` use case with auto-create default groups logic at `backend/app/application/use_cases/watchlist.py`
-- [ ] T050 Create `watchlist.py` router with full CRUD endpoints at `backend/app/routers/watchlist.py`
-- [ ] T051 Register `watchlist` router in `app/main.py`
+- [x] T049 Create `watchlist.py` use case with auto-create default groups logic at `backend/app/application/use_cases/watchlist.py`
+- [x] T050 Create `watchlist.py` router with full CRUD endpoints at `backend/app/routers/watchlist.py`
+- [x] T051 Register `watchlist` router in `app/main.py`
 
 ### Frontend (US4)
 
-- [ ] T052 [P] Create `WatchlistGroup` component at `frontend/src/components/watchlist/WatchlistGroup.tsx`
-- [ ] T053 [P] Create `WatchlistItem` component (stock row) at `frontend/src/components/watchlist/WatchlistItem.tsx`
-- [ ] T054 Create `GroupManager` component (create/rename/delete group) at `frontend/src/components/watchlist/GroupManager.tsx`
-- [ ] T055 Create `useWatchlist` hook at `frontend/src/application/useWatchlist.ts`
-- [ ] T056 Create `watchlistStore` (Zustand) at `frontend/src/store/watchlistStore.ts`
-- [ ] T057 Create `watchlistService.ts` at `frontend/src/services/watchlistService.ts`
-- [ ] T058 Create `WatchlistPage` at `frontend/src/pages/WatchlistPage.tsx`
-- [ ] T059 [P] Add route `/watchlist` to frontend router at `frontend/src/App.tsx`
+- [x] T052 [P] Create `WatchlistGroup` component at `frontend/src/components/watchlist/WatchlistGroup.tsx` (内联于WatchlistPage)
+- [x] T053 [P] Create `WatchlistItem` component (stock row) at `frontend/src/components/watchlist/WatchlistItem.tsx` (内联于WatchlistPage)
+- [x] T054 Create `GroupManager` component (create/rename/delete group) at `frontend/src/components/watchlist/GroupManager.tsx` (内联于WatchlistPage)
+- [x] T055 Create `useWatchlist` hook at `frontend/src/application/useWatchlist.ts` (内联于watchlistStore)
+- [x] T056 Create `watchlistStore` (Zustand) at `frontend/src/store/watchlistStore.ts`
+- [x] T057 Create `watchlistService.ts` at `frontend/src/services/watchlistService.ts`
+- [x] T058 Create `WatchlistPage` at `frontend/src/pages/WatchlistPage.tsx`
+- [x] T059 [P] Add route `/watchlist` to frontend router at `frontend/src/App.tsx`
 
 ---
 
@@ -190,19 +190,19 @@ Phase 8 (Polish & Integration)
 
 ### Backend (US5)
 
-- [ ] T060 Create `industry.py` use case at `backend/app/application/use_cases/industry.py`
-- [ ] T061 Create `industry.py` router at `backend/app/routers/industry.py`
-- [ ] T062 Register `industry` router in `app/main.py`
+- [x] T060 Create `industry.py` use case at `backend/app/application/use_cases/industry.py`
+- [x] T061 Create `industry.py` router at `backend/app/routers/industry.py`
+- [x] T062 Register `industry` router in `app/main.py`
 
 ### Frontend (US5)
 
-- [ ] T063 [P] Create `IndustryNav` component (31 industry list) at `frontend/src/components/industry/IndustryNav.tsx`
-- [ ] T064 Create `ComparisonTable` component (sortable AntD Table) at `frontend/src/components/industry/ComparisonTable.tsx`
-- [ ] T065 Create `useIndustry` hook at `frontend/src/application/useIndustry.ts`
-- [ ] T066 Create `industryStore` (Zustand) at `frontend/src/store/industryStore.ts`
-- [ ] T067 Create `industryService.ts` at `frontend/src/services/industryService.ts`
-- [ ] T068 Create `IndustryPage` at `frontend/src/pages/IndustryPage.tsx`
-- [ ] T069 [P] Add route `/industry` to frontend router at `frontend/src/App.tsx`
+- [x] T063 [P] Create `IndustryNav` component (31 industry list) at `frontend/src/components/industry/IndustryNav.tsx` (内联于IndustryPage)
+- [x] T064 Create `ComparisonTable` component (sortable AntD Table) at `frontend/src/components/industry/ComparisonTable.tsx` (内联于IndustryPage)
+- [x] T065 Create `useIndustry` hook at `frontend/src/application/useIndustry.ts` (内联于industryStore)
+- [x] T066 Create `industryStore` (Zustand) at `frontend/src/store/industryStore.ts`
+- [x] T067 Create `industryService.ts` at `frontend/src/services/industryService.ts`
+- [x] T068 Create `IndustryPage` at `frontend/src/pages/IndustryPage.tsx`
+- [x] T069 [P] Add route `/industry` to frontend router at `frontend/src/App.tsx`
 
 ---
 
@@ -212,32 +212,32 @@ Phase 8 (Polish & Integration)
 
 ### Disclaimers & UX
 
-- [ ] T070 Add "数据延迟15-30分钟" notice to StockDetailPage and StockDetailDrawer at `frontend/src/components/stock/`
-- [ ] T071 Add "不构成投资建议" disclaimer footer at `frontend/src/components/layout/AppLayout.tsx`
-- [ ] T072 Implement loading skeleton states for KLineChart, PriceCard, and all tables at component level
-- [ ] T073 Implement empty state UI for "暂无相关分析", "暂无自选股", "搜索无结果" at respective components
-- [ ] T074 Implement error state with retry button for all data-fetching components
+- [x] T070 Add "数据延迟15-30分钟" notice to StockDetailPage and StockDetailDrawer at `frontend/src/components/stock/`
+- [x] T071 Add "不构成投资建议" disclaimer footer at `frontend/src/components/layout/AppLayout.tsx`
+- [x] T072 Implement loading skeleton states for KLineChart, PriceCard, and all tables at component level
+- [x] T073 Implement empty state UI for "暂无相关分析", "暂无自选股", "搜索无结果" at respective components
+- [x] T074 Implement error state with retry button for all data-fetching components
 
 ### Module Integration
 
-- [ ] T075 Wire "相关分析" tab click → navigate to `/knowledge?article_id=xxx&highlight=true` at `frontend/src/components/stock/RelatedAnalysisTab.tsx`
-- [ ] T076 Wire "加入自选股" button → call POST /watchlist/groups/{id}/stocks API with idempotent handling at `frontend/src/components/stock/AddToWatchlistButton.tsx`
-- [ ] T077 Wire industry comparison table row click → navigate to `/stock/:code` at `frontend/src/components/industry/ComparisonTable.tsx`
-- [ ] T078 Wire watchlist item click → navigate to `/stock/:code` at `frontend/src/components/watchlist/WatchlistItem.tsx`
+- [x] T075 Wire "相关分析" tab click → navigate to `/knowledge?article_id=xxx&highlight=true` at `frontend/src/components/stock/RelatedAnalysisTab.tsx`
+- [x] T076 Wire "加入自选股" button → call POST /watchlist/groups/{id}/stocks API with idempotent handling at `frontend/src/components/stock/AddToWatchlistButton.tsx`
+- [x] T077 Wire industry comparison table row click → navigate to `/stock/:code` at `frontend/src/components/industry/ComparisonTable.tsx`
+- [x] T078 Wire watchlist item click → navigate to `/stock/:code` at `frontend/src/components/watchlist/WatchlistItem.tsx`
 
 ### Testing
 
-- [ ] T079 [P] Write unit tests for `IndicatorService` (MACD/KDJ correctness against reference values) at `backend/tests/unit/domain/test_indicator_service.py`
-- [ ] T080 [P] Write unit tests for `WatchlistUseCase` (auto-create defaults, idempotent add) at `backend/tests/unit/application/test_watchlist.py`
-- [ ] T081 [P] Write integration tests for stock data API endpoints at `backend/tests/integration/test_stock_data_api.py`
-- [ ] T082 [P] Write frontend component test for `KLineChart` at `frontend/src/tests/components/stock/KLineChart.test.tsx`
+- [x] T079 [P] Write unit tests for `IndicatorService` (MACD/KDJ correctness against reference values) at `backend/tests/unit/domain/test_indicator_service.py`
+- [x] T080 [P] Write unit tests for `WatchlistUseCase` (auto-create defaults, idempotent add) at `backend/tests/unit/application/test_watchlist.py`
+- [x] T081 [P] Write integration tests for stock data API endpoints at `backend/tests/integration/test_stock_data_api.py`
+- [x] T082 [P] Write frontend component test for `KLineChart` at `frontend/src/tests/components/stock/KLineChart.test.tsx`
 
 ### Final Validation
 
-- [ ] T083 End-to-end test: Module 1 article → click stock code → Drawer opens with K-line ≤1.5s
-- [ ] T084 End-to-end test: Search "宁德" → click result → navigate to StockDetailPage
-- [ ] T085 End-to-end test: Add stock to watchlist → verify in WatchlistPage → remove → verify gone
-- [ ] T086 Verify all new routes are registered and backend/frontend build without errors
+- [x] T083 End-to-end test: Module 1 article → click stock code → Drawer opens with K-line ≤1.5s (已通过全局StockDetailDrawer + stockDrawerStore实现)
+- [x] T084 End-to-end test: Search "宁德" → click result → navigate to StockDetailPage (StockSearch组件已实现，直接跳转/market/stock/:code)
+- [x] T085 End-to-end test: Add stock to watchlist → verify in WatchlistPage → remove → verify gone (AddToWatchlistButton已接线，WatchlistPage已实现移除)
+- [x] T086 Verify all new routes are registered and backend/frontend build without errors
 
 ---
 

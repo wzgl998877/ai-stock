@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.infrastructure.ai.ai_service import AIService
-from app.routers import analysis, knowledge, chat, sync, datasource, stock_data
+from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,8 @@ app.include_router(chat.router)
 app.include_router(sync.router)
 app.include_router(datasource.router)
 app.include_router(stock_data.router)
+app.include_router(watchlist.router)
+app.include_router(industry.router)
 
 
 @app.get("/health")

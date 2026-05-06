@@ -236,6 +236,8 @@ export interface StockValidationResult {
   multiple?: boolean;
   candidates?: StockCandidate[];
   message?: string;
+  /** 数据来源："database" | "network" */
+  source?: string;
 }
 
 // 扩展 SSE 事件类型

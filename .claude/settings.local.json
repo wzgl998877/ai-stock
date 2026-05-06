@@ -33,7 +33,11 @@
       "Bash(powershell.exe:*)",
       "Bash(cmd:*)",
       "Bash(.specify/scripts/powershell/create-new-feature.ps1:*)",
-      "Bash(\"/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell\":*)"
+      "Bash(\"/c/WINDOWS/System32/WindowsPowerShell/v1.0/powershell\":*)",
+      "Bash(npx vitest:*)",
+      "Bash(node_modules/.bin/vitest run:*)",
+      "Bash(npx vite:*)",
+      "Bash(/d/tool/node/node:*)"
     ]
   }
 }

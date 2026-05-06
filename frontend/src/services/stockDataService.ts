@@ -71,4 +71,45 @@ export const stockDataService = {
     const res = await api.get(`/api/v1/stocks/${code}/financial`);
     return res.data.data;
   },
+
+  // --- 模块二新增接口 ---
+
+  async getStockMinute(code: string) {
+    const res = await api.get(`/api/v1/stocks/${code}/minute`);
+    return res.data;
+  },
+
+  async getStockIndicators(code: string, params?: {
+    period?: string;
+    indicators?: string;
+    start_date?: string;
+    end_date?: string;
+  }) {
+    const res = await api.get(`/api/v1/stocks/${code}/indicators`, { params });
+    return res.data;
+  },
+
+  async getStockDetail(code: string) {
+    const res = await api.get(`/api/v1/stocks/${code}/detail`);
+    return res.data;
+  },
+
+  async getStockRelatedArticles(code: string, limit?: number) {
+    const res = await api.get(`/api/v1/stocks/${code}/related-articles`, {
+      params: limit ? { limit } : undefined,
+    });
+    return res.data;
+  },
+
+  async searchStocks(query: string, limit?: number) {
+    const res = await api.get('/api/v1/stocks/search', {
+      params: { q: query, limit: limit || 20 },
+    });
+    return res.data;
+  },
+
+  async getAllStocks() {
+    const res = await api.get('/api/v1/stocks/all');
+    return res.data;
+  },
 };

@@ -105,6 +105,10 @@ class Stock(AuditMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     data_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="")
     market_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    industry_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    industry_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    total_market_cap: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
+    float_market_cap: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +355,8 @@ class MarketQuoteModel(Base):
     update_time: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
     )
+    pe_ttm: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(10, 2), nullable=True)
+    pb: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(10, 2), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("code", "data_source", name="uk_code_source"),
@@ -489,4 +495,73 @@ class StockFinancialModel(Base):
 
     __table_args__ = (
         UniqueConstraint("code", "report_date", "data_source", name="uk_code_date_source"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module 2: 自选股分组
+# ---------------------------------------------------------------------------
+
+class WatchlistGroupModel(Base):
+    __tablename__ = "t_watchlist_group"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(10), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        Index("idx_wg_user_id", "user_id"),
+    )
+
+
+class WatchlistItemModel(Base):
+    __tablename__ = "t_watchlist_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("t_watchlist_group.id", ondelete="CASCADE"), nullable=False
+    )
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    stock_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    add_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("group_id", "stock_code", name="uk_group_stock"),
+        Index("idx_wi_group_id", "group_id"),
+        Index("idx_wi_stock_code", "stock_code"),
+    )
+
+
+class StockIndicatorModel(Base):
+    __tablename__ = "t_stock_indicator"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    period: Mapped[str] = mapped_column(String(10), nullable=False, default="daily")
+    macd_dif: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 4), nullable=True)
+    macd_dea: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 4), nullable=True)
+    macd_bar: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 4), nullable=True)
+    kdj_k: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 4), nullable=True)
+    kdj_d: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 4), nullable=True)
+    kdj_j: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 4), nullable=True)
+    ma5: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    ma10: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    ma20: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    data_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("stock_code", "trade_date", "period", name="uk_stock_indicator"),
+        Index("idx_si_stock_date", "stock_code", "trade_date"),
     )

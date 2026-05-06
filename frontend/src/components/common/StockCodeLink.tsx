@@ -1,7 +1,7 @@
-/** StockCodeLink — 股票代码高亮可点击，预留跳转模块二路由 */
+/** StockCodeLink — 股票代码高亮可点击，打开侧边 Drawer 查看行情 */
 
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useStockDrawerStore } from "../../store/stockDrawerStore";
 
 interface StockCodeLinkProps {
   code: string;
@@ -10,11 +10,12 @@ interface StockCodeLinkProps {
 }
 
 const StockCodeLink: React.FC<StockCodeLinkProps> = ({ code, name, style }) => {
-  const navigate = useNavigate();
+  const openDrawer = useStockDrawerStore((s) => s.open);
 
-  const handleClick = () => {
-    // 预留模块二跳转路由 /market/stock/:code
-    navigate(`/market/stock/${code}`);
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openDrawer(code);
   };
 
   return (
@@ -29,7 +30,7 @@ const StockCodeLink: React.FC<StockCodeLinkProps> = ({ code, name, style }) => {
         borderBottom: "1px dashed #b9b9f9",
         ...style,
       }}
-      title={`${name} (${code}) — 查看详情`}
+      title={`${name} (${code}) — 查看行情`}
     >
       {name}({code})
     </span>

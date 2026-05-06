@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AutoComplete, Typography, Tag } from "antd";
-import { SearchOutlined, StockOutlined, CloseCircleOutlined } from "@ant-design/icons";
+import { SearchOutlined, StockOutlined, CloseCircleOutlined, GlobalOutlined } from "@ant-design/icons";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
 import * as stockAnalysisService from "../../services/stockAnalysisService";
 import type { StockValidationResult } from "../../domain/types";
@@ -60,6 +60,9 @@ const StockSearchInput: React.FC = () => {
 
         // 多个候选：展示下拉列表
         if (result.multiple && result.candidates && result.candidates.length > 0) {
+          const sourceTag = result.source === "network"
+            ? <Tag icon={<GlobalOutlined />} color="orange" style={{ fontSize: 10, borderRadius: 3, margin: 0, border: "none" }}>网络</Tag>
+            : null;
           setOptions(
             result.candidates.map((c) => ({
               value: `${c.code}|${c.name}`,
@@ -69,18 +72,21 @@ const StockSearchInput: React.FC = () => {
                     <Text style={{ fontSize: 13, color: "#061b31", marginRight: 8 }}>{c.name}</Text>
                     <Text style={{ fontSize: 12, color: "#94a3b8" }}>{c.code}</Text>
                   </span>
-                  <Tag
-                    style={{
-                      fontSize: 10,
-                      borderRadius: 3,
-                      margin: 0,
-                      background: c.market === "sh" ? "#f0fdf4" : "#eff6ff",
-                      color: c.market === "sh" ? "#15be53" : "#3b82f6",
-                      border: "none",
-                    }}
-                  >
-                    {c.market === "sh" ? "沪" : "深"}
-                  </Tag>
+                  <span style={{ display: "flex", gap: 4 }}>
+                    {sourceTag}
+                    <Tag
+                      style={{
+                        fontSize: 10,
+                        borderRadius: 3,
+                        margin: 0,
+                        background: c.market === "sh" ? "#f0fdf4" : "#eff6ff",
+                        color: c.market === "sh" ? "#15be53" : "#3b82f6",
+                        border: "none",
+                      }}
+                    >
+                      {c.market === "sh" ? "沪" : "深"}
+                    </Tag>
+                  </span>
                 </div>
               ),
             }))

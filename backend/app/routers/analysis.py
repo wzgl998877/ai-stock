@@ -67,6 +67,10 @@ _stock_list_cache: list[dict] | None = None
 _stock_list_cache_time: float = 0
 _STOCK_LIST_CACHE_TTL = 4 * 3600  # 4小时
 
+# AKShare 网络搜索结果缓存（独立于数据库缓存）
+_akshare_stock_cache: list[dict] | None = None
+_akshare_stock_cache_time: float = 0
+
 
 async def _get_stock_list(db: AsyncSession) -> list[dict]:
     """异步获取A股股票列表，优先走内存缓存，其次从数据库查询。"""
@@ -170,7 +174,7 @@ async def check_similarity(body: SimilarityRequestDTO):
 
 @router.get("/validate-stock")
 async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
-    """验证股票代码/名称，返回匹配的股票列表（支持自动补全）"""
+    """验证股票代码/名称，返回匹配的股票列表（数据库优先 + AKShare 网络兜底）。"""
     if not keyword or not keyword.strip():
         return {"valid": False, "message": "请输入股票代码或名称"}
 
@@ -179,10 +183,8 @@ async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
     safe_keyword = re.escape(keyword)
     pattern = re.compile(safe_keyword, re.IGNORECASE)
 
-    # 异步获取股票列表（数据库 + 缓存）
+    # ---- 第一步：从数据库（+内存缓存）搜索 ----
     stocks = await _get_stock_list(db)
-    if not stocks:
-        return {"valid": False, "message": "数据源暂时不可用，请先同步股票基础信息"}
 
     # 精确匹配优先：代码完全匹配
     exact_code = [s for s in stocks if s["code"] == keyword]
@@ -193,6 +195,7 @@ async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
             "stock_code": hit["code"],
             "stock_name": hit["name"],
             "market": hit["market"],
+            "source": "database",
         }
 
     # 模糊匹配：代码前缀或名称包含
@@ -203,26 +206,92 @@ async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
         if len(matches) >= 10:
             break
 
-    if not matches:
+    if matches:
+        # 只有一个匹配时直接返回
+        if len(matches) == 1:
+            hit = matches[0]
+            return {
+                "valid": True,
+                "stock_code": hit["code"],
+                "stock_name": hit["name"],
+                "market": hit["market"],
+                "source": "database",
+            }
+        # 多个匹配时返回候选列表
+        return {
+            "valid": True,
+            "multiple": True,
+            "candidates": matches,
+            "source": "database",
+            "message": f"找到 {len(matches)} 个匹配结果",
+        }
+
+    # ---- 第二步：数据库无结果 → AKShare 网络搜索 ----
+    logger.info("数据库无匹配结果，尝试 AKShare 网络搜索: %s", keyword)
+    try:
+        network_matches = await asyncio.to_thread(_search_akshare, keyword)
+    except Exception as e:
+        logger.warning("AKShare 网络搜索失败: %s", e)
         return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
 
-    # 只有一个匹配时直接返回
-    if len(matches) == 1:
-        hit = matches[0]
+    if not network_matches:
+        return {"valid": False, "message": "未找到该股票，请检查代码或名称"}
+
+    # 单条直接返回
+    if len(network_matches) == 1:
+        hit = network_matches[0]
         return {
             "valid": True,
             "stock_code": hit["code"],
             "stock_name": hit["name"],
             "market": hit["market"],
+            "source": "network",
         }
 
-    # 多个匹配时返回候选列表
+    # 多条返回候选列表
     return {
         "valid": True,
         "multiple": True,
-        "candidates": matches,
-        "message": f"找到 {len(matches)} 个匹配结果",
+        "candidates": network_matches,
+        "source": "network",
+        "message": f"通过网络搜索找到 {len(network_matches)} 个匹配结果",
     }
+
+
+def _search_akshare(keyword: str) -> list[dict]:
+    """同步调用 AKShare 获取全量股票列表并在内存中匹配。
+
+    AKShare 的 stock_info_a_code_name() 返回全 A 股代码-名称对，
+    缓存到进程级别变量避免重复网络请求。
+    """
+    global _akshare_stock_cache, _akshare_stock_cache_time
+
+    now = time.time()
+    if _akshare_stock_cache is not None and (now - _akshare_stock_cache_time) < _STOCK_LIST_CACHE_TTL:
+        all_stocks = _akshare_stock_cache
+    else:
+        from app.application.sync.akshare_client import AKShareClient
+        client = AKShareClient()
+        raw = client.fetch_basic_info()  # 返回 [{"code": "000858", "name": "五粮液", ...}, ...]
+        all_stocks = []
+        for r in raw:
+            code = r.get("code", "")
+            market = "sh" if code.startswith(("6", "9")) else "sz"
+            all_stocks.append({"code": code, "name": r.get("name", ""), "market": market})
+        _akshare_stock_cache = all_stocks
+        _akshare_stock_cache_time = now
+        logger.info("AKShare 股票列表缓存刷新（网络），共 %d 条", len(all_stocks))
+
+    # 正则模糊匹配
+    safe_kw = re.escape(keyword)
+    pattern = re.compile(safe_kw, re.IGNORECASE)
+    matches = []
+    for s in all_stocks:
+        if pattern.search(s["code"]) or pattern.search(s["name"]):
+            matches.append(s)
+        if len(matches) >= 10:
+            break
+    return matches
 
 
 @router.get("/stock-recent")

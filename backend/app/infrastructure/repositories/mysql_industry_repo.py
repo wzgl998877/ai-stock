@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.entities.industry import Industry
 from app.domain.repositories.industry_repo import IndustryRepository
 from app.infrastructure.db.models import Industry as IndustryModel
+from app.infrastructure.db.models import StockIndustry, Stock
 
 
 def _to_entity(model: IndustryModel) -> Industry:
@@ -62,3 +63,30 @@ class MySQLIndustryRepository(IndustryRepository):
         result = await self.session.execute(stmt)
         model = result.scalar_one_or_none()
         return _to_entity(model) if model else None
+
+    async def get_stocks_by_industry(self, industry_code: str) -> List[dict]:
+        """获取行业内的所有股票"""
+        stmt = (
+            select(
+                Stock.stock_code,
+                Stock.name.label("stock_name"),
+                StockIndustry.industry_code,
+            )
+            .join(Stock, StockIndustry.stock_code == Stock.stock_code)
+            .where(
+                StockIndustry.industry_code == industry_code,
+                StockIndustry.deleted == "0",
+                Stock.is_active == True,
+            )
+            .order_by(Stock.stock_code)
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        return [
+            {
+                "stock_code": row.stock_code,
+                "stock_name": row.stock_name,
+                "industry_code": row.industry_code,
+            }
+            for row in rows
+        ]

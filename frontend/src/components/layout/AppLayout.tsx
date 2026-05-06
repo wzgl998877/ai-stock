@@ -16,6 +16,9 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import type { MenuProps } from "antd";
 import { useChatStore } from "../../store/chatStore";
+import StockSearch from "../stock/StockSearch";
+import StockDetailDrawer from "../stock/StockDetailDrawer";
+import { useStockDrawerStore } from "../../store/stockDrawerStore";
 import * as chatService from "../../services/chatService";
 
 const { Sider, Content } = Layout;
@@ -41,6 +44,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const [openKeys, setOpenKeys] = useState<string[]>(["analysis-group"]);
   const [showAllSessions, setShowAllSessions] = useState(false);
+
+  const { visible: drawerVisible, stockCode: drawerStockCode, close: closeDrawer } = useStockDrawerStore();
 
   // 默认只展示5条会话
   const MAX_SESSIONS_PREVIEW = 5;
@@ -245,7 +250,10 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       key: "/market",
       icon: <BarChartOutlined />,
       label: "行情数据",
-      disabled: true,
+      children: [
+        { key: "/market/watchlist", label: "自选股" },
+        { key: "/market/industry", label: "行业对比" },
+      ],
     },
     {
       key: "/strategy",
@@ -380,6 +388,17 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           background: "#ffffff",
         }}
       >
+        {/* 顶部搜索栏 */}
+        <div style={{
+          padding: "8px 24px",
+          borderBottom: "1px solid #e5edf5",
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          background: "#fff",
+        }}>
+          <StockSearch />
+        </div>
         <Content
           style={{
             minHeight: "100vh",
@@ -388,6 +407,13 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {children}
         </Content>
       </Layout>
+
+      {/* 全局股票行情 Drawer */}
+      <StockDetailDrawer
+        visible={drawerVisible}
+        stockCode={drawerStockCode}
+        onClose={closeDrawer}
+      />
     </Layout>
   );
 };

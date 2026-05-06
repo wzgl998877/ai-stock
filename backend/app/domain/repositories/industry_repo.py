@@ -22,3 +22,8 @@ class IndustryRepository(ABC):
     async def find_by_name(self, name: str) -> Optional[Industry]:
         """按名称精确匹配"""
         ...
+
+    @abstractmethod
+    async def get_stocks_by_industry(self, industry_code: str) -> List[dict]:
+        """获取行业内的所有股票（返回包含 stock_code, stock_name, industry_code 的字典列表）"""
+        ...

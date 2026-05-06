@@ -12,6 +12,9 @@ import StockAnalysisPage from "./pages/StockAnalysisPage";
 import StockAnalysisDebugPage from "./pages/StockAnalysisDebugPage";
 import AnalysisRecordsPage from "./pages/AnalysisRecordsPage";
 import SyncPanel from "./pages/SyncPanel";
+import StockDetailPage from "./pages/StockDetailPage";
+import WatchlistPage from "./pages/WatchlistPage";
+import IndustryPage from "./pages/IndustryPage";
 import "./styles/global.css";
 
 const App: React.FC = () => (
@@ -68,6 +71,10 @@ const App: React.FC = () => (
           <Route path="/sync" element={<SyncPanel />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/knowledge/articles/:id" element={<ArticleDetailPage />} />
+          {/* 模块二：行情数据 */}
+          <Route path="/market/stock/:code" element={<StockDetailPage />} />
+          <Route path="/market/watchlist" element={<WatchlistPage />} />
+          <Route path="/market/industry" element={<IndustryPage />} />
           <Route path="*" element={<Navigate to="/analysis" replace />} />
         </Routes>
       </AppLayout>

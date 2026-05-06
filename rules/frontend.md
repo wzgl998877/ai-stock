@@ -18,6 +18,22 @@ src/
 
 ---
 
+## 二.一、核心依赖（强制）
+
+以下包必须在 `package.json` 中声明，禁止省略：
+
+| 依赖 | 用途 |
+|------|------|
+| react | UI 框架 |
+| react-router-dom | 路由 |
+| antd | UI 组件库 |
+| zustand | 状态管理 |
+| echarts | 图表（K线、分时、技术指标） |
+| echarts-for-react | ECharts React 封装（可选） |
+| axios | HTTP 请求 |
+
+---
+
 ## 三、分层职责（强制）
 
 ### 3.1 pages（页面层）

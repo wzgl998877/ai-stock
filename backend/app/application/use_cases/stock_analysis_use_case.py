@@ -22,7 +22,7 @@ from app.infrastructure.ai.ai_service import AIService
 logger = logging.getLogger(__name__)
 
 # 超时配置（秒）
-DEFAULT_TIMEOUT = 1200  # 20分钟（4分析师+辩论+风险+信号提取，含 AI 调用延迟）
+DEFAULT_TIMEOUT = 3600  # 60分钟（深度模式 4分析师+辩论+风险评估，含 AI 调用延迟）
 MAX_TIMEOUT = 600
 
 
