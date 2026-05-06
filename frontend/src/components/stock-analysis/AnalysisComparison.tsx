@@ -18,6 +18,8 @@ interface ComparisonItem {
   decision?: {
     action?: string;
     target_price?: number;
+    stop_loss_price?: number;
+    expected_return?: number;
     confidence?: number;
     risk_score?: number;
     reasoning?: string;
@@ -26,6 +28,8 @@ interface ComparisonItem {
     decision?: {
       action?: string;
       target_price?: number;
+      stop_loss_price?: number;
+      expected_return?: number;
       confidence?: number;
       risk_score?: number;
       reasoning?: string;

@@ -228,13 +228,14 @@ class StockAnalysisUseCase:
                                 "action": action,
                                 "target_price": state_update.get("target_price", 0.0),
                                 "stop_loss_price": state_update.get("stop_loss_price", 0.0),
+                                "expected_return": state_update.get("expected_return", 0.0),
                                 "confidence": state_update.get("confidence", 0.0),
                                 "risk_score": state_update.get("risk_score", 0.0),
                                 "reasoning": state_update.get("reasoning", ""),
                             }
                             analysis_data["decision"] = decision
                             await sse_queue.put({"type": "decision", "data": decision})
-                            full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 置信度: {decision['confidence']*100:.0f}% | 风险评分: {decision['risk_score']*100:.0f}%\n{decision['reasoning']}"
+                            full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 止损价: {decision['stop_loss_price']} | 预期收益: {decision['expected_return']}% | 置信度: {decision['confidence']*100:.0f}% | 风险评分: {decision['risk_score']*100:.0f}%\n{decision['reasoning']}"
 
                         # === 非 Analyst 阶段的 agent detail 写入 ===
                         if self.stock_analysis_repo and current_agent not in (

@@ -43,6 +43,8 @@ class StockAnalysisOutput(TypedDict, total=False):
     final_decision: str
     action: str  # 买入/持有/卖出
     target_price: float
+    stop_loss_price: float
+    expected_return: float  # 预期收益率（百分比）
     confidence: float  # 0-1
     risk_score: float  # 0-1
     reasoning: str

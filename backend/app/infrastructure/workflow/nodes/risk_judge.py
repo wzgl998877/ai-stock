@@ -1,12 +1,34 @@
 """风险裁决节点 — 综合所有风险观点，给出最终风险评估"""
 
+import json
 import logging
+import re
 import time
 
 from app.core.config import settings
 from app.infrastructure.workflow.prompts.stock_analysis.risk_judge import SYSTEM_PROMPT, USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_risk_judge_json(text: str) -> dict:
+    """从 AI 响应中解析风险裁决 JSON，失败时返回空 dict。"""
+    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    json_str = json_match.group(1) if json_match else text.strip()
+    try:
+        result = json.loads(json_str)
+        return {
+            "action": str(result.get("action", "")),
+            "target_price": float(result.get("target_price", 0)),
+            "stop_loss_price": float(result.get("stop_loss_price", 0)),
+            "expected_return": float(result.get("expected_return", 0)),
+            "confidence": float(result.get("confidence", 0)),
+            "risk_score": float(result.get("risk_score", 50)),
+            "reasoning": str(result.get("reasoning", "")),
+        }
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        logger.warning("[risk_judge] JSON 解析失败: %s", e)
+        return {}
 
 
 def create_risk_judge_node(ai_service):
@@ -61,12 +83,10 @@ def create_risk_judge_node(ai_service):
             logger.error("[risk_judge] stream_chat 失败: %s", e)
             full_text = f"风险裁决生成失败: {e}"
 
-        logger.info(
-            "[耗时] risk_judge 总耗时: %.3fs, stock=%s, report_len=%d",
-            time.time() - t_start, stock_code, len(full_text),
-        )
+        # 解析 AI 返回的结构化数据
+        parsed = _parse_risk_judge_json(full_text)
 
-        # 将裁决结果追加到 messages 供后续节点使用
+        # 将裁决结果追加到 messages 供 signal_extractor 文本解析兜底
         new_messages = list(state.get("messages", []))
         new_messages.append({
             "role": "assistant",
@@ -74,9 +94,28 @@ def create_risk_judge_node(ai_service):
             "agent": "risk_judge",
         })
 
-        return {
+        result = {
             "messages": new_messages,
             "current_agent": "risk_judge",
         }
+
+        # 将结构化字段写入 state，供 signal_extractor 直接使用
+        if parsed:
+            for key in ("action", "target_price", "stop_loss_price", "expected_return", "confidence", "risk_score", "reasoning"):
+                val = parsed.get(key)
+                if val:
+                    result[f"risk_judge_{key}"] = val
+            logger.info(
+                "[耗时] risk_judge 总耗时: %.3fs, stock=%s, report_len=%d, action=%s, target=%.2f",
+                time.time() - t_start, stock_code, len(full_text),
+                parsed.get("action", ""), parsed.get("target_price", 0),
+            )
+        else:
+            logger.info(
+                "[耗时] risk_judge 总耗时: %.3fs, stock=%s, report_len=%d (JSON解析失败)",
+                time.time() - t_start, stock_code, len(full_text),
+            )
+
+        return result
 
     return risk_judge_node

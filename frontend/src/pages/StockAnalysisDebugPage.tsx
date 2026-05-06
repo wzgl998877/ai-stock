@@ -274,6 +274,7 @@ const MOCK_DECISION: DecisionEvent = {
   action: "分批建仓（逢跌买入）",
   target_price: 1980,
   stop_loss_price: 1750,
+  expected_return: 17.5,
   confidence: 65,
   risk_score: 35,
   reasoning:

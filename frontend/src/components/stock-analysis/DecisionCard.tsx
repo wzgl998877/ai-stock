@@ -37,7 +37,7 @@ const DecisionCard: React.FC<DecisionCardProps> = ({ decision }) => {
       style={{ borderRadius: 6, border: `2px solid ${config.border}`, marginBottom: 12 }}
       styles={{ body: { padding: "16px 20px" } }}
     >
-      {/* 操作方向 + 目标价 */}
+      {/* 操作方向 + 目标价 + 止损价 + 预期收益 */}
       <Row gutter={16} align="middle" style={{ marginBottom: 16 }}>
         <Col>
           <Tag
@@ -58,12 +58,33 @@ const DecisionCard: React.FC<DecisionCardProps> = ({ decision }) => {
         <Col>
           <Statistic
             title={<Text style={{ fontSize: 11, color: "#94a3b8" }}>目标价</Text>}
-            value={decision.target_price || 0}
-            precision={2}
-            suffix="元"
+            value={decision.target_price || "-"}
+            precision={decision.target_price ? 2 : undefined}
+            suffix={decision.target_price ? "元" : undefined}
             valueStyle={{ fontSize: 20, color: "#061b31", fontWeight: 400, fontFeatureSettings: "'tnum'" }}
           />
         </Col>
+        <Col>
+          <Statistic
+            title={<Text style={{ fontSize: 11, color: "#94a3b8" }}>止损价</Text>}
+            value={decision.stop_loss_price || "-"}
+            precision={decision.stop_loss_price ? 2 : undefined}
+            suffix={decision.stop_loss_price ? "元" : undefined}
+            valueStyle={{ fontSize: 20, color: "#ea2261", fontWeight: 400, fontFeatureSettings: "'tnum'" }}
+          />
+        </Col>
+        {decision.expected_return ? (
+          <Col>
+            <Statistic
+              title={<Text style={{ fontSize: 11, color: "#94a3b8" }}>预期收益</Text>}
+              value={decision.expected_return}
+              precision={2}
+              suffix="%"
+              valueStyle={{ fontSize: 20, color: decision.expected_return >= 0 ? "#15be53" : "#ea2261", fontWeight: 400, fontFeatureSettings: "'tnum'" }}
+              prefix={decision.expected_return >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+            />
+          </Col>
+        ) : null}
       </Row>
 
       {/* 置信度 + 风险评分（色阶条+数字并行） */}
