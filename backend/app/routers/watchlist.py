@@ -12,9 +12,9 @@ router = APIRouter(prefix="/api/v1/watchlist", tags=["watchlist"])
 USER_ID = "default"
 
 
-def _get_use_case(db: AsyncSession = Depends(get_db)) -> WatchlistUseCase:
+def _get_use_case(db: AsyncSession = Depends(get_db)) -> tuple[WatchlistUseCase, AsyncSession]:
     repo = MySQLWatchlistRepository(db)
-    return WatchlistUseCase(repo)
+    return WatchlistUseCase(repo), db
 
 
 def _group_to_dict(g) -> dict:
@@ -36,13 +36,13 @@ def _group_to_dict(g) -> dict:
 
 
 @router.get("/groups")
-async def get_groups(uc: WatchlistUseCase = Depends(_get_use_case)):
+async def get_groups(uc_db: tuple = Depends(_get_use_case)):
+    uc, db = uc_db
     groups = await uc.get_groups(USER_ID)
 
     # 填充每个分组内的股票列表
     for g in groups:
-        if not hasattr(g, "stocks") or g.stocks is None:
-            g.stocks = await uc.get_items(USER_ID, g.id)
+        g.stocks = await uc.get_items(USER_ID, g.id)
 
     return {"data": {"groups": [_group_to_dict(g) for g in groups]}}
 
@@ -50,12 +50,14 @@ async def get_groups(uc: WatchlistUseCase = Depends(_get_use_case)):
 @router.post("/groups", status_code=201)
 async def create_group(
     body: dict,
-    uc: WatchlistUseCase = Depends(_get_use_case),
+    uc_db: tuple = Depends(_get_use_case),
 ):
+    uc, db = uc_db
     name = body.get("name", "").strip()
     if not name or len(name) > 10:
         raise HTTPException(status_code=400, detail="分组名称须1-10个字符")
     group = await uc.create_group(USER_ID, name)
+    await db.commit()
     return {"data": _group_to_dict(group)}
 
 
@@ -63,21 +65,25 @@ async def create_group(
 async def rename_group(
     group_id: int,
     body: dict,
-    uc: WatchlistUseCase = Depends(_get_use_case),
+    uc_db: tuple = Depends(_get_use_case),
 ):
+    uc, db = uc_db
     name = body.get("name", "").strip()
     if not name or len(name) > 10:
         raise HTTPException(status_code=400, detail="分组名称须1-10个字符")
     group = await uc.update_group(group_id, name=name)
+    await db.commit()
     return {"data": _group_to_dict(group)}
 
 
 @router.delete("/groups/{group_id}")
 async def delete_group(
     group_id: int,
-    uc: WatchlistUseCase = Depends(_get_use_case),
+    uc_db: tuple = Depends(_get_use_case),
 ):
+    uc, db = uc_db
     await uc.delete_group(group_id)
+    await db.commit()
     return {"data": {"message": "分组已删除"}}
 
 
@@ -85,13 +91,15 @@ async def delete_group(
 async def add_stock(
     group_id: int,
     body: dict,
-    uc: WatchlistUseCase = Depends(_get_use_case),
+    uc_db: tuple = Depends(_get_use_case),
 ):
+    uc, db = uc_db
     stock_code = body.get("stock_code", "").strip()
     stock_name = body.get("stock_name", "").strip()
     if not stock_code:
         raise HTTPException(status_code=400, detail="stock_code 不能为空")
     item = await uc.add_stock(USER_ID, group_id, stock_code, stock_name)
+    await db.commit()
     return {"data": {"id": item.id, "group_id": item.group_id, "stock_code": item.stock_code, "stock_name": item.stock_name}}
 
 
@@ -99,6 +107,8 @@ async def add_stock(
 async def remove_stock(
     group_id: int,
     stock_code: str,
-    uc: WatchlistUseCase = Depends(_get_use_case),
+    uc_db: tuple = Depends(_get_use_case),
 ):
+    uc, db = uc_db
     await uc.remove_stock(USER_ID, group_id, stock_code)
+    await db.commit()

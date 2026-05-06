@@ -158,7 +158,7 @@ export const useStockDetailStore = create<StockDetailState>((set, get) => ({
   },
 
   fetchKlineData: async (code: string, period: KlinePeriod) => {
-    set({ klineLoading: true });
+    set({ klineLoading: true, klineData: [], minuteData: [], indicators: [] });
     try {
       if (period === 'minute') {
         const res = await stockDataService.getStockMinute(code);

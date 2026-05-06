@@ -325,6 +325,10 @@ class MySQLStockDataRepository(StockDataRepository):
             StockDailyQuoteModel.code == code,
             StockDailyQuoteModel.period == period,
         ]
+        conditions = [
+            StockDailyQuoteModel.code == code,
+            StockDailyQuoteModel.period == period,
+        ]
         if start_date:
             conditions.append(StockDailyQuoteModel.trade_date >= start_date)
         if end_date:

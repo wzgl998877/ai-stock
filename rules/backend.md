@@ -151,6 +151,34 @@ data: xxx\n\n
 * ORM（SQLAlchemy / SQLModel）
 * JSON字段用于扩展
 
+### 7.1 写操作必须 commit（强制）
+
+`get_db()` 不自动提交事务。Repository 层的 `add/flush/update/delete` 仅操作 session 内存，**不会写入数据库**。
+
+**规则：所有写操作（CREATE / UPDATE / DELETE）必须在 Router 层显式 `await db.commit()`。**
+
+```python
+# ✅ 正确
+@router.post("/groups")
+async def create_group(body: dict, db: AsyncSession = Depends(get_db)):
+    repo = MySQLWatchlistRepository(db)
+    uc = WatchlistUseCase(repo)
+    group = await uc.create_group("default", body["name"])
+    await db.commit()  # 必须 commit！
+    return {"data": group}
+
+# ❌ 错误 — 数据只会留在 session 内存，请求结束就丢失
+@router.post("/groups")
+async def create_group(body: dict, uc: WatchlistUseCase = Depends(_get_uc)):
+    group = await uc.create_group("default", body["name"])
+    return {"data": group}  # 没有 commit，数据不会持久化
+```
+
+**常见踩坑**：
+- `session.flush()` ≠ `session.commit()`，flush 只是同步到数据库事务，不提交
+- 读操作（GET）不需要 commit
+- 忘记 commit 时，接口返回正常但数据库查不到数据
+
 ---
 
 ## 八、DTO规范

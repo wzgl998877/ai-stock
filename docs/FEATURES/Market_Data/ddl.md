@@ -34,8 +34,7 @@ CREATE TABLE t_watchlist_item (
     stock_code VARCHAR(10) NOT NULL COMMENT '股票代码',
     stock_name VARCHAR(50) NOT NULL COMMENT '股票名称（冗余快照）',
     add_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
-    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    FOREIGN KEY (group_id) REFERENCES t_watchlist_group(id) ON DELETE CASCADE
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 ) ENGINE=InnoDB COMMENT='自选股条目表';
 
 ALTER TABLE t_watchlist_item ADD UNIQUE KEY uk_group_stock (group_id, stock_code);

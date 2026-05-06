@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import * as echarts from 'echarts';
-import { Skeleton } from 'antd';
+import { Skeleton, Empty } from 'antd';
 
 interface KLineChartProps {
   data: any[];
@@ -28,21 +28,27 @@ const KLineChart: React.FC<KLineChartProps> = ({
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
+  const hasData = period === 'minute' ? minuteData.length > 0 : (data && data.length > 0);
+
   const option = useMemo(() => {
     if (period === 'minute' && minuteData.length > 0) {
       return buildMinuteOption(minuteData);
     }
-    if (!data || data.length === 0) return {};
+    if (!data || data.length === 0) return null;
     return buildDailyOption(data, indicators, showMA, showMACD, showKDJ);
   }, [data, indicators, showMA, showMACD, showKDJ, period, minuteData]);
 
   useEffect(() => {
     if (!chartRef.current) return;
-    if (!chartInstance.current) {
-      chartInstance.current = echarts.init(chartRef.current);
+    // 每次都重新 init，避免 DOM 被替换后旧实例失效
+    if (chartInstance.current) {
+      chartInstance.current.dispose();
+      chartInstance.current = null;
     }
-    chartInstance.current.setOption(option, true);
-    return () => {};
+    if (option) {
+      chartInstance.current = echarts.init(chartRef.current);
+      chartInstance.current.setOption(option, true);
+    }
   }, [option]);
 
   useEffect(() => {
@@ -62,6 +68,14 @@ const KLineChart: React.FC<KLineChartProps> = ({
         style={{ width: '100%', height }}
         styles={{ image: { height } }}
       />
+    );
+  }
+
+  if (!hasData) {
+    return (
+      <div style={{ width: '100%', height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', borderRadius: 4 }}>
+        <Empty description={`暂无${period === 'minute' ? '分时' : period === 'daily' ? '日K' : period === 'weekly' ? '周K' : '月K'}数据`} />
+      </div>
     );
   }
 
@@ -131,23 +145,26 @@ function buildDailyOption(
 ) {
   const dates = data.map((d) => d.trade_date);
   const ohlc = data.map((d) => [d.open, d.close, d.low, d.high]);
-  const volumes = data.map((d, i) => ({
+  const volumes = data.map((d) => ({
     value: d.volume,
     itemStyle: {
       color: d.close >= d.open ? '#f5222d' : '#52c41a',
     },
   }));
 
-  // 计算网格
-  const gridCount = 1 + (showMACD ? 1 : 0) + (showKDJ ? 1 : 0);
-  const mainHeight = Math.max(30, 70 - (gridCount - 1) * 15);
-  const subHeight = 12;
-  const gap = 3;
+  // 布局：K线主图 + 成交量 + (MACD?) + (KDJ?)
+  const subHeight = 10;
+  const gap = 2;
+  const volHeight = 10;
   let currentTop = 30;
+  const mainHeight = Math.max(30, 60 - (showMACD ? subHeight + gap : 0) - (showKDJ ? subHeight + gap : 0));
 
+  // Grid 0: K线主图
   const grids: any[] = [{ left: 70, right: 20, top: currentTop, height: `${mainHeight}%` }];
   const xAxes: any[] = [{ type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { show: false } }];
-  const yAxes: any[] = [{ type: 'value', gridIndex: 0, scale: true }];
+  const yAxes: any[] = [{ type: 'value', gridIndex: 0, scale: true, splitLine: { lineStyle: { color: '#f0f0f0' } } }];
+
+  // K线
   const series: any[] = [
     {
       name: 'K线',
@@ -162,47 +179,49 @@ function buildDailyOption(
         borderColor0: '#52c41a',
       },
     },
-    {
-      name: '成交量',
-      type: 'bar',
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-      data: volumes,
-      barMaxWidth: 6,
-    },
   ];
 
-  // MA 均线
+  // MA 均线（K线主图上叠加）
   if (showMA && indicators.length > 0) {
-    const ma5 = indicators.map((d) => d.ma5);
-    const ma10 = indicators.map((d) => d.ma10);
-    const ma20 = indicators.map((d) => d.ma20);
     series.push(
-      { name: 'MA5', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: ma5, smooth: true, symbol: 'none', lineStyle: { width: 1 } },
-      { name: 'MA10', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: ma10, smooth: true, symbol: 'none', lineStyle: { width: 1 } },
-      { name: 'MA20', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: ma20, smooth: true, symbol: 'none', lineStyle: { width: 1 } },
+      { name: 'MA5', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: indicators.map((d) => d.ma5), smooth: true, symbol: 'none', lineStyle: { width: 1 } },
+      { name: 'MA10', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: indicators.map((d) => d.ma10), smooth: true, symbol: 'none', lineStyle: { width: 1 } },
+      { name: 'MA20', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: indicators.map((d) => d.ma20), smooth: true, symbol: 'none', lineStyle: { width: 1 } },
     );
   }
 
   currentTop += mainHeight + gap;
+
+  // Grid 1: 成交量（独立 grid + y 轴）
+  grids.push({ left: 70, right: 20, top: `${currentTop}%`, height: `${volHeight}%` });
+  xAxes.push({ type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false } });
+  yAxes.push({ type: 'value', gridIndex: 1, scale: true, splitNumber: 2, axisLabel: { fontSize: 10 } });
+  series.push({
+    name: '成交量',
+    type: 'bar',
+    xAxisIndex: 1,
+    yAxisIndex: 1,
+    data: volumes,
+    barMaxWidth: 6,
+  });
+
+  currentTop += volHeight + gap;
 
   // MACD 副图
   if (showMACD && indicators.length > 0) {
     const gridIdx = grids.length;
     grids.push({ left: 70, right: 20, top: `${currentTop}%`, height: `${subHeight}%` });
     xAxes.push({ type: 'category', data: dates, gridIndex: gridIdx, boundaryGap: true, axisLabel: { show: false } });
-    yAxes.push({ type: 'value', gridIndex: gridIdx, scale: true });
+    yAxes.push({ type: 'value', gridIndex: gridIdx, scale: true, splitNumber: 2 });
 
-    const dif = indicators.map((d) => d.macd_dif);
-    const dea = indicators.map((d) => d.macd_dea);
     const bar = indicators.map((d) => ({
       value: d.macd_bar,
       itemStyle: { color: d.macd_bar >= 0 ? '#f5222d' : '#52c41a' },
     }));
 
     series.push(
-      { name: 'DIF', type: 'line', xAxisIndex: gridIdx, yAxisIndex: gridIdx, data: dif, symbol: 'none', lineStyle: { width: 1 } },
-      { name: 'DEA', type: 'line', xAxisIndex: gridIdx, yAxisIndex: gridIdx, data: dea, symbol: 'none', lineStyle: { width: 1 } },
+      { name: 'DIF', type: 'line', xAxisIndex: gridIdx, yAxisIndex: gridIdx, data: indicators.map((d) => d.macd_dif), symbol: 'none', lineStyle: { width: 1 } },
+      { name: 'DEA', type: 'line', xAxisIndex: gridIdx, yAxisIndex: gridIdx, data: indicators.map((d) => d.macd_dea), symbol: 'none', lineStyle: { width: 1 } },
       { name: 'MACD', type: 'bar', xAxisIndex: gridIdx, yAxisIndex: gridIdx, data: bar, barMaxWidth: 4 },
     );
     currentTop += subHeight + gap;
