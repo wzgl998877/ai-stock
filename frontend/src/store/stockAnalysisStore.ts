@@ -83,6 +83,8 @@ interface StockAnalysisState {
   triggerHistoryRefresh: () => void;
   loadFromRecord: (data: {
     recordId: string;
+    stockCode?: string;
+    stockName?: string;
     title: string;
     summary: string;
     fullContent?: string;
@@ -242,6 +244,8 @@ export const useStockAnalysisStore = create<StockAnalysisState>((set) => ({
       analysisState: data.status === "in_progress" || data.status === "running" ? "running" : "done",
       viewMode: true,
       viewRecordId: data.recordId,
+      stockCode: data.stockCode || "",
+      stockName: data.stockName || "",
       title: data.title || "",
       summary: data.summary || "",
       fullContent: data.fullContent || "",

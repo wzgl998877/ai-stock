@@ -433,8 +433,9 @@ const StockAnalysisPage: React.FC = () => {
       pollRecordIdRef.current = "";  // 使飞行中的旧轮询响应失效
 
       // 立即清空显示数据，防止切换记录时闪现旧数据
-      // 注意：不重置 analysisState，避免闪现输入页
+      // 同时设置 analysisState 为 done，防止异步加载期间闪现 idle 入口页
       useStockAnalysisStore.setState({
+        analysisState: "done",
         viewMode: true,
         viewRecordId: recordId,  // 立即设置，防止轮询干扰
         title: "",
@@ -513,9 +514,6 @@ const StockAnalysisPage: React.FC = () => {
 
           // 设置股票信息
           const stockInfo = record.stocks?.[0];
-          if (stockInfo) {
-            useStockAnalysisStore.getState().setStock(stockInfo.code, stockInfo.name);
-          }
 
           // 从 industries 提取名称列表
           const industryNames = (record.industries || []).map(i => i.code);
@@ -546,6 +544,8 @@ const StockAnalysisPage: React.FC = () => {
 
           store.loadFromRecord({
             recordId: record.id,
+            stockCode: stockInfo?.code,
+            stockName: stockInfo?.name,
             title: record.title,
             summary: record.summary,
             fullContent: record.content,
