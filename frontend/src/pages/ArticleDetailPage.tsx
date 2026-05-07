@@ -5,6 +5,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Typography, Spin, Button, Tag, message, Popconfirm } from "antd";
 import { ArrowLeftOutlined, DeleteOutlined } from "@ant-design/icons";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getArticleDetail, deleteArticle } from "../services/knowledgeService";
 import StockCodeLink from "../components/common/StockCodeLink";
 import type { ArticleDetail } from "../domain/types";
@@ -165,7 +166,7 @@ const ArticleDetailPage: React.FC = () => {
         }}
       >
         <div className="markdown-body">
-          <ReactMarkdown>{article.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.content}</ReactMarkdown>
         </div>
       </div>
 

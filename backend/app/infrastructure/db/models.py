@@ -60,7 +60,8 @@ class User(AuditMixin, Base):
     user_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     user_account: Mapped[str] = mapped_column(String(32), nullable=False)
     user_name: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    password: Mapped[str] = mapped_column(String(128), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    password: Mapped[str] = mapped_column(String(256), nullable=False)
     nick_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     icon_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     gender: Mapped[Optional[str]] = mapped_column(CHAR(1), nullable=True)
@@ -68,6 +69,11 @@ class User(AuditMixin, Base):
     user_type: Mapped[Optional[str]] = mapped_column(CHAR(1), nullable=True)
     status: Mapped[str] = mapped_column(CHAR(1), nullable=False, default="0")
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_account", name="uq_user_account"),
+        UniqueConstraint("email", name="uq_user_email"),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 /** 分析相关 API Service */
 
-import api from "./api";
+import api, { getAuthHeaders } from "./api";
 import type {
   SSEEvent,
   ArticleListResponseDTO,
@@ -23,7 +23,7 @@ export async function streamAnalysis(
   const baseURL = import.meta.env.VITE_API_BASE_URL || "";
   const response = await fetch(`${baseURL}${BASE}/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify({ event_type: eventType, question }),
     signal,
   });

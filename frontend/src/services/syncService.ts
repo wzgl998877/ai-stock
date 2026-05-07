@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { getAuthHeaders } from "./api";
 
 export interface SyncTaskRecord {
   task_id: string;
@@ -56,6 +56,7 @@ export const syncService = {
       headers: {
         Accept: "text/event-stream",
         "Cache-Control": "no-cache",
+        ...getAuthHeaders(),
       },
       signal: controller.signal,
     })

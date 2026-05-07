@@ -22,6 +22,7 @@ from app.application.dtos.analysis_dto import (
 from app.application.use_cases.analyze_event import AnalyzeEventUseCase
 from app.application.use_cases.manage_article import SaveArticleUseCase
 from app.core.database import get_db
+from app.core.deps import CurrentUser, get_current_user
 from app.core.exceptions import InvalidInputError, AIServiceError, NoIndustryTagError
 from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.infrastructure.ai.ai_service import AIService
@@ -295,10 +296,10 @@ def _search_akshare(keyword: str) -> list[dict]:
 
 
 @router.get("/stock-recent")
-async def check_recent_analysis(stock_code: str, minutes: int = 5, db: AsyncSession = Depends(get_db)):
+async def check_recent_analysis(stock_code: str, minutes: int = 5, db: AsyncSession = Depends(get_db), current_user: CurrentUser = Depends(get_current_user)):
     """检查某只股票近期是否有分析"""
     repo = MySQLStockAnalysisRepository(db)
-    sa = await repo.get_recent_by_stock(stock_code, user_id="default", minutes=minutes)
+    sa = await repo.get_recent_by_stock(stock_code, user_id=current_user.user_id, minutes=minutes)
 
     if sa:
         return {
@@ -318,9 +319,10 @@ async def list_analysis_records(
     status: str = None,
     stock_code: str = None,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取分析记录列表，支持按股票代码筛选"""
-    user_id = "default"
+    user_id = current_user.user_id
 
     repo = MySQLStockAnalysisRepository(db)
 

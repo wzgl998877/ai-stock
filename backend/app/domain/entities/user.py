@@ -9,6 +9,7 @@ class User:
     user_account: str
     password: str
     user_name: Optional[str] = None
+    email: Optional[str] = None
     nick_name: Optional[str] = None
     icon_url: Optional[str] = None
     gender: Optional[str] = None  # '0'=未知, '1'=男, '2'=女

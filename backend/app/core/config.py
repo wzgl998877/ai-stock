@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # === 数据源加密 ===
     datasource_encryption_key: str = ""
 
+    # === 邮件 (SMTP) ===
+    smtp_host: str = "smtp.qq.com"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    mail_from: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

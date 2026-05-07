@@ -1,5 +1,5 @@
 /** 个股分析 API Service */
-import api from "./api";
+import api, { getAuthHeaders } from "./api";
 import type { StockValidationResult, StockSSEEvent, AnalysisRecordDetail, AnalysisRecordListResponse } from "../domain/types";
 
 const BASE = "/api/chat";
@@ -56,7 +56,7 @@ export async function streamStockAnalysis(
   const baseURL = import.meta.env.VITE_API_BASE_URL || "";
   const response = await fetch(`${baseURL}${BASE}/sessions/${sessionId}/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify({
       content: config.content,
       event_type: "stock_analysis",

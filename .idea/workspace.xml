@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 新增md文档" />
+    <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 引入前端skill">
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/layout/AppLayout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/layout/AppLayout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/ArticleDetailPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/ArticleDetailPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/WatchlistPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/WatchlistPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/styles/global.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/global.css" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -12,6 +17,9 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
   </component>
   <component name="MavenImportPreferences">
     <option name="generalSettings">
@@ -26,6 +34,7 @@
     <option name="version" value="1" />
   </component>
   <component name="ProjectId" id="3BghAVY90KpZUFVmt2E3uC8z5y3" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -50,6 +59,7 @@
       <updated>1774916480708</updated>
       <workItem from="1774916482180" duration="1268000" />
       <workItem from="1776426217043" duration="704000" />
+      <workItem from="1777086658066" duration="650000" />
     </task>
     <task id="LOCAL-00001" summary="feat: 新增md文档">
       <created>1776352079122</created>
@@ -72,7 +82,14 @@
       <option name="project" value="LOCAL" />
       <updated>1776426337511</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="feat: 引入前端skill">
+      <created>1777086705913</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1777086705913</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -88,10 +105,10 @@
         </entry>
       </map>
     </option>
-    <option name="oldMeFiltersMigrated" value="true" />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="feat: 新增md文档" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: 新增md文档" />
+    <MESSAGE value="feat: 引入前端skill" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: 引入前端skill" />
   </component>
 </project>

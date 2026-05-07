@@ -237,3 +237,8 @@ body {
   background: linear-gradient(90deg, var(--color-primary-bg), #ffffff) !important;
   border-right: 3px solid var(--color-primary);
 }
+
+/* 禁用菜单项的 Tooltip 可点击 */
+.ant-menu-item-disabled {
+  cursor: not-allowed !important;
+}

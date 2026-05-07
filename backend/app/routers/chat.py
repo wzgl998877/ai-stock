@@ -18,6 +18,7 @@ from app.application.dtos.chat_dto import (
 )
 from app.application.use_cases.chat_use_case import ChatUseCase
 from app.core.database import get_db
+from app.core.deps import CurrentUser, get_current_user
 from app.core.exceptions import InvalidInputError
 from app.infrastructure.repositories.mysql_chat_repo import MySQLChatRepository
 from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
@@ -26,8 +27,6 @@ from app.infrastructure.repositories.mysql_stock_analysis_repo import MySQLStock
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
-USER_ID = "default"  # MVP 阶段固定用户
 
 
 def _get_use_case(request: Request, db: AsyncSession) -> ChatUseCase:
@@ -52,7 +51,7 @@ async def _sse_stream(event_gen: AsyncGenerator, db: AsyncSession) -> AsyncGener
 
 
 @router.post("/sessions", status_code=201, response_model=SessionResponse)
-async def create_session(body: CreateSessionRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def create_session(body: CreateSessionRequest, request: Request, db: AsyncSession = Depends(get_db), current_user: CurrentUser = Depends(get_current_user)):
     """创建新会话"""
     use_case = _get_use_case(request, db)
     # 支持个股分析会话
@@ -61,7 +60,7 @@ async def create_session(body: CreateSessionRequest, request: Request, db: Async
     event_type = body.event_type
     if event_type == "stock_analysis":
         session_type = "stock_analysis"
-    session = await use_case.create_session(USER_ID, body.title, event_type, session_type, config)
+    session = await use_case.create_session(current_user.user_id, body.title, event_type, session_type, config)
     await db.commit()
     return SessionResponse(
         id=session.session_id,
@@ -73,10 +72,10 @@ async def create_session(body: CreateSessionRequest, request: Request, db: Async
 
 
 @router.get("/sessions", response_model=SessionListResponse)
-async def list_sessions(request: Request, db: AsyncSession = Depends(get_db)):
+async def list_sessions(request: Request, db: AsyncSession = Depends(get_db), current_user: CurrentUser = Depends(get_current_user)):
     """列出用户的所有会话"""
     use_case = _get_use_case(request, db)
-    sessions = await use_case.list_sessions(USER_ID)
+    sessions = await use_case.list_sessions(current_user.user_id)
     return SessionListResponse(
         sessions=[
             SessionResponse(

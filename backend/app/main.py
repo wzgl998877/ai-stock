@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.infrastructure.ai.ai_service import AIService
-from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry
+from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry, auth
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +138,7 @@ async def log_requests(request: Request, call_next) -> Response:
 
     return response
 
+app.include_router(auth.router)
 app.include_router(analysis.router)
 app.include_router(knowledge.router)
 app.include_router(chat.router)

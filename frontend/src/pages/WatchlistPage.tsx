@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Collapse, Button, Modal, Input, Popconfirm, Empty, Spin, Tag, Alert } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useWatchlistStore } from '../store/watchlistStore';
+import StockSearch from '../components/stock/StockSearch';
 
 const WatchlistPage: React.FC = () => {
   const navigate = useNavigate();
@@ -100,9 +101,12 @@ const WatchlistPage: React.FC = () => {
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>自选股管理</h2>
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => setCreateModalOpen(true)}>
-          新增分组
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <StockSearch />
+          <Button icon={<PlusOutlined />} type="primary" onClick={() => setCreateModalOpen(true)}>
+            新增分组
+          </Button>
+        </div>
       </div>
 
       {error && (

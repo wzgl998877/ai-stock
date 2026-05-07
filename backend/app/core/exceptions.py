@@ -38,3 +38,8 @@ class EmptyContentError(AppException):
 class DuplicateTitleError(AppException):
     def __init__(self, message: str = "已有同名提醒，是否继续添加？"):
         super().__init__(status_code=409, code="DUPLICATE_TITLE", message=message)
+
+
+class AuthenticationError(AppException):
+    def __init__(self, message: str = "认证失败"):
+        super().__init__(status_code=401, code="AUTHENTICATION_ERROR", message=message)

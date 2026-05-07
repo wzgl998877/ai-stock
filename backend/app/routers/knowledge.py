@@ -22,6 +22,7 @@ from app.application.use_cases.manage_article import (
 )
 from app.application.use_cases.search_articles import SearchArticlesUseCase
 from app.core.database import get_db
+from app.core.deps import CurrentUser, get_current_user
 from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
 from app.infrastructure.repositories.mysql_industry_repo import MySQLIndustryRepository
 from app.infrastructure.repositories.mysql_search_repo import MySQLSearchRepository
@@ -34,8 +35,6 @@ from app.infrastructure.db.models import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
-
-DEFAULT_USER_ID = "default"
 
 
 def _article_to_list_item(article) -> ArticleListItemDTO:
@@ -69,6 +68,7 @@ async def list_articles(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """获取知识库文章列表"""
     from app.infrastructure.db.models import AnalysisArticle as ArticleModel
@@ -78,7 +78,7 @@ async def list_articles(
 
     # 构建 base query 以支持 article_type 筛选
     articles, total = await use_case.execute(
-        user_id=DEFAULT_USER_ID,
+        user_id=current_user.user_id,
         view=view,
         industry_code=industry,
         stock_code=stock_code,
@@ -221,13 +221,14 @@ async def search_articles(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """全文搜索知识库文章"""
     repo = MySQLSearchRepository(db)
     use_case = SearchArticlesUseCase(repo)
     articles, total = await use_case.execute(
         query=q,
-        user_id=DEFAULT_USER_ID,
+        user_id=current_user.user_id,
         page=page,
         page_size=page_size,
     )

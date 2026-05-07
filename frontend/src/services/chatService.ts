@@ -1,6 +1,6 @@
 /** Chat API Service */
 
-import api from "./api";
+import api, { getAuthHeaders } from "./api";
 import type { SSEEvent, ChatSessionType, ChatMessageType } from "../domain/types";
 
 const BASE = "/api/chat";
@@ -57,7 +57,7 @@ export async function streamMessage(
   const baseURL = import.meta.env.VITE_API_BASE_URL || "";
   const response = await fetch(`${baseURL}${BASE}/sessions/${sessionId}/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify({ content, event_type: eventType }),
     signal,
   });
