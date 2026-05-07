@@ -64,6 +64,23 @@ export interface StockDetailFinancial {
 
 export type KlinePeriod = 'minute' | 'daily' | 'weekly' | 'monthly';
 
+// --- A 股交易时段判断 ---
+
+export function isMarketOpen(): boolean {
+  const now = new Date();
+  // 获取北京时间（UTC+8）
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const bj = new Date(utc + 8 * 3600000);
+  const h = bj.getHours();
+  const m = bj.getMinutes();
+  const day = bj.getDay();
+  // 周六(6)、周日(0)休市
+  if (day === 0 || day === 6) return false;
+  const t = h * 60 + m;
+  // 上午 9:30 - 11:30，下午 13:00 - 15:00
+  return (t >= 570 && t <= 690) || (t >= 780 && t <= 900);
+}
+
 interface StockDetailState {
   stockCode: string | null;
   basic: StockDetailBasic | null;
@@ -82,6 +99,7 @@ interface StockDetailState {
 
   fetchStockDetail: (code: string) => Promise<void>;
   fetchKlineData: (code: string, period: KlinePeriod) => Promise<void>;
+  refreshMinuteData: (code: string) => Promise<void>;
   fetchIndicators: (code: string, period: string) => Promise<void>;
   fetchRelatedArticles: (code: string) => Promise<void>;
   setActivePeriod: (period: KlinePeriod) => void;
@@ -171,6 +189,16 @@ export const useStockDetailStore = create<StockDetailState>((set, get) => ({
       }
     } catch {
       set({ klineLoading: false });
+    }
+  },
+
+  /** 静默刷新分时数据（轮询用，不设 loading 状态） */
+  refreshMinuteData: async (code: string) => {
+    try {
+      const res = await stockDataService.getStockMinute(code);
+      set({ minuteData: res.data.items || [] });
+    } catch {
+      // 静默失败，保留当前数据
     }
   },
 

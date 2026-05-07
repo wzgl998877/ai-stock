@@ -44,7 +44,7 @@ class Settings(BaseSettings):
 
     # === 分时数据源 ===
     twelvedata_api_key: str = ""       # TwelveData API Key（免费层 800次/天）
-    minute_cache_ttl: int = 120        # 分时数据缓存 TTL（秒）
+    minute_cache_ttl: int = 30         # 分时数据缓存 TTL（秒），匹配前端轮询间隔
 
     # === 数据源加密 ===
     datasource_encryption_key: str = ""

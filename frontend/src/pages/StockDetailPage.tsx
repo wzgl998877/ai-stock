@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Tabs, Skeleton, Alert, Space, Card } from 'antd';
-import { useStockDetailStore } from '../store/stockDetailStore';
+import { Tabs, Skeleton, Alert, Card } from 'antd';
+import { useStockDetailStore, isMarketOpen } from '../store/stockDetailStore';
 import PriceCard from '../components/stock/PriceCard';
 import KLineChart from '../components/stock/KLineChart';
 import PeriodSelector from '../components/stock/PeriodSelector';
@@ -12,6 +12,9 @@ import IndustryComparison from '../components/stock/IndustryComparison';
 import AddToWatchlistButton from '../components/stock/AddToWatchlistButton';
 import SyncKlineButton from '../components/stock/SyncKlineButton';
 
+/** 分时轮询间隔（毫秒） */
+const MINUTE_POLL_INTERVAL = 30_000;
+
 const StockDetailPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
@@ -20,15 +23,47 @@ const StockDetailPage: React.FC = () => {
     relatedArticles, loading, klineLoading, error,
     activePeriod, showMACD, showKDJ,
     fetchStockDetail, setActivePeriod, toggleMACD, toggleKDJ, clear,
-    fetchKlineData,
+    fetchKlineData, refreshMinuteData,
   } = useStockDetailStore();
+
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // --- 分时轮询控制 ---
+  const startPolling = useCallback(() => {
+    if (pollTimerRef.current) return;
+    pollTimerRef.current = setInterval(() => {
+      const c = useStockDetailStore.getState().stockCode;
+      if (c && isMarketOpen()) {
+        refreshMinuteData(c);
+      }
+    }, MINUTE_POLL_INTERVAL);
+  }, [refreshMinuteData]);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (code) {
       fetchStockDetail(code);
     }
-    return () => clear();
+    return () => {
+      stopPolling();
+      clear();
+    };
   }, [code]);
+
+  // 当 activePeriod 变化时，控制轮询启停
+  useEffect(() => {
+    if (activePeriod === 'minute' && code && isMarketOpen()) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  }, [activePeriod, code, startPolling, stopPolling]);
 
   if (loading) {
     return (
