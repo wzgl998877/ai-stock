@@ -2,9 +2,10 @@
 
 import React from "react";
 import { Typography, Tag } from "antd";
-import { DeleteOutlined } from "@ant-design/icons";
+import { DeleteOutlined, SearchOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import type { ArticleListItem } from "../../domain/types";
+import StockCodeLink from "../common/StockCodeLink";
 import { stripMarkdown } from "../../utils/stripMarkdown";
 
 const { Text, Paragraph } = Typography;
@@ -12,11 +13,10 @@ const { Text, Paragraph } = Typography;
 interface Props {
   article: ArticleListItem;
   keyword?: string;
-  highlightStockCode?: string;
   onDelete?: (id: string) => void;
 }
 
-const ArticleCard: React.FC<Props> = ({ article, keyword, highlightStockCode, onDelete }) => {
+const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -37,6 +37,14 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, highlightStockCode, on
         ? <mark key={i} style={{ background: "rgba(83,58,253,0.15)", color: "#533afd", padding: "0 2px", borderRadius: 2 }}>{part}</mark>
         : part
     );
+  };
+
+  const eventTypeLabels: Record<string, string> = {
+    geopolitical: "地缘",
+    policy: "政策",
+    earnings: "财报",
+    supply_chain: "产业链",
+    other: "其他",
   };
 
   return (
@@ -98,7 +106,7 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, highlightStockCode, on
           fontSize: 13,
           color: "#64748d",
           margin: 0,
-          marginBottom: 10,
+          marginBottom: 12,
           lineHeight: 1.5,
           fontFeatureSettings: "'ss01' on",
         }}
@@ -106,26 +114,34 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, highlightStockCode, on
         {article.highlight ? highlightText(stripMarkdown(article.highlight)) : stripMarkdown(article.summary || "")}
       </Paragraph>
 
-      {/* 高亮股票标签 */}
-      {highlightStockCode && article.stocks.some(s => s.code === highlightStockCode) && (
-        <Tag
-          style={{
-            margin: 0,
-            marginBottom: 8,
-            borderRadius: 4,
-            border: "1px solid #d6d9fc",
-            background: "rgba(83,58,253,0.08)",
-            color: "#533afd",
-            fontSize: 11,
-          }}
-        >
-          {article.stocks.find(s => s.code === highlightStockCode)?.name} ({highlightStockCode})
-        </Tag>
+      {/* 关联股票 */}
+      {article.stocks.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <SearchOutlined style={{ fontSize: 12, color: "#b0b8c4" }} />
+          {article.stocks.slice(0, 6).map((s, idx) => (
+            <StockCodeLink key={idx} code={s.code} name={s.name} />
+          ))}
+          {article.stocks.length > 6 && (
+            <Text style={{ fontSize: 12, color: "#b0b8c4" }}>+{article.stocks.length - 6}</Text>
+          )}
+        </div>
       )}
 
-      {/* 行业标签 + 日期 */}
+      {/* 底部：事件类型 + 行业标签 + 日期 */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+          <Tag
+            style={{
+              margin: 0,
+              borderRadius: 4,
+              border: "1px solid #e5edf5",
+              background: "#f6f9fc",
+              color: "#273951",
+              fontSize: 11,
+            }}
+          >
+            {eventTypeLabels[article.event_type] || article.event_type}
+          </Tag>
           {article.industries.slice(0, 3).map((ind, idx) => (
             <Tag
               key={idx}

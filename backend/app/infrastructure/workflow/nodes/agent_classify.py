@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+from datetime import datetime
 
 from app.infrastructure.workflow.state.analysis_state import AnalysisState
 
@@ -18,13 +19,13 @@ WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "web_search",
-        "description": "搜索互联网获取最新新闻、数据、事件信息。当用户的问题涉及最新时事、当前市场动态、或需要最新数据时应使用。",
+        "description": f"搜索互联网获取最新新闻、数据、事件信息。当用户的问题涉及最新时事、当前市场动态、或需要最新数据时应使用。搜索关键词应包含当前年份（{datetime.now().year}年）。",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "搜索关键词，中文",
+                    "description": "搜索关键词，中文，建议包含当前年份以获取最新信息",
                 }
             },
             "required": ["query"],
@@ -46,7 +47,7 @@ SYSTEM_PROMPT = """你是一个投研分析助手。判断用户的输入是否�
 - 理论性问题
 - 已经有足够上下文的问题
 
-如果需要搜索，调用 web_search 工具；否则直接回复"不需要搜索"。"""
+如果需要搜索，调用 web_search 工具，搜索关键词应包含当前年份（{year}年）以确保获取最新信息；否则直接回复"不需要搜索"。""".format(year=datetime.now().year)
 
 
 def create_agent_classify_node(ai_service):
@@ -103,6 +104,11 @@ def create_agent_classify_node(ai_service):
                             search_query = args.get("query", source[:50])
                         except json.JSONDecodeError:
                             search_query = source[:50]
+
+                        # 加入当前年份，提升搜索结果的时效性
+                        current_year = datetime.now().year
+                        if str(current_year - 1) not in search_query and str(current_year) not in search_query:
+                            search_query = f"{search_query} {current_year}"
 
                         result["need_search"] = True
                         result["search_query"] = search_query

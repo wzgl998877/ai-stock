@@ -25,7 +25,6 @@ interface Props {
   emptyArticlesTextUnselected?: string;
   onSelectItem: (code: string) => void;
   onDelete: (id: string) => void;
-  highlightStockCode?: string;
   renderSidebarItemExtra?: (item: SidebarItem) => React.ReactNode;
   sidebarSearch?: { value: string; onChange: (val: string) => void; placeholder?: string };
 }
@@ -41,7 +40,6 @@ const SidebarArticleList: React.FC<Props> = ({
   emptyArticlesTextUnselected = "请选择查看文章",
   onSelectItem,
   onDelete,
-  highlightStockCode,
   renderSidebarItemExtra,
   sidebarSearch,
 }) => {
@@ -137,7 +135,7 @@ const SidebarArticleList: React.FC<Props> = ({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {articles.map((article) => (
-              <ArticleCard key={article.id} article={article} highlightStockCode={highlightStockCode} onDelete={onDelete} />
+              <ArticleCard key={article.id} article={article} onDelete={onDelete} />
             ))}
           </div>
         )}

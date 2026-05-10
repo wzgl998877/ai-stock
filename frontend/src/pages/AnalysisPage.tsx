@@ -190,17 +190,33 @@ const AnalysisPage: React.FC = () => {
     setSaving(true);
     try {
       const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
+      const firstUserMsg = messages.find((m) => m.role === "user");
+
+      // 从 AI 消息中提取股票引用（格式如 贵州茅台(600519)）
+      const stockRefs: { code: string; name: string }[] = [];
+      const seen = new Set<string>();
+      const stockRegex = /([\u4e00-\u9fa5]{2,10})\s*[\(（](\d{6})[\)）]/g;
+      const content = lastAiMsg?.content || "";
+      let match;
+      while ((match = stockRegex.exec(content)) !== null) {
+        const [, name, code] = match;
+        if (!seen.has(code)) {
+          seen.add(code);
+          stockRefs.push({ code, name });
+        }
+      }
+
       await saveArticle({
         title: editTitle,
         summary: editSummary,
-        content: lastAiMsg?.content || "",
+        content: content,
         event_type: eventType ?? EventType.OTHER,
-        raw_input: "",
+        raw_input: firstUserMsg?.content || "",
         industry_codes: editIndustries,
-        stock_refs: [],
+        stock_refs: stockRefs,
         chain_table: null,
       });
-      message.success(`已保存，关联了${editIndustries.length}个行业`);
+      message.success(`已保存，关联了 ${editIndustries.length} 个行业、${stockRefs.length} 只股票`);
       setSaveModalOpen(false);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存失败");

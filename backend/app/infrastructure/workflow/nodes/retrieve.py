@@ -27,10 +27,14 @@ def create_retrieve_node(session_factory):
                 from app.infrastructure.repositories.mysql_search_repo import MySQLSearchRepository
                 search_repo = MySQLSearchRepository(session)
 
-                query = raw_text[:100].strip()
+                # 查询词加上当前年份，提升时效性
+                from datetime import datetime
+                current_year = datetime.now().year
+                query = f"{raw_text[:80].strip()} {current_year}"
+
                 articles, total = await search_repo.search(
                     query=query,
-                    user_id="default",
+                    user_id=state.get("user_id", "default"),
                     page=1,
                     page_size=3,
                 )

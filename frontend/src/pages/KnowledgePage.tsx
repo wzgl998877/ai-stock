@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { Typography, Tabs, Pagination, Empty as AntEmpty } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 import { useKnowledge } from "../application/useKnowledge";
 import { useKnowledgeStore, ViewMode } from "../store/knowledgeStore";
 import SearchBar from "../components/knowledge/SearchBar";
@@ -136,7 +137,7 @@ const KnowledgePage: React.FC = () => {
               gap: 6,
             }}
           >
-            <span style={{ fontSize: 14 }}>🔍</span>
+            <SearchOutlined style={{ fontSize: 14, color: "#533afd" }} />
             <Text style={{ fontSize: 13, color: "#533afd" }}>
               正在全库搜索 &quot;{searchKeyword}&quot; · 匹配标题和正文
             </Text>

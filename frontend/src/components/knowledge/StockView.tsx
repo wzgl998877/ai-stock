@@ -62,7 +62,6 @@ const StockView: React.FC<Props> = ({
       emptyArticlesTextUnselected="请选择股票查看关联文章"
       onSelectItem={onSelectStock}
       onDelete={onDelete}
-      highlightStockCode={selectedStock || undefined}
       renderSidebarItemExtra={renderStockExtra}
       sidebarSearch={{
         value: searchValue,

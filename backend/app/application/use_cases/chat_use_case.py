@@ -163,7 +163,7 @@ class ChatUseCase:
                 ]
 
                 async for update in self.analysis_graph.astream(
-                    {"source": content, "event_type": effective_event_type},
+                    {"source": content, "event_type": effective_event_type, "user_id": session.user_id},
                     stream_mode="updates",
                 ):
                     for node_name, state_update in update.items():

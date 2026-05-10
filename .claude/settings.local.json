@@ -37,7 +37,9 @@
       "Bash(npx vitest:*)",
       "Bash(node_modules/.bin/vitest run:*)",
       "Bash(npx vite:*)",
-      "Bash(/d/tool/node/node:*)"
+      "Bash(/d/tool/node/node:*)",
+      "Bash(LC_ALL=C sort:*)",
+      "Bash(sed:*)"
     ]
   }
 }

@@ -55,10 +55,13 @@ const TimelineView: React.FC<Props> = ({ articles, loading, onDelete, total, pag
   }
 
   const groups = groupByDate(articles);
+  const groupEntries = Array.from(groups.entries());
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {Array.from(groups.entries()).map(([date, items]) => (
+      {groupEntries.map(([date, items], groupIdx) => {
+        const isLast = groupIdx === groupEntries.length - 1;
+        return (
         <div key={date} style={{ position: "relative", paddingLeft: 16 }}>
           {/* 时间线圆点 */}
           <div
@@ -75,16 +78,18 @@ const TimelineView: React.FC<Props> = ({ articles, loading, onDelete, total, pag
             }}
           />
           {/* 时间线竖线 */}
-          <div
-            style={{
-              position: "absolute",
-              left: 4,
-              top: 18,
-              bottom: -(items === Array.from(groups.entries()).pop()?.[1] ? 0 : 6),
-              width: 2,
-              background: "linear-gradient(to bottom, rgba(83,58,253,0.3), rgba(83,58,253,0.05))",
-            }}
-          />
+          {!isLast && (
+            <div
+              style={{
+                position: "absolute",
+                left: 4,
+                top: 18,
+                bottom: -6,
+                width: 2,
+                background: "linear-gradient(to bottom, rgba(83,58,253,0.3), rgba(83,58,253,0.05))",
+              }}
+            />
+          )}
 
           {/* 日期分组标题 */}
           <div
@@ -126,7 +131,8 @@ const TimelineView: React.FC<Props> = ({ articles, loading, onDelete, total, pag
             ))}
           </div>
         </div>
-      ))}
+      );
+      })}
 
       {/* 分页提示 */}
       {total != null && pageSize != null && (

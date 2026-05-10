@@ -25,7 +25,13 @@ async def web_search(query: str, max_results: int = MAX_RESULTS) -> list[dict]:
         from tavily import TavilyClient
 
         client = TavilyClient(api_key=settings.tavily_api_key)
-        response = client.search(query, max_results=max_results, search_depth="basic")
+        response = client.search(
+            query,
+            max_results=max_results,
+            search_depth="basic",
+            topic="news",
+            time_range="month",
+        )
 
         results = []
         for item in response.get("results", []):
