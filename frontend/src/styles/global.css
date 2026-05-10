@@ -68,7 +68,7 @@ body {
 /* === Markdown 渲染样式 === */
 .markdown-body {
   color: var(--color-heading);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.75;
   word-wrap: break-word;
   font-family: var(--font-primary);

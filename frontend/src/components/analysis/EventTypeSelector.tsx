@@ -40,7 +40,7 @@ const EventTypeSelector: React.FC<Props> = ({ value, onChange, disabled }) => {
             onClick={() => onChange(isSelected ? null : t.value)}
             style={{
               padding: "6px 16px",
-              fontSize: 13,
+              fontSize: 14,
               borderRadius: 20,
               border: "none",
               background: isSelected ? colors.bgActive : colors.bg,

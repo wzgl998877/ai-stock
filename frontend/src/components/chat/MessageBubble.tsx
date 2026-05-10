@@ -42,7 +42,7 @@ const ReasoningBox: React.FC<{ text: string; streaming?: boolean }> = ({ text, s
           <span style={{ fontSize: 14, color: "#7c3aed", fontWeight: 600 }}>思考过程</span>
           <span style={{ fontSize: 12, color: "#a78bfa" }}>&#9662; 展开</span>
         </div>
-        <Text style={{ fontSize: 13, color: "#7c3aed", opacity: 0.7 }}>{preview}</Text>
+        <Text style={{ fontSize: 14, color: "#7c3aed", opacity: 0.7 }}>{preview}</Text>
       </div>
     );
   }
@@ -74,7 +74,7 @@ const ReasoningBox: React.FC<{ text: string; streaming?: boolean }> = ({ text, s
       </div>
       <div
         style={{
-          fontSize: 13,
+          fontSize: 14,
           lineHeight: 1.8,
           color: "#6b21a8",
           maxHeight: streaming ? 160 : 300,

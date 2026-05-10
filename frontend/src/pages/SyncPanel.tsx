@@ -130,7 +130,7 @@ const SyncPanel: React.FC = () => {
       />
 
       <div style={{ textAlign: "center", padding: "24px 0 16px", marginTop: 16, borderTop: "1px solid #f6f9fc" }}>
-        <Typography.Text style={{ fontSize: 11, color: "#d0d5dd" }}>
+        <Typography.Text style={{ fontSize: 12, color: "#d0d5dd" }}>
           本工具仅供投研参考，不构成任何投资建议
         </Typography.Text>
       </div>

@@ -64,7 +64,7 @@ const SimilarPrompt: React.FC<Props> = ({ question }) => {
         <HistoryOutlined style={{ color: "#533afd" }} />
         <Text
           style={{
-            fontSize: 13,
+            fontSize: 14,
             color: "#64748d",
             fontFeatureSettings: "'ss01' on",
           }}

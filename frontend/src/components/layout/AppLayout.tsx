@@ -291,7 +291,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </Text>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: "#94a3b8",
                   lineHeight: 1.2,
                   fontFeatureSettings: "'ss01' on",
@@ -406,7 +406,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
                       <div
                         style={{
-                          fontSize: 13,
+                          fontSize: 14,
                           color: currentSessionId === session.id ? "#533afd" : "#273951",
                           fontWeight: currentSessionId === session.id ? 500 : 400,
                           whiteSpace: "nowrap",
@@ -420,7 +420,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                       </div>
                       <div
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           color: "#94a3b8",
                           lineHeight: "15px",
                         }}

@@ -109,7 +109,7 @@ const ArticleDetailPage: React.FC = () => {
         {article.summary && (
           <Paragraph
             style={{
-              fontSize: 15,
+              fontSize: 16,
               color: "#64748d",
               lineHeight: 1.6,
               margin: 0,
@@ -167,7 +167,7 @@ const ArticleDetailPage: React.FC = () => {
         >
           <Text
             style={{
-              fontSize: 13,
+              fontSize: 14,
               color: "#64748d",
               fontWeight: 500,
               display: "block",

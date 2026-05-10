@@ -72,7 +72,7 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
         <Text
           style={{
-            fontSize: 15,
+            fontSize: 16,
             fontWeight: 400,
             color: "#061b31",
             fontFeatureSettings: "'ss01' on",
@@ -103,7 +103,7 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
       <Paragraph
         ellipsis={{ rows: 2 }}
         style={{
-          fontSize: 13,
+          fontSize: 14,
           color: "#64748d",
           margin: 0,
           marginBottom: 12,

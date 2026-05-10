@@ -104,7 +104,7 @@ const SidebarArticleList: React.FC<Props> = ({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Text
                       style={{
-                        fontSize: 13,
+                        fontSize: 14,
                         color: isActive ? "#533afd" : "#061b31",
                         fontWeight: isActive ? 400 : 300,
                         fontFeatureSettings: "'ss01' on",

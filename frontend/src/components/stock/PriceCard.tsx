@@ -69,10 +69,10 @@ const PriceCard: React.FC<PriceCardProps> = ({
         </Col>
         <Col flex="auto" />
         <Col>
-          <Statistic title="成交量" value={formatVol(volume)} valueStyle={{ fontSize: 13 }} />
+          <Statistic title="成交量" value={formatVol(volume)} valueStyle={{ fontSize: 14 }} />
         </Col>
         <Col>
-          <Statistic title="成交额" value={formatAmt(amount)} valueStyle={{ fontSize: 13 }} />
+          <Statistic title="成交额" value={formatAmt(amount)} valueStyle={{ fontSize: 14 }} />
         </Col>
       </Row>
     </Card>

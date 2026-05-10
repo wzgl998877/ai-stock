@@ -25,7 +25,7 @@ const StockCodeLink: React.FC<StockCodeLinkProps> = ({ code, name, style }) => {
         color: "#533afd",
         cursor: "pointer",
         fontWeight: 400,
-        fontSize: 12,
+        fontSize: 13,
         fontFeatureSettings: "'ss01' on",
         borderBottom: "1px dashed #b9b9f9",
         ...style,

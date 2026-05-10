@@ -47,7 +47,7 @@ const TimelineView: React.FC<Props> = ({ articles, loading, onDelete, total, pag
     return (
       <div className="timeline-empty" style={{ textAlign: "center", padding: "48px 0" }}>
         <Empty description="知识库暂无文章" />
-        <Text style={{ fontSize: 13, color: "#64748d", marginTop: 8, display: "block" }}>
+        <Text style={{ fontSize: 14, color: "#64748d", marginTop: 8, display: "block" }}>
           去分析页面生成并保存第一篇分析报告
         </Text>
       </div>
@@ -103,7 +103,7 @@ const TimelineView: React.FC<Props> = ({ articles, loading, onDelete, total, pag
             <Text
               className="timeline-date-title"
               style={{
-                fontSize: 13,
+                fontSize: 14,
                 color: "#64748d",
                 fontWeight: 400,
                 fontFeatureSettings: "'ss01' on",

@@ -94,7 +94,7 @@ const AnalysisRecordsPage: React.FC = () => {
                   {/* 左侧信息 */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <Text style={{ fontSize: 15, fontWeight: 500, color: "#061b31" }} ellipsis>
+                      <Text style={{ fontSize: 16, fontWeight: 500, color: "#061b31" }} ellipsis>
                         {stockInfo
                           ? `${stockInfo.name}(${stockInfo.code})`
                           : record.title}

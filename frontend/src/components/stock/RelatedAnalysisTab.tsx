@@ -34,7 +34,7 @@ const RelatedAnalysisTab: React.FC<RelatedAnalysisTabProps> = ({ articles, onCli
             }
             description={
               <div>
-                <div style={{ color: '#666', fontSize: 13 }}>
+                <div style={{ color: '#666', fontSize: 14 }}>
                   {item.summary?.length > 80 ? item.summary.slice(0, 80) + '...' : item.summary}
                 </div>
                 <div style={{ color: '#999', fontSize: 12, marginTop: 4 }}>

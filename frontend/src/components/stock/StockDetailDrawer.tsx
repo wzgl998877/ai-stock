@@ -66,7 +66,7 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ visible, stockCod
         loading={klineLoading}
         period={activePeriod}
       />
-      <div style={{ fontSize: 11, color: '#999', textAlign: 'center', marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: '#999', textAlign: 'center', marginTop: 8 }}>
         数据延迟15-30分钟 · 不构成投资建议
       </div>
     </Drawer>

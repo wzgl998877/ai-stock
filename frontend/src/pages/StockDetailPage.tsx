@@ -114,7 +114,7 @@ const StockDetailPage: React.FC = () => {
       key: 'basic',
       label: '基本信息',
       children: basic ? (
-        <div style={{ fontSize: 13, color: '#666' }}>
+        <div style={{ fontSize: 14, color: '#666' }}>
           <p>交易所：{basic.exchange}</p>
           <p>行业：{basic.industry_name || '--'}</p>
           <p>上市日期：{basic.list_date || '--'}</p>
@@ -199,7 +199,7 @@ const StockDetailPage: React.FC = () => {
       </Card>
 
       {/* 免责声明 */}
-      <div style={{ textAlign: 'center', color: '#999', fontSize: 11, marginTop: 12 }}>
+      <div style={{ textAlign: 'center', color: '#999', fontSize: 12, marginTop: 12 }}>
         数据延迟15-30分钟 · 不构成投资建议
       </div>
     </div>

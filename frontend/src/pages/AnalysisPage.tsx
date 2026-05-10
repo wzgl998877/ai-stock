@@ -341,7 +341,7 @@ const AnalysisPage: React.FC = () => {
         <div style={{ marginBottom: 16 }}>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: 14,
               color: "#273951",
               marginBottom: 6,
               display: "block",
@@ -359,7 +359,7 @@ const AnalysisPage: React.FC = () => {
         <div style={{ marginBottom: 16 }}>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: 14,
               color: "#273951",
               marginBottom: 6,
               display: "block",
@@ -378,7 +378,7 @@ const AnalysisPage: React.FC = () => {
         <div>
           <Text
             style={{
-              fontSize: 13,
+              fontSize: 14,
               color: "#273951",
               marginBottom: 6,
               display: "block",
@@ -387,7 +387,7 @@ const AnalysisPage: React.FC = () => {
             关联行业标签（至少1个）
           </Text>
           {extractingIndustries ? (
-            <Text style={{ fontSize: 13, color: "#64748d" }}>
+            <Text style={{ fontSize: 14, color: "#64748d" }}>
               正在自动识别行业...
             </Text>
           ) : (

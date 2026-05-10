@@ -104,7 +104,7 @@ const KnowledgePage: React.FC = () => {
             </Text>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: 14,
                 color: "#64748d",
                 marginLeft: 12,
                 fontFeatureSettings: "'ss01' on",
@@ -138,7 +138,7 @@ const KnowledgePage: React.FC = () => {
             }}
           >
             <SearchOutlined style={{ fontSize: 14, color: "#533afd" }} />
-            <Text style={{ fontSize: 13, color: "#533afd" }}>
+            <Text style={{ fontSize: 14, color: "#533afd" }}>
               正在全库搜索 &quot;{searchKeyword}&quot; · 匹配标题和正文
             </Text>
           </div>
@@ -158,7 +158,7 @@ const KnowledgePage: React.FC = () => {
         {!loading && view === "timeline" && articles.length === 0 && !searchKeyword ? (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <AntEmpty description="还没有保存任何分析" />
-            <Text style={{ fontSize: 13, color: "#64748d", marginTop: 8, display: "block" }}>
+            <Text style={{ fontSize: 14, color: "#64748d", marginTop: 8, display: "block" }}>
               去分析页面生成并保存第一篇分析报告
             </Text>
           </div>
