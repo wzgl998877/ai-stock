@@ -40,7 +40,14 @@ class Settings(BaseSettings):
     llm_deep_model: str = ""  # 深度思考模型（为空则用 llm_model）
 
     # === 搜索 ===
-    tavily_api_key: str = ""
+    tavily_api_key: str = ""           # 兼容：单 Tavily Key
+    bocha_api_keys: str = ""           # 逗号分隔的博查 Key 列表
+    anspire_api_keys: str = ""         # 逗号分隔的 Anspire Key 列表
+    tavily_api_keys: str = ""          # 逗号分隔的多个 Tavily Key
+    news_max_age_days: int = 3         # 新闻最大时效（天）
+    news_strategy_profile: str = "short"  # 新闻窗口策略
+    search_cache_ttl: int = 600        # 搜索缓存 TTL（秒）
+    search_request_timeout: int = 10   # 搜索请求超时（秒）
 
     # === 分时数据源 ===
     twelvedata_api_key: str = ""       # TwelveData API Key（免费层 800次/天）

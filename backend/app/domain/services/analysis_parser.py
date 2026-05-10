@@ -81,6 +81,8 @@ class AnalysisParser:
                 cleaned = re.sub(r"^[-*•]\s*", "", line)
                 cleaned = re.sub(r"^\*+", "", cleaned)
                 cleaned = re.sub(r"^\d+[\.\)、]\s*", "", cleaned)
+                # 去掉尾部 markdown 加粗标记
+                cleaned = re.sub(r"\*+$", "", cleaned)
 
                 # 格式1: "行业名称：逻辑" 或 "行业名称:逻辑"
                 match = re.match(r"^([^：:]+)[：:]", cleaned)

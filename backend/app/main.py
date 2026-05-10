@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.infrastructure.ai.ai_service import AIService
-from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry, auth
+from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry, auth, search
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,21 @@ async def lifespan(app: FastAPI):
         logger.warning("LangGraph 个股分析工作流初始化失败: %s", e)
         app.state.stock_analysis_graph = None
 
+    # 初始化统一搜索服务
+    try:
+        from app.infrastructure.search import create_search_service
+        search_service = create_search_service()
+        if search_service:
+            app.state.search_service = search_service
+            logger.info("统一搜索服务初始化成功 (providers: %s)",
+                         [p.name for p in search_service._providers])
+        else:
+            app.state.search_service = None
+            logger.info("未配置搜索 Key，搜索服务未启用")
+    except Exception as e:
+        logger.warning("搜索服务初始化失败: %s", e)
+        app.state.search_service = None
+
     # 清理残留的 RUNNING 状态同步任务（进程重启后旧任务不可能仍在执行）
     try:
         from sqlalchemy import text
@@ -61,6 +76,8 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown
+    if hasattr(app.state, "search_service") and app.state.search_service:
+        await app.state.search_service._cache.close()
 
 
 app = FastAPI(
@@ -147,6 +164,7 @@ app.include_router(datasource.router)
 app.include_router(stock_data.router)
 app.include_router(watchlist.router)
 app.include_router(industry.router)
+app.include_router(search.router)
 
 
 @app.get("/health")

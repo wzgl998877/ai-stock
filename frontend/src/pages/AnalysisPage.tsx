@@ -162,24 +162,7 @@ const AnalysisPage: React.FC = () => {
     const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
     const content = lastAiMsg?.content || "";
 
-    // 如果 SSE 流中已有行业数据，直接使用，同时后端提取股票
-    if (industries.length > 0) {
-      setEditIndustries([...industries]);
-      // 仍然调后端提取股票
-      setExtractingIndustries(true);
-      setSaveModalOpen(true);
-      try {
-        const result = await extractMetadata(content, eventType ?? "");
-        setEditStocks(result.stocks);
-      } catch {
-        setEditStocks([]);
-      } finally {
-        setExtractingIndustries(false);
-      }
-      return;
-    }
-
-    // SSE 流中没有行业数据，统一调后端提取行业+股票
+    // 统一调后端提取行业+股票（后端做了解析器校验+申万标准校验，数据更干净）
     setExtractingIndustries(true);
     setSaveModalOpen(true);
     try {
@@ -187,8 +170,8 @@ const AnalysisPage: React.FC = () => {
       setEditIndustries(result.industries);
       setEditStocks(result.stocks);
     } catch {
-      message.warning("元数据提取失败，请手动输入");
-      setEditIndustries([]);
+      // 降级：如果后端提取失败，尝试用 SSE 流中的行业数据
+      setEditIndustries(industries.length > 0 ? [...industries] : []);
       setEditStocks([]);
     } finally {
       setExtractingIndustries(false);
