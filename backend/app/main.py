@@ -19,12 +19,32 @@ async def lifespan(app: FastAPI):
     setup_logging()
     app.state.ai_service = AIService()
 
+    # 初始化统一搜索服务（在图构建之前，以便注入到节点）
+    _search_svc = None
+    try:
+        from app.infrastructure.search import create_search_service
+        _search_svc = create_search_service()
+        if _search_svc:
+            app.state.search_service = _search_svc
+            logger.info("统一搜索服务初始化成功 (providers: %s)",
+                         [p.name for p in _search_svc._providers])
+        else:
+            app.state.search_service = None
+            logger.info("未配置搜索 Key，搜索服务未启用")
+    except Exception as e:
+        logger.warning("搜索服务初始化失败: %s", e)
+        app.state.search_service = None
+
     # 初始化 LangGraph 分析工作流
     try:
         from app.infrastructure.workflow.graph.analysis_graph import build_analysis_graph
         from app.core.database import async_session
 
-        analysis_graph = build_analysis_graph(session_factory=async_session, ai_service=app.state.ai_service)
+        analysis_graph = build_analysis_graph(
+            session_factory=async_session,
+            ai_service=app.state.ai_service,
+            search_service=_search_svc,
+        )
         app.state.analysis_graph = analysis_graph
         logger.info("LangGraph 分析工作流初始化成功")
     except Exception as e:
@@ -35,27 +55,15 @@ async def lifespan(app: FastAPI):
     try:
         from app.infrastructure.workflow.graph.stock_analysis_graph import build_stock_analysis_graph
 
-        stock_graph = build_stock_analysis_graph(ai_service=app.state.ai_service)
+        stock_graph = build_stock_analysis_graph(
+            ai_service=app.state.ai_service,
+            search_service=_search_svc,
+        )
         app.state.stock_analysis_graph = stock_graph
         logger.info("LangGraph 个股分析工作流初始化成功")
     except Exception as e:
         logger.warning("LangGraph 个股分析工作流初始化失败: %s", e)
         app.state.stock_analysis_graph = None
-
-    # 初始化统一搜索服务
-    try:
-        from app.infrastructure.search import create_search_service
-        search_service = create_search_service()
-        if search_service:
-            app.state.search_service = search_service
-            logger.info("统一搜索服务初始化成功 (providers: %s)",
-                         [p.name for p in search_service._providers])
-        else:
-            app.state.search_service = None
-            logger.info("未配置搜索 Key，搜索服务未启用")
-    except Exception as e:
-        logger.warning("搜索服务初始化失败: %s", e)
-        app.state.search_service = None
 
     # 清理残留的 RUNNING 状态同步任务（进程重启后旧任务不可能仍在执行）
     try:

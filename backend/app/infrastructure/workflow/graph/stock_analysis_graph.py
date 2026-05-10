@@ -93,7 +93,7 @@ def _should_continue_risk_debate(state: dict) -> str:
         return "risky_debator"
 
 
-def build_stock_analysis_graph(ai_service, config: Optional[dict] = None) -> StateGraph:
+def build_stock_analysis_graph(ai_service, config: Optional[dict] = None, search_service=None) -> StateGraph:
     """
     构建个股多Agent分析工作流图。
 
@@ -108,6 +108,7 @@ def build_stock_analysis_graph(ai_service, config: Optional[dict] = None) -> Sta
     Args:
         ai_service: AIService 实例
         config: 可选配置字典，可覆盖默认参数
+        search_service: 统一搜索服务实例（可选），用于新闻分析师节点预搜新闻
 
     Returns:
         编译后的 LangGraph 图
@@ -121,7 +122,7 @@ def build_stock_analysis_graph(ai_service, config: Optional[dict] = None) -> Sta
     # 分析师节点
     graph.add_node("market_analyst", create_market_analyst_node(ai_service, max_tool_calls=max_tool_calls))
     graph.add_node("fundamentals_analyst", create_fundamentals_analyst_node(ai_service, max_tool_calls=max_tool_calls))
-    graph.add_node("news_analyst", create_news_analyst_node(ai_service, max_tool_calls=max_tool_calls))
+    graph.add_node("news_analyst", create_news_analyst_node(ai_service, max_tool_calls=max_tool_calls, search_service=search_service))
     graph.add_node("sentiment_analyst", create_sentiment_analyst_node(ai_service, max_tool_calls=max_tool_calls))
 
     # 消息清除节点（每个分析师后清理工具调用消息）

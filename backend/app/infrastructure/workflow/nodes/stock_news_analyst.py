@@ -12,14 +12,23 @@ from app.infrastructure.workflow.tools.stock_data_toolkit import (
 
 logger = logging.getLogger(__name__)
 
+_PRE_SEARCH_CONTEXT_TEMPLATE = """
+以下是已获取到的新闻数据（来自互联网搜索），供你分析参考：
+---
+{news_context}
+---
+请结合以上新闻数据进行分析。如果还需要更多信息，可以调用 get_stock_news 工具获取额外数据。
+"""
 
-def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
+
+def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service=None):
     """
     闭包工厂：创建新闻分析师节点。
 
     Args:
         ai_service: AIService 实例
         max_tool_calls: 最大工具调用次数（防止死循环），默认3次
+        search_service: 统一搜索服务实例（可选），可用时预搜新闻注入上下文
     """
 
     async def news_analyst_node(state: dict) -> dict:
@@ -28,6 +37,29 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3):
         stock_name = state.get("stock_name", "")
 
         user_content = USER_TEMPLATE.format(stock_name=stock_name, stock_code=stock_code)
+
+        # 预搜新闻（search_service 可用时）
+        pre_search_context = ""
+        if search_service and search_service.is_available:
+            try:
+                t0 = time.time()
+                response = await search_service.search_stock_news(
+                    stock_code=stock_code,
+                    stock_name=stock_name,
+                    max_results=8,
+                )
+                logger.info("[耗时] news_analyst 预搜新闻: %.3fs, provider=%s, results=%d",
+                            time.time() - t0, response.provider, len(response.results))
+                if response.success and response.results:
+                    pre_search_context = _PRE_SEARCH_CONTEXT_TEMPLATE.format(
+                        news_context=response.to_context(max_results=8)
+                    )
+            except Exception as e:
+                logger.warning("[news_analyst] 预搜新闻失败，将依赖工具调用: %s", e)
+
+        if pre_search_context:
+            user_content = user_content + "\n" + pre_search_context
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
