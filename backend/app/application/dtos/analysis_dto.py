@@ -53,3 +53,18 @@ class ExtractIndustriesRequestDTO(BaseModel):
 
 class ExtractIndustriesResponseDTO(BaseModel):
     industries: List[str] = Field(..., description="提取出的申万一级行业名称列表")
+
+
+class ExtractMetadataRequestDTO(BaseModel):
+    content: str = Field(..., description="AI 分析完整文本")
+    event_type: str = Field(..., description="事件类型")
+
+
+class ExtractedStockDTO(BaseModel):
+    code: str = Field(..., description="股票代码")
+    name: str = Field(..., description="股票名称")
+
+
+class ExtractMetadataResponseDTO(BaseModel):
+    industries: List[str] = Field(..., description="申万一级行业名称列表")
+    stocks: List[ExtractedStockDTO] = Field(..., description="关联股票列表")

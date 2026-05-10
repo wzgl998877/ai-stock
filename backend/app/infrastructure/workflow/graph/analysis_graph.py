@@ -29,12 +29,17 @@ THINKING_STEP_META = {
     "retrieve": {
         "label": "搜索知识库",
         "running": "正在搜索知识库...",
-        "done": "搜索知识库完成",
+        "done": "知识库检索完成",
+    },
+    "summarize_context": {
+        "label": "整理信息",
+        "running": "正在整理搜索和知识库信息...",
+        "done": "信息整理完成",
     },
 }
 
 # 节点执行顺序（含条件节点）
-NODE_ORDER = ["agent_classify", "web_search", "load", "retrieve"]
+NODE_ORDER = ["agent_classify", "web_search", "load", "retrieve", "summarize_context"]
 
 
 def _route_after_classify(state: AnalysisState) -> str:
@@ -47,13 +52,13 @@ def _route_after_classify(state: AnalysisState) -> str:
 def build_analysis_graph(session_factory=None, ai_service=None):
     """
     构建分析预处理工作流:
-        agent_classify → (条件) → web_search → load → retrieve → END
-                                 → load → retrieve → END
+        agent_classify → (条件) → web_search → load → retrieve → summarize_context → END
+                                 → load → retrieve → summarize_context → END
 
     Args:
         session_factory: 异步上下文管理器，用于 retrieve 节点获取 DB session。
                          不传则跳过 retrieve 节点。
-        ai_service: AIService 实例，用于 agent_classify 节点的 LLM 调用。
+        ai_service: AIService 实例，用于 agent_classify 节点和 summarize_context 节点的 LLM 调用。
                     不传则降级使用规则判断的 classify_node。
     """
     graph = StateGraph(AnalysisState)
@@ -82,6 +87,13 @@ def build_analysis_graph(session_factory=None, ai_service=None):
         graph.add_node("retrieve", create_retrieve_node(session_factory))
         has_retrieve = True
 
+    # summarize_context 节点（需要 ai_service 做总结）
+    has_summarize = False
+    if ai_service:
+        from app.infrastructure.workflow.nodes.summarize_context import create_summarize_context_node
+        graph.add_node("summarize_context", create_summarize_context_node(ai_service))
+        has_summarize = True
+
     # === 边 ===
     graph.set_entry_point("agent_classify")
 
@@ -93,7 +105,16 @@ def build_analysis_graph(session_factory=None, ai_service=None):
         # 降级模式：线性
         graph.add_edge("agent_classify", "load")
 
-    if has_retrieve:
+    # load → retrieve → summarize_context → END
+    if has_retrieve and has_summarize:
+        graph.add_edge("load", "retrieve")
+        graph.add_edge("retrieve", "summarize_context")
+        graph.add_edge("summarize_context", END)
+    elif has_summarize:
+        # 无 retrieve，load 直接到 summarize
+        graph.add_edge("load", "summarize_context")
+        graph.add_edge("summarize_context", END)
+    elif has_retrieve:
         graph.add_edge("load", "retrieve")
         graph.add_edge("retrieve", END)
     else:
@@ -101,7 +122,7 @@ def build_analysis_graph(session_factory=None, ai_service=None):
 
     compiled = graph.compile()
     logger.info(
-        "分析工作流 Graph 编译完成 (agent=%s, retrieve=%s)",
-        use_agent, has_retrieve,
+        "分析工作流 Graph 编译完成 (agent=%s, retrieve=%s, summarize=%s)",
+        use_agent, has_retrieve, has_summarize,
     )
     return compiled

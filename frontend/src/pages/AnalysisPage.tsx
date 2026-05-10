@@ -10,7 +10,7 @@ import { EventType } from "../domain/types";
 import type { SSEEvent } from "../domain/types";
 import { useChatStore } from "../store/chatStore";
 import * as chatService from "../services/chatService";
-import { saveArticle, extractIndustries } from "../services/analysisService";
+import { saveArticle, extractMetadata } from "../services/analysisService";
 
 const { Text } = Typography;
 
@@ -46,6 +46,7 @@ const AnalysisPage: React.FC = () => {
   const [editTitle, setEditTitle] = useState("");
   const [editSummary, setEditSummary] = useState("");
   const [editIndustries, setEditIndustries] = useState<string[]>([]);
+  const [editStocks, setEditStocks] = useState<{ code: string; name: string }[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extractingIndustries, setExtractingIndustries] = useState(false);
@@ -158,27 +159,39 @@ const AnalysisPage: React.FC = () => {
     setEditTitle(title || "");
     setEditSummary(summary || "");
 
-    if (industries.length === 0) {
-      // 行业标签为空，自动调用 LLM 提取
+    const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
+    const content = lastAiMsg?.content || "";
+
+    // 如果 SSE 流中已有行业数据，直接使用，同时后端提取股票
+    if (industries.length > 0) {
+      setEditIndustries([...industries]);
+      // 仍然调后端提取股票
       setExtractingIndustries(true);
       setSaveModalOpen(true);
       try {
-        const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
-        const result = await extractIndustries(lastAiMsg?.content || "", eventType ?? "");
-        if (result.industries.length > 0) {
-          setEditIndustries(result.industries);
-        } else {
-          setEditIndustries([]);
-        }
-      } catch (err) {
-        message.warning("行业提取失败，请手动输入");
-        setEditIndustries([]);
+        const result = await extractMetadata(content, eventType ?? "");
+        setEditStocks(result.stocks);
+      } catch {
+        setEditStocks([]);
       } finally {
         setExtractingIndustries(false);
       }
-    } else {
-      setEditIndustries([...industries]);
-      setSaveModalOpen(true);
+      return;
+    }
+
+    // SSE 流中没有行业数据，统一调后端提取行业+股票
+    setExtractingIndustries(true);
+    setSaveModalOpen(true);
+    try {
+      const result = await extractMetadata(content, eventType ?? "");
+      setEditIndustries(result.industries);
+      setEditStocks(result.stocks);
+    } catch {
+      message.warning("元数据提取失败，请手动输入");
+      setEditIndustries([]);
+      setEditStocks([]);
+    } finally {
+      setExtractingIndustries(false);
     }
   };
 
@@ -191,20 +204,7 @@ const AnalysisPage: React.FC = () => {
     try {
       const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
       const firstUserMsg = messages.find((m) => m.role === "user");
-
-      // 从 AI 消息中提取股票引用（格式如 贵州茅台(600519)）
-      const stockRefs: { code: string; name: string }[] = [];
-      const seen = new Set<string>();
-      const stockRegex = /([\u4e00-\u9fa5]{2,10})\s*[\(（](\d{6})[\)）]/g;
       const content = lastAiMsg?.content || "";
-      let match;
-      while ((match = stockRegex.exec(content)) !== null) {
-        const [, name, code] = match;
-        if (!seen.has(code)) {
-          seen.add(code);
-          stockRefs.push({ code, name });
-        }
-      }
 
       await saveArticle({
         title: editTitle,
@@ -213,10 +213,10 @@ const AnalysisPage: React.FC = () => {
         event_type: eventType ?? EventType.OTHER,
         raw_input: firstUserMsg?.content || "",
         industry_codes: editIndustries,
-        stock_refs: stockRefs,
+        stock_refs: editStocks,
         chain_table: null,
       });
-      message.success(`已保存，关联了 ${editIndustries.length} 个行业、${stockRefs.length} 只股票`);
+      message.success(`已保存，关联了 ${editIndustries.length} 个行业、${editStocks.length} 只股票`);
       setSaveModalOpen(false);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "保存失败");
@@ -388,7 +388,7 @@ const AnalysisPage: React.FC = () => {
           </Text>
           {extractingIndustries ? (
             <Text style={{ fontSize: 14, color: "#64748d" }}>
-              正在自动识别行业...
+              正在自动识别行业和关联股票...
             </Text>
           ) : (
             <>
@@ -412,6 +412,36 @@ const AnalysisPage: React.FC = () => {
                 >
                   请至少保留1个行业标签
                 </Text>
+              )}
+              {editStocks.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: "#273951",
+                      marginBottom: 6,
+                      display: "block",
+                    }}
+                  >
+                    关联股票（{editStocks.length}只）
+                  </Text>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {editStocks.map((s) => (
+                      <Text
+                        key={s.code}
+                        style={{
+                          fontSize: 12,
+                          color: "#3b82f6",
+                          background: "#eff6ff",
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        {s.name}({s.code})
+                      </Text>
+                    ))}
+                  </div>
+                </div>
               )}
             </>
           )}

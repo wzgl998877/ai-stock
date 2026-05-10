@@ -20,6 +20,9 @@ from app.application.dtos.analysis_dto import (
     SimilarArticleDTO,
     ExtractIndustriesRequestDTO,
     ExtractIndustriesResponseDTO,
+    ExtractMetadataRequestDTO,
+    ExtractMetadataResponseDTO,
+    ExtractedStockDTO,
 )
 from app.application.use_cases.analyze_event import AnalyzeEventUseCase
 from app.application.use_cases.manage_article import SaveArticleUseCase
@@ -244,6 +247,27 @@ async def extract_industries(body: ExtractIndustriesRequestDTO, request: Request
     industries = _parse_industries_from_llm_response(result)
     logger.info("行业提取结果: %s", industries)
     return ExtractIndustriesResponseDTO(industries=industries)
+
+
+@router.post("/extract-metadata", response_model=ExtractMetadataResponseDTO)
+async def extract_metadata(body: ExtractMetadataRequestDTO, request: Request, db: AsyncSession = Depends(get_db)):
+    """统一提取股票和行业元数据（保存知识库前调用）"""
+    from app.domain.services.metadata_extractor import MetadataExtractor
+
+    ai_service: AIService = request.app.state.ai_service
+    stock_list = await _get_stock_list(db)
+
+    extractor = MetadataExtractor(ai_service, stock_list)
+    result = await extractor.extract(body.content, body.event_type)
+
+    logger.info(
+        "[extract-metadata] 提取完成: industries=%s, stocks=%d",
+        result["industries"], len(result["stocks"]),
+    )
+    return ExtractMetadataResponseDTO(
+        industries=result["industries"],
+        stocks=[ExtractedStockDTO(code=s["code"], name=s["name"]) for s in result["stocks"]],
+    )
 
 
 @router.get("/validate-stock")

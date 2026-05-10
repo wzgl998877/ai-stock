@@ -93,6 +93,14 @@ class MySQLChatRepository(ChatRepository):
         await self.session.flush()
         return True
 
+    async def update_session_title(self, session_id: str, title: str) -> None:
+        stmt = select(SessionModel).where(SessionModel.session_id == session_id)
+        result = await self.session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model:
+            model.title = title
+            await self.session.flush()
+
     async def add_message(self, message: ChatMessage) -> ChatMessage:
         model = MessageModel(
             message_id=message.message_id or uuid.uuid4().hex,

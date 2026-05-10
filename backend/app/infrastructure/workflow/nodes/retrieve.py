@@ -6,6 +6,9 @@ from app.infrastructure.workflow.state.analysis_state import AnalysisState
 
 logger = logging.getLogger(__name__)
 
+# 知识库文章正文最大截取长度（供 summarize_context 节点阅读）
+MAX_CONTENT_EXCERPT = 3000
+
 
 def create_retrieve_node(session_factory):
     """
@@ -41,9 +44,13 @@ def create_retrieve_node(session_factory):
 
                 results = []
                 for article in articles[:3]:
+                    content_text = article.content or ""
+                    if len(content_text) > MAX_CONTENT_EXCERPT:
+                        content_text = content_text[:MAX_CONTENT_EXCERPT]
                     results.append({
                         "title": article.title,
                         "summary": article.summary,
+                        "content": content_text,
                         "event_type": article.event_type,
                         "created_at": article.create_time.isoformat() if article.create_time else "",
                     })

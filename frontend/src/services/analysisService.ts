@@ -159,3 +159,20 @@ export async function extractIndustries(
   });
   return res.data;
 }
+
+/**
+ * 统一提取股票和行业元数据（推荐使用，替代 extractIndustries + 前端正则）
+ */
+export async function extractMetadata(
+  content: string,
+  eventType: string
+): Promise<{
+  industries: string[];
+  stocks: { code: string; name: string }[];
+}> {
+  const res = await api.post(`${BASE}/extract-metadata`, {
+    content,
+    event_type: eventType,
+  });
+  return res.data;
+}

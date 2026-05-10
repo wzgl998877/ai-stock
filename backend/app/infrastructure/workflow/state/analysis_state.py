@@ -24,6 +24,7 @@ class AnalysisState(TypedDict, total=False):
     web_search_results: list[dict]       # web_search 节点输出：互联网搜索结果
     raw_text: str                        # load 节点输出：清洗后的纯文本
     search_results: list[dict]           # retrieve 节点输出：相关历史文章
+    summarized_context: str              # summarize_context 节点输出：提炼后的上下文摘要
 
     # === Output ===
     error: Optional[str]                 # 错误信息（各节点内部捕获后填充）

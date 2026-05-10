@@ -7,7 +7,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 5
-MAX_CONTENT_LENGTH = 3000
+MAX_CONTENT_LENGTH = 8000
 
 
 async def web_search(query: str, max_results: int = MAX_RESULTS) -> list[dict]:
@@ -28,7 +28,7 @@ async def web_search(query: str, max_results: int = MAX_RESULTS) -> list[dict]:
         response = client.search(
             query,
             max_results=max_results,
-            search_depth="basic",
+            search_depth="advanced",
             topic="news",
             time_range="month",
         )

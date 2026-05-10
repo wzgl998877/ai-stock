@@ -18,6 +18,9 @@ class ChatRepository(ABC):
     @abstractmethod
     async def delete_session(self, session_id: str) -> bool: ...
 
+    @abstractmethod
+    async def update_session_title(self, session_id: str, title: str) -> None: ...
+
     # Message
     @abstractmethod
     async def add_message(self, message: ChatMessage) -> ChatMessage: ...

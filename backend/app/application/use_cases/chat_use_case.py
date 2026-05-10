@@ -127,6 +127,7 @@ class ChatUseCase:
         raw_text = content
         search_results: list[dict] = []
         web_search_results: list[dict] = []
+        summarized_context: str = ""
         thinking_steps: list[dict] = []
 
         if self.analysis_graph and not is_follow_up:
@@ -205,17 +206,19 @@ class ChatUseCase:
                 raw_text = accumulated.get("raw_text", content)
                 search_results = accumulated.get("search_results", [])
                 web_search_results = accumulated.get("web_search_results", [])
+                summarized_context = accumulated.get("summarized_context", "")
                 logger.info("[耗时] 3.LangGraph预处理: %.2fs", time.time() - t_graph)
 
             except Exception as e:
                 logger.warning("LangGraph 预处理失败，降级使用原始输入: %s", e)
                 raw_text = content
+                summarized_context = ""
 
         # 3. 构建 messages 数组（多轮对话 + 增强上下文）
         # 追问时复用已有的 existing_messages，首轮需要重新查询（LangGraph 后数据有更新）
         t3 = time.time()
         history = existing_messages if is_follow_up else await self.chat_repo.list_messages(session_id)
-        messages = self._build_messages(history, effective_event_type, raw_text, search_results, web_search_results)
+        messages = self._build_messages(history, effective_event_type, raw_text, search_results, web_search_results, summarized_context)
         logger.info("[耗时] 4.构建messages: %.2fs, history_count=%d, built_messages=%d, msg_roles=%s",
                      time.time() - t3, len(history), len(messages),
                      [m.get("role") for m in messages])
@@ -278,10 +281,15 @@ class ChatUseCase:
         logger.info("[耗时] 6.保存AI消息+commit: %.2fs", time.time() - t_save)
 
         # 8. 推送结构化数据
-        if parse_result.title:
-            yield {"type": "title", "data": parse_result.title}
-        else:
-            yield {"type": "title", "data": content[:15] + ("..." if len(content) > 15 else "")}
+        session_title = parse_result.title or (content[:15] + ("..." if len(content) > 15 else ""))
+        yield {"type": "title", "data": session_title}
+
+        # 持久化 title 到 session
+        try:
+            await self.chat_repo.update_session_title(session_id, session_title)
+            await self.chat_repo.session.commit()
+        except Exception as e:
+            logger.warning("更新会话标题失败: %s", e)
 
         if parse_result.summary:
             yield {"type": "summary", "data": parse_result.summary}
@@ -300,12 +308,15 @@ class ChatUseCase:
         raw_text: str | None = None,
         search_results: list[dict] | None = None,
         web_search_results: list[dict] | None = None,
+        summarized_context: str = "",
     ) -> list[dict]:
         """
         将历史消息拼接为 OpenAI messages 数组。
 
         上下文压缩策略（混合方案）：
         - 首轮：完整分析型 system prompt
+          - 有 summarized_context 时直接使用 LLM 总结（不截断）
+          - 无 summarized_context 时降级使用原始截断逻辑
         - 追问轮：
           - 最近 1 轮（user + assistant）完整保留
           - 更早的 assistant 消息截断到 ~400 字（保留结论，去掉冗长分析）
@@ -339,6 +350,11 @@ class ChatUseCase:
         if not messages:
             return messages
 
+        # 构建上下文：优先使用 summarized_context（LLM 总结），否则降级使用原始截断
+        context_text = self._build_context_text(
+            summarized_context, search_results, web_search_results, user_content,
+        )
+
         if has_prior_response:
             # === 追问模式 ===
             # 压缩更早的 assistant 消息，保留最近 FULL_KEEP_ROUNDS 轮完整
@@ -353,41 +369,14 @@ class ChatUseCase:
                 "所有股票相关内容仅供学习研究参考，不构成投资建议。"
             )
 
-            # 附加本轮搜索上下文（如果有）
-            context_parts = []
-            if web_search_results:
-                context_parts.append("[本轮互联网搜索结果]")
-                for i, r in enumerate(web_search_results, 1):
-                    context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
-                context_parts.append("")
-            if search_results:
-                context_parts.append("[历史相关分析参考]")
-                for i, r in enumerate(search_results, 1):
-                    created = r.get("created_at", "")[:10]
-                    context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
-                context_parts.append("")
-            if context_parts:
-                system_content += "\n\n" + "\n".join(context_parts)
+            if context_text:
+                system_content += "\n\n" + context_text
 
             messages.insert(0, {"role": "system", "content": system_content})
         else:
             # === 首轮：完整分析型 system prompt ===
-            context_parts = []
-            if web_search_results:
-                context_parts.append("[互联网搜索结果]")
-                for i, r in enumerate(web_search_results, 1):
-                    context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
-                context_parts.append("")
-            if search_results:
-                context_parts.append("[历史相关分析参考]")
-                for i, r in enumerate(search_results, 1):
-                    created = r.get("created_at", "")[:10]
-                    context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
-                context_parts.append("")
-
-            if context_parts:
-                context_parts.append(f"用户输入: {user_content}")
-                system_prompt = builder("\n".join(context_parts))
+            if context_text:
+                system_prompt = builder(context_text)
             else:
                 system_prompt = builder(user_content)
 
@@ -399,6 +388,45 @@ class ChatUseCase:
                 messages.insert(-1, context_msg)
 
         return messages
+
+    @staticmethod
+    def _build_context_text(
+        summarized_context: str,
+        search_results: list[dict] | None,
+        web_search_results: list[dict] | None,
+        user_content: str,
+    ) -> str:
+        """
+        构建上下文文本。
+
+        优先使用 summarized_context（经过 LLM 总结的高质量摘要）。
+        如果没有，降级使用原始数据的截断版本。
+        """
+        if summarized_context:
+            # 有 LLM 总结，直接使用
+            context_parts = [f"[参考资料（已整理）]\n{summarized_context}"]
+            context_parts.append(f"\n用户输入: {user_content}")
+            return "\n".join(context_parts)
+
+        # 降级：没有总结，使用原始截断逻辑
+        context_parts = []
+        if web_search_results:
+            context_parts.append("[互联网搜索结果]")
+            for i, r in enumerate(web_search_results, 1):
+                context_parts.append(f"{i}. {r.get('title', '')}: {r.get('content', '')[:300]}")
+            context_parts.append("")
+        if search_results:
+            context_parts.append("[历史相关分析参考]")
+            for i, r in enumerate(search_results, 1):
+                created = r.get("created_at", "")[:10]
+                context_parts.append(f"{i}. 《{r['title']}》({r.get('event_type', '')}, {created}): {r.get('summary', '')}")
+            context_parts.append("")
+
+        if context_parts:
+            context_parts.append(f"用户输入: {user_content}")
+            return "\n".join(context_parts)
+
+        return ""
 
     @staticmethod
     def _compress_older_assistant(messages: list[dict], keep_rounds: int = 1) -> None:
