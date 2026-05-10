@@ -242,3 +242,99 @@ body {
 .ant-menu-item-disabled {
   cursor: not-allowed !important;
 }
+
+/* === 知识库页面 === */
+
+/* 侧边栏项目 hover 动画 */
+.sidebar-list {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.sidebar-section-title {
+  user-select: none;
+}
+
+.sidebar-item {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-item:hover {
+  background-color: rgba(83, 58, 253, 0.04);
+}
+
+/* 卡片上浮动画 */
+.article-card-hoverable {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.article-card-hoverable:hover {
+  transform: translateY(-1px);
+}
+
+/* 删除按钮 hover 时显示 */
+.article-card-hoverable:hover .article-delete-btn {
+  opacity: 1;
+}
+
+.article-delete-btn:hover {
+  color: #ea2261 !important;
+}
+
+/* SearchBar focus 环 */
+.search-input .ant-input {
+  border-color: #e5edf5;
+}
+
+.search-input .ant-input:hover {
+  border-color: #d6d9fc;
+}
+
+.search-input .ant-input:focus,
+.search-input .ant-input-focused {
+  border-color: #533afd !important;
+  box-shadow: 0 0 0 2px rgba(83, 58, 253, 0.2) !important;
+}
+
+/* Skeleton 加载动画 */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+.skeleton-card {
+  height: 80px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 37%, #f0f0f0 63%);
+  background-size: 400px 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+/* Tab 样式增强 */
+.knowledge-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.knowledge-tabs .ant-tabs-tab {
+  padding: 8px 0;
+  margin: 0 20px 0 0;
+}
+
+.knowledge-tabs .ant-tabs-tab-btn {
+  font-size: 14px;
+  font-weight: 300;
+  color: #64748d;
+  transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.knowledge-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #533afd;
+  font-weight: 400;
+}
+
+/* 日期标题样式 */
+.timeline-date-title {
+  padding-bottom: 4px;
+  border-bottom: 1px solid transparent;
+}

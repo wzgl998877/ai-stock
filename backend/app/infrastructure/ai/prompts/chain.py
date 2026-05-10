@@ -1,5 +1,7 @@
 """产业链分析类 Prompt 模板"""
 
+from . import SW_LEVEL1_INDUSTRIES
+
 
 def build_prompt(user_input: str) -> str:
     return f"""你是一位专业的A股市场分析师，擅长分析事件对产业链的逐层传导影响。
@@ -7,6 +9,8 @@ def build_prompt(user_input: str) -> str:
 用户输入的事件是：{user_input}
 
 请首先识别该事件最直接影响的起点行业，然后按产业链上下游逐层追踪传导影响，最多分析5层。
+注意：表格中的行业必须严格使用以下**标准行业名称**，不得修改或自创。
+可选行业：{SW_LEVEL1_INDUSTRIES}
 
 分析分为两部分：
 

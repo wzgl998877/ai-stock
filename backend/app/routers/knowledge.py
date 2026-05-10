@@ -166,8 +166,13 @@ async def delete_article(article_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/industries")
-async def list_industries(db: AsyncSession = Depends(get_db)):
+async def list_industries(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """获取有文章的行业列表"""
+    from app.infrastructure.db.models import AnalysisArticle as ArticleModel
+
     stmt = (
         select(
             IndustryModel.industry_code,
@@ -175,9 +180,12 @@ async def list_industries(db: AsyncSession = Depends(get_db)):
             func.count(ArticleIndustry.article_id).label("article_count"),
         )
         .join(ArticleIndustry, IndustryModel.industry_code == ArticleIndustry.industry_code)
+        .join(ArticleModel, ArticleIndustry.article_id == ArticleModel.article_id)
         .where(
             IndustryModel.deleted == "0",
             ArticleIndustry.deleted == "0",
+            ArticleModel.deleted == "0",
+            ArticleModel.user_id == current_user.user_id,
         )
         .group_by(IndustryModel.industry_code, IndustryModel.name)
         .order_by(func.count(ArticleIndustry.article_id).desc())
@@ -193,15 +201,25 @@ async def list_industries(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/watchlist-stocks")
-async def list_watchlist_stocks(db: AsyncSession = Depends(get_db)):
+async def list_watchlist_stocks(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """获取有文章的股票列表（跨模块预留）"""
+    from app.infrastructure.db.models import AnalysisArticle as ArticleModel
+
     stmt = (
         select(
             ArticleStock.stock_code,
             ArticleStock.stock_name,
             func.count(ArticleStock.article_id).label("article_count"),
         )
-        .where(ArticleStock.deleted == "0")
+        .join(ArticleModel, ArticleStock.article_id == ArticleModel.article_id)
+        .where(
+            ArticleStock.deleted == "0",
+            ArticleModel.deleted == "0",
+            ArticleModel.user_id == current_user.user_id,
+        )
         .group_by(ArticleStock.stock_code, ArticleStock.stock_name)
         .order_by(func.count(ArticleStock.article_id).desc())
     )

@@ -26,6 +26,18 @@ export function useKnowledge() {
 
   // 加载文章列表
   const loadArticles = useCallback(async () => {
+    // 行业/股票视图未选中时，直接清空，不发请求
+    if (!searchKeyword.trim()) {
+      if (view === "industry" && !selectedIndustry) {
+        setArticles([], 0);
+        return;
+      }
+      if (view === "stock" && !selectedStock) {
+        setArticles([], 0);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       let data;
@@ -48,11 +60,16 @@ export function useKnowledge() {
     }
   }, [view, selectedIndustry, selectedStock, searchKeyword, page, pageSize, setArticles, setLoading]);
 
-  // 加载行业列表
+  // 加载行业列表（过滤掉没有文章的行业）
   const loadIndustries = useCallback(async () => {
     try {
       const data = await knowledgeService.getIndustries();
-      setIndustries(data.industries);
+      const filtered = data.industries.filter(ind => ind.article_count > 0);
+      setIndustries(filtered);
+      // 自动选中第一个
+      if (filtered.length > 0 && !useKnowledgeStore.getState().selectedIndustry) {
+        useKnowledgeStore.getState().setSelectedIndustry(filtered[0].code);
+      }
     } catch {
       // 静默处理
     }
@@ -63,6 +80,10 @@ export function useKnowledge() {
     try {
       const data = await knowledgeService.getWatchlistStocks();
       setStocks(data.stocks);
+      // 自动选中第一个
+      if (data.stocks.length > 0 && !useKnowledgeStore.getState().selectedStock) {
+        useKnowledgeStore.getState().setSelectedStock(data.stocks[0].code);
+      }
     } catch {
       // 静默处理
     }

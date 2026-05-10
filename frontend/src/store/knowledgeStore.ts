@@ -53,7 +53,7 @@ const initialState = {
 export const useKnowledgeStore = create<KnowledgeState>((set) => ({
   ...initialState,
 
-  setView: (view) => set({ view, page: 1, articles: [] }),
+  setView: (view) => set({ view, page: 1, articles: [], selectedIndustry: null, selectedStock: null }),
   setSelectedIndustry: (code) => set({ selectedIndustry: code, page: 1, articles: [] }),
   setSelectedStock: (code) => set({ selectedStock: code, page: 1, articles: [] }),
   setSearchKeyword: (keyword) => set({ searchKeyword: keyword, page: 1 }),

@@ -66,6 +66,7 @@ async def create_session(body: CreateSessionRequest, request: Request, db: Async
         id=session.session_id,
         title=session.title or "",
         event_type=session.event_type,
+        session_type=getattr(session, 'session_type', 'event_analysis'),
         created_at=session.create_time.isoformat() if session.create_time else "",
         updated_at=session.update_time.isoformat() if session.update_time else "",
     )
@@ -82,6 +83,7 @@ async def list_sessions(request: Request, db: AsyncSession = Depends(get_db), cu
                 id=s.session_id,
                 title=s.title or "",
                 event_type=s.event_type,
+                session_type=getattr(s, 'session_type', 'event_analysis'),
                 created_at=s.create_time.isoformat() if s.create_time else "",
                 updated_at=s.update_time.isoformat() if s.update_time else "",
             )
@@ -103,6 +105,7 @@ async def get_session(session_id: str, request: Request, db: AsyncSession = Depe
         id=session.session_id,
         title=session.title or "",
         event_type=session.event_type,
+        session_type=getattr(session, 'session_type', 'event_analysis'),
         messages=[
             MessageResponse(
                 id=m.message_id,
@@ -110,6 +113,8 @@ async def get_session(session_id: str, request: Request, db: AsyncSession = Depe
                 content=m.content,
                 thinking_steps=m.thinking_steps,
                 event_type=m.event_type,
+                summary=getattr(m, 'summary', None),
+                industries=getattr(m, 'industries', None),
                 created_at=m.create_time.isoformat() if m.create_time else "",
             )
             for m in session.messages

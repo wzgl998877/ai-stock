@@ -22,6 +22,8 @@ def _message_to_entity(model: MessageModel) -> ChatMessage:
         thinking_steps=model.thinking_steps,
         event_type=model.event_type,
         agent_data=model.agent_data,
+        summary=model.summary,
+        industries=model.industries,
         create_time=model.create_time,
         update_time=model.update_time,
         deleted=model.deleted,
@@ -100,6 +102,8 @@ class MySQLChatRepository(ChatRepository):
             thinking_steps=message.thinking_steps,
             event_type=message.event_type,
             agent_data=message.agent_data,
+            summary=message.summary,
+            industries=message.industries,
         )
         self.session.add(model)
         await self.session.flush()

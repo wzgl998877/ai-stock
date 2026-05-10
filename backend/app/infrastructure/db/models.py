@@ -288,6 +288,8 @@ class ChatMessage(AuditMixin, Base):
     thinking_steps: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     agent_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    industries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("idx_session_id", "session_id"),

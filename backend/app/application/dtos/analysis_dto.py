@@ -44,3 +44,12 @@ class SimilarArticleDTO(BaseModel):
     industry_tags: List[str]
     created_at: str
     similarity: float
+
+
+class ExtractIndustriesRequestDTO(BaseModel):
+    content: str = Field(..., description="分析内容（LLM 输出的完整文本）")
+    event_type: str = Field(..., description="事件类型，用于选择对应 prompt")
+
+
+class ExtractIndustriesResponseDTO(BaseModel):
+    industries: List[str] = Field(..., description="提取出的申万一级行业名称列表")

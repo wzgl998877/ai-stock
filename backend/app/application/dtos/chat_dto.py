@@ -14,6 +14,7 @@ class SessionResponse(BaseModel):
     id: str
     title: str
     event_type: Optional[str] = None
+    session_type: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -35,6 +36,8 @@ class MessageResponse(BaseModel):
     content: str
     thinking_steps: Optional[List[dict]] = None
     event_type: Optional[str] = None
+    summary: Optional[str] = None  # AI生成的文章摘要
+    industries: Optional[List[str]] = None  # AI生成的行业标签
     created_at: str
 
 
@@ -42,6 +45,7 @@ class SessionDetailResponse(BaseModel):
     id: str
     title: str
     event_type: Optional[str] = None
+    session_type: Optional[str] = None
     messages: List[MessageResponse]
     created_at: str
     updated_at: str

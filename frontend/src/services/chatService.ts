@@ -31,7 +31,16 @@ export async function getSession(id: string): Promise<{
   id: string;
   title: string;
   event_type: string | null;
-  messages: ChatMessageType[];
+  messages: {
+    id: string;
+    role: string;
+    content: string;
+    thinking_steps?: any[];
+    event_type?: string | null;
+    summary?: string | null;
+    industries?: string[] | null;
+    created_at: string;
+  }[];
   created_at: string;
   updated_at: string;
 }> {

@@ -122,7 +122,7 @@ const ArticleDetailPage: React.FC = () => {
         )}
 
         {/* 元信息标签行 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
           <Tag
             style={{
               borderRadius: 4,
@@ -154,6 +154,37 @@ const ArticleDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {/* 本文关联股票 */}
+      {article.stocks.length > 0 && (
+        <div
+          style={{
+            background: "#f6f9fc",
+            border: "1px solid #e5edf5",
+            borderRadius: 6,
+            padding: 16,
+            marginBottom: 24,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13,
+              color: "#64748d",
+              fontWeight: 500,
+              display: "block",
+              marginBottom: 12,
+              fontFeatureSettings: "'ss01' on",
+            }}
+          >
+            本文关联股票
+          </Text>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {article.stocks.map((s, idx) => (
+              <StockCodeLink key={idx} code={s.code} name={s.name} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 正文内容 */}
       <div
         style={{
@@ -169,37 +200,6 @@ const ArticleDetailPage: React.FC = () => {
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.content}</ReactMarkdown>
         </div>
       </div>
-
-      {/* 股票引用区域 */}
-      {article.stocks.length > 0 && (
-        <div
-          style={{
-            background: "#f6f9fc",
-            border: "1px solid #e5edf5",
-            borderRadius: 6,
-            padding: 16,
-            marginBottom: 24,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 13,
-              color: "#273951",
-              fontWeight: 400,
-              display: "block",
-              marginBottom: 8,
-              fontFeatureSettings: "'ss01' on",
-            }}
-          >
-            提及股票
-          </Text>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {article.stocks.map((s, idx) => (
-              <StockCodeLink key={idx} code={s.code} name={s.name} />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* 底部操作 */}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>

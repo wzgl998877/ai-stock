@@ -1,7 +1,7 @@
 /** AppLayout — 左右布局框架（侧边栏 + 主区域） — Stripe Design */
 
 import React, { useEffect, useCallback, useState } from "react";
-import { Layout, Menu, Typography, Button, Popconfirm, message, Tooltip } from "antd";
+import { Layout, Menu, Typography, Button, Popconfirm, message, Tooltip, Dropdown, Badge, Drawer, Modal, Form, Input } from "antd";
 import {
   ExperimentOutlined,
   StockOutlined,
@@ -14,6 +14,8 @@ import {
   FileSearchOutlined,
   MessageOutlined,
   LogoutOutlined,
+  BellOutlined,
+  LockOutlined,
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { MenuProps } from "antd";
@@ -21,15 +23,16 @@ import { useChatStore } from "../../store/chatStore";
 import StockDetailDrawer from "../stock/StockDetailDrawer";
 import { useStockDrawerStore } from "../../store/stockDrawerStore";
 import * as chatService from "../../services/chatService";
+import * as authService from "../../services/authService";
 import { useAuthStore } from "../../store/authStore";
 
-const { Sider, Content } = Layout;
+const { Sider, Content, Header } = Layout;
 const { Text, Paragraph } = Typography;
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const isAnalysisPage = location.pathname === "/analysis";
+  const isEventAnalysisPage = location.pathname === "/analysis";
 
   const {
     sessions,
@@ -44,14 +47,28 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     streamingMessageId,
   } = useChatStore();
 
-  const [openKeys, setOpenKeys] = useState<string[]>(["analysis-group"]);
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [showAllSessions, setShowAllSessions] = useState(false);
 
   const { visible: drawerVisible, stockCode: drawerStockCode, close: closeDrawer } = useStockDrawerStore();
   const { user, logout } = useAuthStore();
 
+  // 通知抽屉
+  const [notificationOpen, setNotificationOpen] = useState(false);
+
+  // 修改密码弹框
+  const [changePwOpen, setChangePwOpen] = useState(false);
+  const [changePwLoading, setChangePwLoading] = useState(false);
+  const [changePwForm] = Form.useForm();
+
   const MAX_SESSIONS_PREVIEW = 5;
-  const displayedSessions = showAllSessions ? sessions : sessions.slice(0, MAX_SESSIONS_PREVIEW);
+
+  // 按 session_type 过滤事件分析会话
+  const filteredSessions = sessions.filter(
+    s => (s as any).session_type === "event_analysis" || !s.event_type
+  );
+
+  const displayedSessions = showAllSessions ? filteredSessions : filteredSessions.slice(0, MAX_SESSIONS_PREVIEW);
 
   // 加载会话列表
   const loadSessions = useCallback(async () => {
@@ -64,10 +81,10 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [setSessions]);
 
   useEffect(() => {
-    if (isAnalysisPage) {
+    if (isEventAnalysisPage) {
       loadSessions();
     }
-  }, [isAnalysisPage, loadSessions]);
+  }, [isEventAnalysisPage, loadSessions]);
 
   // 当前选中的菜单项
   const selectedKeys = [location.pathname];
@@ -94,12 +111,22 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         id: m.id,
         role: m.role,
         content: m.content,
-        reasoning: m.reasoning || "",
+        reasoning: "",
         thinking_steps: m.thinking_steps,
         event_type: m.event_type,
+        summary: m.summary || "",
+        industries: m.industries || [],
         created_at: m.created_at,
       }));
-      loadHistory(loadedMessages);
+
+      // 从最后一条 assistant 消息中提取 summary 和 industries
+      const lastAssistantMsg = [...loadedMessages].reverse().find((m) => m.role === "assistant");
+      if (lastAssistantMsg) {
+        useChatStore.getState().setSummary(lastAssistantMsg.summary || "");
+        useChatStore.getState().setIndustries(lastAssistantMsg.industries || []);
+      }
+
+      loadHistory(loadedMessages, detail.title);
     } catch {
       message.error("加载会话失败");
     }
@@ -113,6 +140,31 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       removeSession(sessionId);
     } catch {
       // 静默失败
+    }
+  };
+
+  // 修改密码
+  const handleChangePw = async () => {
+    const values = await changePwForm.validateFields();
+    if (values.new_password !== values.confirm_password) {
+      message.error("两次输入的密码不一致");
+      return;
+    }
+    setChangePwLoading(true);
+    try {
+      const res = await authService.changePassword({
+        old_password: values.old_password,
+        new_password: values.new_password,
+        confirm_password: values.confirm_password,
+      });
+      message.success(res.message + "，请重新登录");
+      setChangePwOpen(false);
+      logout();
+      navigate("/login", { replace: true });
+    } catch (err: any) {
+      message.error(err.message || "修改失败，请重试");
+    } finally {
+      setChangePwLoading(false);
     }
   };
 
@@ -132,11 +184,15 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 一级菜单 → 二级菜单
   const menuItems: MenuProps["items"] = [
     {
-      key: "analysis-group",
-      icon: <ExperimentOutlined />,
-      label: "智能分析",
+      key: "/analysis",
+      icon: <MessageOutlined />,
+      label: "事件分析",
+    },
+    {
+      key: "stock-group",
+      icon: <StockOutlined />,
+      label: "个股分析",
       children: [
-        { key: "/analysis", icon: <MessageOutlined />, label: "AI 事件分析" },
         { key: "/stock-analysis", icon: <StockOutlined />, label: "个股分析" },
         { key: "/analysis-records", icon: <FileSearchOutlined />, label: "分析记录" },
       ],
@@ -265,8 +321,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }}
         />
 
-        {/* 会话历史 — 仅在 AI 事件分析页面显示 */}
-        {isAnalysisPage && (
+        {/* 会话历史 — 仅事件分析页面显示 */}
+        {isEventAnalysisPage && (
           <div
             style={{
               borderTop: "1px solid #e5edf5",
@@ -308,117 +364,124 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 新建
               </Button>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {displayedSessions.map((session) => (
-                <div
-                  key={session.id}
-                  onClick={() => handleSelectSession(session.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "6px 8px",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    background:
-                      currentSessionId === session.id
-                        ? "rgba(83, 58, 253, 0.06)"
-                        : "transparent",
-                    borderLeft:
-                      currentSessionId === session.id
-                        ? "2px solid #533afd"
-                        : "2px solid transparent",
-                    transition: "background 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (currentSessionId !== session.id) {
-                      e.currentTarget.style.background = "#f6f9fc";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (currentSessionId !== session.id) {
-                      e.currentTarget.style.background = "transparent";
-                    }
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: currentSessionId === session.id ? "#533afd" : "#273951",
-                        fontWeight: currentSessionId === session.id ? 500 : 400,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        lineHeight: "18px",
-                        fontFeatureSettings: "'ss01' on",
-                      }}
-                    >
-                      {session.title || "新对话"}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#94a3b8",
-                        lineHeight: "15px",
-                      }}
-                    >
-                      {formatDate(session.created_at)}
-                    </div>
-                  </div>
-                  <Popconfirm
-                    title="删除此对话？"
-                    onConfirm={(e) =>
-                      handleDeleteSession(e as React.MouseEvent, session.id)
-                    }
-                    onCancel={(e) => e?.stopPropagation()}
-                    okText="删除"
-                    cancelText="取消"
+            {filteredSessions.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "20px 0", color: "#d1d5db" }}>
+                <MessageOutlined style={{ fontSize: 24, marginBottom: 8 }} />
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>暂无对话记录</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {displayedSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    onClick={() => handleSelectSession(session.id)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 8px",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      background:
+                        currentSessionId === session.id
+                          ? "rgba(83, 58, 253, 0.06)"
+                          : "transparent",
+                      borderLeft:
+                        currentSessionId === session.id
+                          ? "2px solid #533afd"
+                          : "2px solid transparent",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (currentSessionId !== session.id) {
+                        e.currentTarget.style.background = "#f6f9fc";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (currentSessionId !== session.id) {
+                        e.currentTarget.style.background = "transparent";
+                      }
+                    }}
                   >
-                    <DeleteOutlined
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        fontSize: 12,
-                        color: "#b0b8c4",
-                        flexShrink: 0,
-                        marginLeft: 4,
-                        padding: 4,
-                        cursor: "pointer",
-                        transition: "color 0.2s",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.color = "#ea2261")
+                    <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: currentSessionId === session.id ? "#533afd" : "#273951",
+                          fontWeight: currentSessionId === session.id ? 500 : 400,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          lineHeight: "18px",
+                          fontFeatureSettings: "'ss01' on",
+                        }}
+                      >
+                        {session.title || "新对话"}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#94a3b8",
+                          lineHeight: "15px",
+                        }}
+                      >
+                        {formatDate(session.created_at)}
+                      </div>
+                    </div>
+                    <Popconfirm
+                      title="删除此对话？"
+                      onConfirm={(e) =>
+                        handleDeleteSession(e as React.MouseEvent, session.id)
                       }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.color = "#b0b8c4")
-                      }
-                    />
-                  </Popconfirm>
-                </div>
-              ))}
-              {/* 查看更多 / 收起 */}
-              {sessions.length > MAX_SESSIONS_PREVIEW && (
-                <span
-                  onClick={() => setShowAllSessions(!showAllSessions)}
-                  style={{
-                    fontSize: 12,
-                    color: "#533afd",
-                    cursor: "pointer",
-                    padding: "4px 8px",
-                    lineHeight: "18px",
-                    fontFeatureSettings: "'ss01' on",
-                  }}
-                >
-                  {showAllSessions
-                    ? "收起"
-                    : `查看更多 (${sessions.length - MAX_SESSIONS_PREVIEW})`}
-                </span>
-              )}
-            </div>
+                      onCancel={(e) => e?.stopPropagation()}
+                      okText="删除"
+                      cancelText="取消"
+                    >
+                      <DeleteOutlined
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          fontSize: 12,
+                          color: "#b0b8c4",
+                          flexShrink: 0,
+                          marginLeft: 4,
+                          padding: 4,
+                          cursor: "pointer",
+                          transition: "color 0.2s",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.color = "#ea2261")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.color = "#b0b8c4")
+                        }
+                      />
+                    </Popconfirm>
+                  </div>
+                ))}
+                {/* 查看更多 / 收起 */}
+                {filteredSessions.length > MAX_SESSIONS_PREVIEW && (
+                  <span
+                    onClick={() => setShowAllSessions(!showAllSessions)}
+                    style={{
+                      fontSize: 12,
+                      color: "#533afd",
+                      cursor: "pointer",
+                      padding: "4px 8px",
+                      lineHeight: "18px",
+                      fontFeatureSettings: "'ss01' on",
+                    }}
+                  >
+                    {showAllSessions
+                      ? "收起"
+                      : `查看更多 (${filteredSessions.length - MAX_SESSIONS_PREVIEW})`}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* 底部免责声明 + 用户信息 */}
+        {/* 底部免责声明 */}
         <div
           style={{
             marginTop: "auto",
@@ -426,25 +489,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             borderTop: "1px solid #e5edf5",
           }}
         >
-          {user && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <Text style={{ fontSize: 13, color: "#273951", fontWeight: 500, fontFeatureSettings: "'ss01' on" }}>
-                {user.user_name || user.user_account}
-              </Text>
-              <Button
-                type="text"
-                icon={<LogoutOutlined />}
-                size="small"
-                onClick={() => {
-                  logout();
-                  navigate("/login", { replace: true });
-                }}
-                style={{ fontSize: 12, color: "#94a3b8", padding: "0 4px", height: 22 }}
-              >
-                退出
-              </Button>
-            </div>
-          )}
           <Paragraph
             style={{
               fontSize: 12,
@@ -468,7 +512,123 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           background: "#ffffff",
         }}
       >
-        <Content style={{ minHeight: "100vh" }}>{children}</Content>
+        {/* 顶部 Header */}
+        <Header
+          style={{
+            height: 56,
+            lineHeight: "56px",
+            padding: "0 24px",
+            background: "#ffffff",
+            borderBottom: "1px solid #e5edf5",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            position: "sticky",
+            top: 0,
+            zIndex: 9,
+          }}
+        >
+          {/* 右侧：通知铃铛 + 用户信息 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            {/* 通知铃铛 */}
+            <Tooltip title="消息通知" placement="bottom">
+              <Badge count={0} offset={[0, 0]}>
+                <BellOutlined
+                  onClick={() => setNotificationOpen(true)}
+                  style={{
+                    fontSize: 18,
+                    color: "#64748d",
+                    cursor: "pointer",
+                    padding: 6,
+                    borderRadius: 6,
+                    transition: "color 0.2s, background 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#533afd";
+                    e.currentTarget.style.background = "#f6f9fc";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "#64748d";
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                />
+              </Badge>
+            </Tooltip>
+
+            {/* 欢迎文字 */}
+            {user && (
+              <Text style={{ fontSize: 14, color: "#64748d", fontFeatureSettings: "'ss01' on" }}>
+                欢迎您，<Text style={{ color: "#061b31", fontWeight: 500 }}>{user.user_name || user.user_account}</Text>
+              </Text>
+            )}
+
+            {/* 用户下拉菜单 */}
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "change-password",
+                    icon: <LockOutlined />,
+                    label: "修改密码",
+                    onClick: () => {
+                      changePwForm.resetFields();
+                      setChangePwOpen(true);
+                    },
+                  },
+                  {
+                    key: "logout",
+                    icon: <LogoutOutlined />,
+                    label: "退出登录",
+                    onClick: () => {
+                      logout();
+                      navigate("/login", { replace: true });
+                    },
+                  },
+                ],
+              }}
+              placement="bottomRight"
+              trigger={["click"]}
+            >
+              <div
+                style={{
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  transition: "background 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#f6f9fc";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #533afd, #0ea5e9)",
+                    color: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    fontFeatureSettings: "'ss01' on",
+                  }}
+                >
+                  {(user?.user_name || user?.user_account || "U").charAt(0).toUpperCase()}
+                </div>
+              </div>
+            </Dropdown>
+          </div>
+        </Header>
+
+        <Content style={{ minHeight: "calc(100vh - 56px)" }}>{children}</Content>
       </Layout>
 
       {/* 全局股票行情 Drawer */}
@@ -477,6 +637,48 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         stockCode={drawerStockCode}
         onClose={closeDrawer}
       />
+
+      {/* 通知 Drawer */}
+      <Drawer
+        title="消息通知"
+        placement="right"
+        width={360}
+        open={notificationOpen}
+        onClose={() => setNotificationOpen(false)}
+      >
+        <div style={{ textAlign: "center", padding: "60px 0", color: "#94a3b8" }}>
+          <BellOutlined style={{ fontSize: 40, marginBottom: 16, color: "#d1d5db" }} />
+          <p style={{ fontSize: 14, margin: 0 }}>暂无消息通知</p>
+        </div>
+      </Drawer>
+
+      {/* 修改密码 Modal */}
+      <Modal
+        title="修改密码"
+        open={changePwOpen}
+        onCancel={() => setChangePwOpen(false)}
+        onOk={handleChangePw}
+        confirmLoading={changePwLoading}
+        okText="确认"
+        cancelText="取消"
+        maskClosable={false}
+      >
+        <Form form={changePwForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Form.Item name="old_password" label="原密码" rules={[{ required: true, message: "请输入原密码" }]}>
+            <Input.Password prefix={<LockOutlined style={{ color: "#b0b8c4" }} />} placeholder="请输入原密码" />
+          </Form.Item>
+          <Form.Item
+            name="new_password"
+            label="新密码"
+            rules={[{ required: true, message: "请输入新密码" }, { min: 6, message: "密码至少6位" }]}
+          >
+            <Input.Password prefix={<LockOutlined style={{ color: "#b0b8c4" }} />} placeholder="新密码（至少6位）" />
+          </Form.Item>
+          <Form.Item name="confirm_password" label="确认新密码" rules={[{ required: true, message: "请再次输入新密码" }]}>
+            <Input.Password prefix={<LockOutlined style={{ color: "#b0b8c4" }} />} placeholder="确认新密码" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Layout>
   );
 };

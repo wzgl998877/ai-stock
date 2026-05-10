@@ -41,6 +41,16 @@ export async function resetPassword(params: {
   return res.data;
 }
 
+/** 修改密码 */
+export async function changePassword(params: {
+  old_password: string;
+  new_password: string;
+  confirm_password: string;
+}): Promise<{ message: string }> {
+  const res = await api.post("/api/auth/change-password", params);
+  return res.data;
+}
+
 /** 获取当前用户信息 */
 export async function getCurrentUser(): Promise<UserInfo> {
   const res = await api.get("/api/auth/me");

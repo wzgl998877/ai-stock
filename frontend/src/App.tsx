@@ -29,6 +29,38 @@ const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+/** 已登录守卫：已登录时访问登录页跳转到 /analysis */
+const GuestGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuthStore();
+  if (isAuthenticated) {
+    return <Navigate to="/analysis" replace />;
+  }
+  return <>{children}</>;
+};
+
+/** 页面内容：统一使用 AppLayout */
+const AppContent: React.FC = () => {
+  const { sessionKey } = useAuthStore();
+  return (
+    <AppLayout key={sessionKey}>
+      <Routes>
+        <Route path="/analysis" element={<AnalysisPage />} />
+        <Route path="/stock-analysis" element={<StockAnalysisPage />} />
+        <Route path="/stock-analysis-debug" element={<StockAnalysisDebugPage />} />
+        <Route path="/analysis-records" element={<AnalysisRecordsPage />} />
+        <Route path="/sync" element={<SyncPanel />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
+        <Route path="/knowledge/articles/:id" element={<ArticleDetailPage />} />
+        {/* 模块二：行情数据 */}
+        <Route path="/market/stock/:code" element={<StockDetailPage />} />
+        <Route path="/market/watchlist" element={<WatchlistPage />} />
+        <Route path="/market/industry" element={<IndustryPage />} />
+        <Route path="*" element={<Navigate to="/analysis" replace />} />
+      </Routes>
+    </AppLayout>
+  );
+};
+
 const App: React.FC = () => {
   const { loadFromStorage } = useAuthStore();
 
@@ -82,30 +114,29 @@ const App: React.FC = () => {
     >
       <BrowserRouter>
         <Routes>
-          {/* 公开路由（无需登录） */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* 公开路由 — 未登录可访问，已登录自动跳转 */}
+          <Route
+            path="/login"
+            element={
+              <GuestGuard>
+                <LoginPage />
+              </GuestGuard>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <GuestGuard>
+                <ForgotPasswordPage />
+              </GuestGuard>
+            }
+          />
           {/* 受保护路由 */}
           <Route
             path="/*"
             element={
               <AuthGuard>
-                <AppLayout>
-                  <Routes>
-                    <Route path="/analysis" element={<AnalysisPage />} />
-                    <Route path="/stock-analysis" element={<StockAnalysisPage />} />
-                    <Route path="/stock-analysis-debug" element={<StockAnalysisDebugPage />} />
-                    <Route path="/analysis-records" element={<AnalysisRecordsPage />} />
-                    <Route path="/sync" element={<SyncPanel />} />
-                    <Route path="/knowledge" element={<KnowledgePage />} />
-                    <Route path="/knowledge/articles/:id" element={<ArticleDetailPage />} />
-                    {/* 模块二：行情数据 */}
-                    <Route path="/market/stock/:code" element={<StockDetailPage />} />
-                    <Route path="/market/watchlist" element={<WatchlistPage />} />
-                    <Route path="/market/industry" element={<IndustryPage />} />
-                    <Route path="*" element={<Navigate to="/analysis" replace />} />
-                  </Routes>
-                </AppLayout>
+                <AppContent />
               </AuthGuard>
             }
           />

@@ -55,6 +55,15 @@ class MySQLUserRepository(UserRepository):
         model = result.scalar_one_or_none()
         return self._to_entity(model) if model else None
 
+    async def find_by_user_id(self, user_id: str) -> Optional[UserEntity]:
+        stmt = select(UserModel).where(
+            UserModel.user_id == user_id,
+            UserModel.deleted == "0",
+        )
+        result = await self._db.execute(stmt)
+        model = result.scalar_one_or_none()
+        return self._to_entity(model) if model else None
+
     async def create(self, user: UserEntity) -> UserEntity:
         model = UserModel(
             user_id=user.user_id,

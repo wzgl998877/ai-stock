@@ -150,3 +150,32 @@ class AuthUseCase:
         password_field = f"{salt}:{hashed}"
         await self._user_repo.update_password(user.user_id, password_field)
         return True
+
+    async def change_password(
+        self, user_id: str, old_password: str, new_password: str, confirm_password: str
+    ) -> bool:
+        """修改密码 — 需验证原密码"""
+        if not new_password or len(new_password) < 6:
+            raise InvalidInputError("密码长度不能少于6位")
+
+        if new_password != confirm_password:
+            raise InvalidInputError("两次输入的密码不一致")
+
+        user = await self._user_repo.find_by_user_id(user_id)
+        if not user:
+            raise InvalidInputError("用户不存在")
+
+        # 验证原密码
+        parts = user.password.split(":", 1)
+        if len(parts) != 2:
+            raise InvalidInputError("原密码格式错误")
+
+        salt, hashed = parts
+        if not verify_password(old_password, hashed, salt):
+            raise InvalidInputError("原密码错误")
+
+        # 设置新密码
+        new_hashed, new_salt = hash_password(new_password)
+        password_field = f"{new_salt}:{new_hashed}"
+        await self._user_repo.update_password(user.user_id, password_field)
+        return True

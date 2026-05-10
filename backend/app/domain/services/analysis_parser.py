@@ -98,6 +98,22 @@ class AnalysisParser:
                         names.add(name)
                         continue
 
+        # 从产业链传导表中提取行业名称
+        chain_content = result.sections.get("产业链传导表", "")
+        if chain_content:
+            for line in chain_content.split("\n"):
+                line = line.strip()
+                if not line or line.startswith("|---") or line.startswith("| --") or line.startswith("|-"):
+                    continue
+                if "传导层级" in line or "受影响行业" in line:
+                    continue
+                cells = [c.strip() for c in line.split("|")]
+                cells = [c for c in cells if c]
+                if len(cells) >= 2:
+                    industry_name = cells[1].strip()
+                    if self._is_valid_industry_name(industry_name):
+                        names.add(industry_name)
+
         result.industry_names = list(names)
 
     @staticmethod

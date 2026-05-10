@@ -26,6 +26,12 @@ class ResetPasswordRequest(BaseModel):
     confirm_password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+    confirm_password: str
+
+
 class UserInfoResponse(BaseModel):
     user_id: str
     user_account: str

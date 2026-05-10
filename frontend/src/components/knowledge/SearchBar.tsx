@@ -33,9 +33,10 @@ const SearchBar: React.FC<Props> = ({ value, onChange, placeholder = "搜索知�
       onChange={(e) => handleChange(e.target.value)}
       placeholder={placeholder}
       allowClear
+      variant="outlined"
+      className="search-input"
       style={{
         borderRadius: 6,
-        border: "1px solid #e5edf5",
         maxWidth: 400,
         fontFeatureSettings: "'ss01' on",
       }}

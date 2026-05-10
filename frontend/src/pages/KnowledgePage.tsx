@@ -35,6 +35,18 @@ const KnowledgePage: React.FC = () => {
   const setSelectedStock = useKnowledgeStore((s) => s.setSelectedStock);
   const setSearchKeyword = useKnowledgeStore((s) => s.setSearchKeyword);
 
+  // 切换 tab 时，行业/股票视图自动选中第一项
+  const handleTabChange = (key: string) => {
+    setView(key as ViewMode);
+    if (key === "industry") {
+      const list = useKnowledgeStore.getState().industries;
+      if (list.length > 0) setSelectedIndustry(list[0].code);
+    } else if (key === "stock") {
+      const list = useKnowledgeStore.getState().stocks;
+      if (list.length > 0) setSelectedStock(list[0].code);
+    }
+  };
+
   // 加载行业和股票列表
   useEffect(() => {
     loadIndustries();
@@ -58,6 +70,7 @@ const KnowledgePage: React.FC = () => {
 
   return (
     <div
+      className="knowledge-page"
       style={{
         height: "100vh",
         display: "flex",
@@ -67,10 +80,11 @@ const KnowledgePage: React.FC = () => {
     >
       {/* 页头 */}
       <div
+        className="knowledge-header"
         style={{
           flexShrink: 0,
           borderBottom: "1px solid #e5edf5",
-          padding: "20px 32px 0",
+          padding: "20px 32px 16px",
           background: "#ffffff",
         }}
       >
@@ -103,22 +117,44 @@ const KnowledgePage: React.FC = () => {
 
         <Tabs
           activeKey={view}
-          onChange={(key) => setView(key as ViewMode)}
+          onChange={handleTabChange}
           items={tabItems}
+          className="knowledge-tabs"
           style={{ marginBottom: 0 }}
         />
+
+        {/* 搜索提示 */}
+        {searchKeyword && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: "8px 12px",
+              background: "rgba(83,58,253,0.05)",
+              borderRadius: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span style={{ fontSize: 14 }}>🔍</span>
+            <Text style={{ fontSize: 13, color: "#533afd" }}>
+              正在全库搜索 &quot;{searchKeyword}&quot; · 匹配标题和正文
+            </Text>
+          </div>
+        )}
       </div>
 
       {/* 内容区域 */}
       <div
+        className="knowledge-content"
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "20px 32px",
-          background: "#ffffff",
+          padding: "24px 32px",
+          background: "#f7f9fc",
         }}
       >
-        {!loading && articles.length === 0 && !searchKeyword ? (
+        {!loading && view === "timeline" && articles.length === 0 && !searchKeyword ? (
           <div style={{ textAlign: "center", padding: "80px 0" }}>
             <AntEmpty description="还没有保存任何分析" />
             <Text style={{ fontSize: 13, color: "#64748d", marginTop: 8, display: "block" }}>
@@ -128,7 +164,7 @@ const KnowledgePage: React.FC = () => {
         ) : (
           <>
             {view === "timeline" && (
-              <TimelineView articles={articles} loading={loading} onDelete={handleDelete} />
+              <TimelineView articles={articles} loading={loading} onDelete={handleDelete} total={total} pageSize={pageSize} />
             )}
             {view === "industry" && (
               <IndustryView
@@ -157,11 +193,12 @@ const KnowledgePage: React.FC = () => {
       {/* 分页 */}
       {total > pageSize && (
         <div
+          className="knowledge-pagination"
           style={{
             flexShrink: 0,
             borderTop: "1px solid #e5edf5",
             padding: "12px 32px",
-            background: "#ffffff",
+            background: "#f7f9fc",
             display: "flex",
             justifyContent: "center",
           }}

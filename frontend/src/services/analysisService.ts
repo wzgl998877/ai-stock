@@ -145,3 +145,17 @@ export async function searchArticles(
   });
   return res.data;
 }
+
+/**
+ * 从分析内容中提取行业标签（保存知识库兜底方案）
+ */
+export async function extractIndustries(
+  content: string,
+  eventType: string
+): Promise<{ industries: string[] }> {
+  const res = await api.post(`${BASE}/extract-industries`, {
+    content,
+    event_type: eventType,
+  });
+  return res.data;
+}

@@ -23,7 +23,7 @@ interface ChatState {
 
   // === Session Switching ===
   switchSession: (id: string) => void;
-  loadHistory: (messages: ChatMessageType[]) => void;
+  loadHistory: (messages: ChatMessageType[], title?: string) => void;
 
   // === Message Actions ===
   setMessages: (messages: ChatMessageType[]) => void;
@@ -83,8 +83,14 @@ export const useChatStore = create<ChatState>((set) => ({
       ...initialMessageState,
     }),
 
-  loadHistory: (messages) =>
-    set({ ...initialMessageState, messages }),
+  loadHistory: (messages, title) =>
+    set({
+      messages,
+      streamingMessageId: null,
+      title: title || "",
+      summary: "",
+      industries: [],
+    }),
 
   // --- Message Actions ---
 

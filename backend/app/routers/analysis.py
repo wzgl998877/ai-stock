@@ -18,6 +18,8 @@ from app.application.dtos.analysis_dto import (
     SaveArticleResponseDTO,
     SimilarityRequestDTO,
     SimilarArticleDTO,
+    ExtractIndustriesRequestDTO,
+    ExtractIndustriesResponseDTO,
 )
 from app.application.use_cases.analyze_event import AnalyzeEventUseCase
 from app.application.use_cases.manage_article import SaveArticleUseCase
@@ -27,10 +29,30 @@ from app.core.exceptions import InvalidInputError, AIServiceError, NoIndustryTag
 from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.infrastructure.ai.ai_service import AIService
 from app.infrastructure.repositories.mysql_article_repo import MySQLArticleRepository
+from app.infrastructure.repositories.mysql_industry_repo import MySQLIndustryRepository
 from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
+from app.infrastructure.ai.prompts import SW_LEVEL1_INDUSTRIES
 from app.infrastructure.repositories.mysql_stock_analysis_repo import MySQLStockAnalysisRepository
 
 logger = logging.getLogger(__name__)
+
+# === 行业提取 Prompt ===
+_EXTRACT_INDUSTRIES_PROMPT = """你是一名行业分析助手。请从以下文章内容中提取涉及的申万一级行业名称。
+
+## 要求
+1. 只从标准申万一级行业名称中选择，不要自创行业名称
+2. 返回 JSON 数组格式，如：["电子", "汽车", "计算机"]
+3. 如果文章没有明确提到任何行业，返回空数组 []
+4. 最多返回 10 个行业
+
+## 标准行业名称（31个申万一级行业）
+{industries}
+
+## 文章内容
+{content}
+
+请直接返回 JSON 数组，不要有其他文字。
+"""
 
 
 def _reconstruct_debates(details) -> list:
@@ -112,6 +134,31 @@ async def _sse_stream(event_gen: AsyncGenerator) -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
+def _parse_industries_from_llm_response(text: str) -> List[str]:
+    """从 LLM 响应中解析行业名称，兼容多种格式"""
+    if not text:
+        return []
+
+    # 1. 尝试提取 markdown code block 中的 JSON
+    code_match = re.search(r"```(?:json)?\s*\n?([\s\S]*?)\n?```", text)
+    if code_match:
+        text = code_match.group(1)
+
+    # 2. 尝试解析 JSON 数组
+    text = text.strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [s for s in data if isinstance(s, str) and s.strip()]
+    except json.JSONDecodeError:
+        pass
+
+    # 3. 降级：用正则匹配引号内的中文词
+    items = re.findall(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]', text)
+    standard_set = set(SW_LEVEL1_INDUSTRIES.split("、"))
+    return [s.strip() for s in items if s.strip() in standard_set]
+
+
 @router.post("/stream")
 async def stream_analysis(body: AnalysisRequestDTO, request: Request):
     """启动 AI 事件分析，SSE 流式返回"""
@@ -139,13 +186,18 @@ async def stream_analysis(body: AnalysisRequestDTO, request: Request):
 
 
 @router.post("/articles", status_code=201, response_model=SaveArticleResponseDTO)
-async def save_article(body: SaveArticleDTO, db: AsyncSession = Depends(get_db)):
+async def save_article(
+    body: SaveArticleDTO,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """保存分析结果到知识库"""
     if not body.industry_codes:
         raise NoIndustryTagError()
 
-    repo = MySQLArticleRepository(db)
-    use_case = SaveArticleUseCase(repo)
+    article_repo = MySQLArticleRepository(db)
+    industry_repo = MySQLIndustryRepository(db)
+    use_case = SaveArticleUseCase(article_repo, industry_repo)
     article = await use_case.execute(
         title=body.title,
         summary=body.summary,
@@ -155,6 +207,7 @@ async def save_article(body: SaveArticleDTO, db: AsyncSession = Depends(get_db))
         industry_codes=body.industry_codes,
         stock_refs=[{"code": s.code, "name": s.name} for s in body.stock_refs],
         chain_table=body.chain_table,
+        user_id=current_user.user_id,
     )
     await db.commit()
 
@@ -171,6 +224,26 @@ async def check_similarity(body: SimilarityRequestDTO):
     """检测相似历史文章"""
     # TODO: 实现 DetectSimilarUseCase
     return {"similar_articles": []}
+
+
+@router.post("/extract-industries", response_model=ExtractIndustriesResponseDTO)
+async def extract_industries(body: ExtractIndustriesRequestDTO, request: Request):
+    """从分析内容中提取行业标签（保存知识库兜底方案）"""
+    ai_service: AIService = request.app.state.ai_service
+
+    prompt = _EXTRACT_INDUSTRIES_PROMPT.format(
+        industries=SW_LEVEL1_INDUSTRIES,
+        content=body.content[:5000],  # 截断避免超长
+    )
+
+    result, _ = await ai_service.generate_title_and_summary(
+        system_prompt="请从文章中提取申万一级行业名称，返回 JSON 数组。",
+        user_message=prompt,
+    )
+
+    industries = _parse_industries_from_llm_response(result)
+    logger.info("行业提取结果: %s", industries)
+    return ExtractIndustriesResponseDTO(industries=industries)
 
 
 @router.get("/validate-stock")

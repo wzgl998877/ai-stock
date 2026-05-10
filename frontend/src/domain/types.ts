@@ -110,6 +110,7 @@ export interface ChatSessionType {
   id: string;
   title: string;
   event_type: string | null;
+  session_type?: string;  // 'event_analysis' | 'stock_analysis'
   created_at: string;
   updated_at: string;
 }
@@ -122,6 +123,8 @@ export interface ChatMessageType {
   reasoning: string;                              // 模型推理思考过程
   thinking_steps: ThinkingStepData[] | null;
   event_type: string | null;
+  summary?: string;                               // AI生成的文章摘要（仅assistant）
+  industries?: string[];                          // AI生成的行业标签（仅assistant）
   created_at: string;
 }
 

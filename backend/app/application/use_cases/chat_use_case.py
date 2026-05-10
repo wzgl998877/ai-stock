@@ -259,7 +259,7 @@ class ChatUseCase:
         # 6. 解析结果
         parse_result = self.parser.parse(full_content, effective_event_type)
 
-        # 7. 保存 AI 消息
+        # 7. 保存 AI 消息（包含 summary 和 industries）
         t_save = time.time()
         ai_msg = ChatMessage(
             message_id=uuid.uuid4().hex,
@@ -268,6 +268,8 @@ class ChatUseCase:
             content=full_content,
             thinking_steps=thinking_steps or None,
             event_type=effective_event_type,
+            summary=parse_result.summary or None,
+            industries=parse_result.industry_names or None,
         )
         await self.chat_repo.add_message(ai_msg)
 

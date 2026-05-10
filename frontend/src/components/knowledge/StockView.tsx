@@ -1,8 +1,9 @@
 /** StockView — 左侧股票列表 + 右侧文章列表 */
 
-import React from "react";
-import { Typography, Empty, Spin } from "antd";
-import ArticleCard from "./ArticleCard";
+import React, { useState, useMemo } from "react";
+import { Typography } from "antd";
+import SidebarArticleList, { SidebarItem } from "./SidebarArticleList";
+import AddToWatchlistButton from "../stock/AddToWatchlistButton";
 import type { ArticleListItem } from "../../domain/types";
 
 const { Text } = Typography;
@@ -24,88 +25,51 @@ const StockView: React.FC<Props> = ({
   onSelectStock,
   onDelete,
 }) => {
-  return (
-    <div style={{ display: "flex", gap: 20 }}>
-      {/* 左侧：股票列表 */}
-      <div
-        style={{
-          width: 200,
-          flexShrink: 0,
-          borderRight: "1px solid #e5edf5",
-          paddingRight: 16,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 12,
-            color: "#64748d",
-            fontWeight: 400,
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            display: "block",
-            marginBottom: 12,
-          }}
-        >
-          提及股票
-        </Text>
-        {stocks.length === 0 ? (
-          <div style={{ padding: "12px 0" }}>
-            <Text style={{ fontSize: 13, color: "#b0b8c4" }}>
-              暂无数据，分析中提及的股票会自动收录
-            </Text>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {stocks.map((s) => (
-              <div
-                key={s.code}
-                onClick={() => onSelectStock(s.code)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                  background: selectedStock === s.code ? "rgba(83,58,253,0.08)" : "transparent",
-                  borderLeft: selectedStock === s.code ? "2px solid #533afd" : "2px solid transparent",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: selectedStock === s.code ? "#533afd" : "#061b31",
-                      fontWeight: selectedStock === s.code ? 400 : 300,
-                      fontFeatureSettings: "'ss01' on",
-                    }}
-                  >
-                    {s.name}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: "#b0b8c4" }}>{s.article_count}</Text>
-                </div>
-                <Text style={{ fontSize: 11, color: "#b0b8c4" }}>{s.code}</Text>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+  const [searchValue, setSearchValue] = useState("");
 
-      {/* 右侧：文章列表 */}
-      <div style={{ flex: 1 }}>
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 48 }}>
-            <Spin />
-          </div>
-        ) : articles.length === 0 ? (
-          <Empty description={selectedStock ? "该股票暂无关联文章" : "请选择股票查看关联文章"} />
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {articles.map((article) => (
-              <ArticleCard key={article.id} article={article} onDelete={onDelete} />
-            ))}
-          </div>
-        )}
-      </div>
+  const filteredItems = useMemo(() => {
+    if (!searchValue.trim()) return stocks;
+    const keyword = searchValue.toLowerCase();
+    return stocks.filter(
+      (s) =>
+        s.name.toLowerCase().includes(keyword) ||
+        s.code.toLowerCase().includes(keyword)
+    );
+  }, [stocks, searchValue]);
+
+  const sidebarItems: SidebarItem[] = filteredItems.map((s) => ({
+    code: s.code,
+    name: s.name,
+    article_count: s.article_count,
+  }));
+
+  const renderStockExtra = (item: SidebarItem) => (
+    <div style={{ marginTop: 4, display: "flex", gap: 4, alignItems: "center" }}>
+      <Text style={{ fontSize: 11, color: "#b0b8c4" }}>{item.code}</Text>
+      <AddToWatchlistButton stockCode={item.code} stockName={item.name} />
     </div>
+  );
+
+  return (
+    <SidebarArticleList
+      sidebarTitle="股票"
+      items={sidebarItems}
+      selectedCode={selectedStock}
+      articles={articles}
+      loading={loading}
+      emptySidebarText="暂无匹配的股票"
+      emptyArticlesTextSelected="该股票暂无关联文章"
+      emptyArticlesTextUnselected="请选择股票查看关联文章"
+      onSelectItem={onSelectStock}
+      onDelete={onDelete}
+      highlightStockCode={selectedStock || undefined}
+      renderSidebarItemExtra={renderStockExtra}
+      sidebarSearch={{
+        value: searchValue,
+        onChange: setSearchValue,
+        placeholder: "搜索股票名称/代码...",
+      }}
+    />
   );
 };
 

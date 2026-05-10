@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.dtos.auth_dto import (
     RegisterRequest, LoginRequest, UserInfoResponse,
     SendResetCodeRequest, ResetPasswordRequest,
+    ChangePasswordRequest,
 )
 from app.application.use_cases.auth_use_case import AuthUseCase
 from app.core.database import get_db
@@ -64,6 +65,16 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     _reset_codes.pop(body.email, None)
     await db.commit()
     return {"message": "密码已重置，请使用新密码登录"}
+
+
+@router.post("/change-password")
+async def change_password(body: ChangePasswordRequest, current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """修改密码 — 需验证原密码"""
+    repo = MySQLUserRepository(db)
+    use_case = AuthUseCase(repo)
+    await use_case.change_password(current_user.user_id, body.old_password, body.new_password, body.confirm_password)
+    await db.commit()
+    return {"message": "密码修改成功"}
 
 
 @router.get("/me", response_model=UserInfoResponse)

@@ -5,16 +5,18 @@ import { Typography, Tag } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import type { ArticleListItem } from "../../domain/types";
+import { stripMarkdown } from "../../utils/stripMarkdown";
 
 const { Text, Paragraph } = Typography;
 
 interface Props {
   article: ArticleListItem;
   keyword?: string;
+  highlightStockCode?: string;
   onDelete?: (id: string) => void;
 }
 
-const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
+const ArticleCard: React.FC<Props> = ({ article, keyword, highlightStockCode, onDelete }) => {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -39,6 +41,7 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
 
   return (
     <div
+      className="article-card-hoverable"
       onClick={handleClick}
       style={{
         background: "#ffffff",
@@ -46,10 +49,10 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
         borderRadius: 6,
         padding: "16px 20px",
         cursor: "pointer",
-        transition: "box-shadow 0.15s ease, border-color 0.15s ease",
+        transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = "rgba(23,23,23,0.08) 0px 4px 12px";
+        e.currentTarget.style.boxShadow = "rgba(50,50,93,0.15) 0px 8px 24px -8px";
         e.currentTarget.style.borderColor = "#d6d9fc";
       }}
       onMouseLeave={(e) => {
@@ -73,6 +76,7 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
         </Text>
         {onDelete && (
           <DeleteOutlined
+            className="article-delete-btn"
             onClick={handleDelete}
             style={{
               color: "#b0b8c4",
@@ -80,6 +84,8 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
               marginLeft: 12,
               marginTop: 2,
               flexShrink: 0,
+              opacity: 0,
+              transition: "color 0.2s ease, opacity 0.2s ease",
             }}
           />
         )}
@@ -97,8 +103,25 @@ const ArticleCard: React.FC<Props> = ({ article, keyword, onDelete }) => {
           fontFeatureSettings: "'ss01' on",
         }}
       >
-        {article.highlight ? highlightText(article.highlight) : article.summary}
+        {article.highlight ? highlightText(stripMarkdown(article.highlight)) : stripMarkdown(article.summary || "")}
       </Paragraph>
+
+      {/* 高亮股票标签 */}
+      {highlightStockCode && article.stocks.some(s => s.code === highlightStockCode) && (
+        <Tag
+          style={{
+            margin: 0,
+            marginBottom: 8,
+            borderRadius: 4,
+            border: "1px solid #d6d9fc",
+            background: "rgba(83,58,253,0.08)",
+            color: "#533afd",
+            fontSize: 11,
+          }}
+        >
+          {article.stocks.find(s => s.code === highlightStockCode)?.name} ({highlightStockCode})
+        </Tag>
+      )}
 
       {/* 行业标签 + 日期 */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

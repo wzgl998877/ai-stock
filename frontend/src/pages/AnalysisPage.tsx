@@ -1,7 +1,7 @@
 /** AnalysisPage — AI 事件分析主页面（ChatGPT 对话式布局） */
 
 import React, { useState, useCallback, useRef } from "react";
-import { Button, Modal, Input, Typography, message } from "antd";
+import { Modal, Input, Typography, message } from "antd";
 import MessageList from "../components/chat/MessageList";
 import AnalysisInput from "../components/analysis/AnalysisInput";
 import EventTypeSelector from "../components/analysis/EventTypeSelector";
@@ -10,7 +10,7 @@ import { EventType } from "../domain/types";
 import type { SSEEvent } from "../domain/types";
 import { useChatStore } from "../store/chatStore";
 import * as chatService from "../services/chatService";
-import { saveArticle } from "../services/analysisService";
+import { saveArticle, extractIndustries } from "../services/analysisService";
 
 const { Text } = Typography;
 
@@ -48,6 +48,7 @@ const AnalysisPage: React.FC = () => {
   const [editIndustries, setEditIndustries] = useState<string[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [extractingIndustries, setExtractingIndustries] = useState(false);
 
   const isStreaming = streamingMessageId !== null;
   const isIdle = messages.length === 0 && !isStreaming;
@@ -153,11 +154,32 @@ const AnalysisPage: React.FC = () => {
   }, [doneStreaming]);
 
   // === 保存到知识库 ===
-  const handleOpenSaveModal = () => {
+  const handleOpenSaveModal = async () => {
     setEditTitle(title || "");
     setEditSummary(summary || "");
-    setEditIndustries([...industries]);
-    setSaveModalOpen(true);
+
+    if (industries.length === 0) {
+      // 行业标签为空，自动调用 LLM 提取
+      setExtractingIndustries(true);
+      setSaveModalOpen(true);
+      try {
+        const lastAiMsg = [...messages].reverse().find((m) => m.role === "assistant");
+        const result = await extractIndustries(lastAiMsg?.content || "", eventType ?? "");
+        if (result.industries.length > 0) {
+          setEditIndustries(result.industries);
+        } else {
+          setEditIndustries([]);
+        }
+      } catch (err) {
+        message.warning("行业提取失败，请手动输入");
+        setEditIndustries([]);
+      } finally {
+        setExtractingIndustries(false);
+      }
+    } else {
+      setEditIndustries([...industries]);
+      setSaveModalOpen(true);
+    }
   };
 
   const handleSave = async () => {
@@ -253,43 +275,10 @@ const AnalysisPage: React.FC = () => {
       ) : (
         <>
           {/* 分析态：消息列表 */}
-          <MessageList />
-
-          {/* 分析完成后：保存/丢弃 */}
-          {!isStreaming && messages.length > 0 && (
-            <div
-              style={{
-                maxWidth: 860,
-                width: "100%",
-                margin: "0 auto",
-                padding: "0 24px 8px",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 12,
-              }}
-            >
-              <Button
-                onClick={handleNewChat}
-                size="small"
-                style={{
-                  borderRadius: 4,
-                  borderColor: "#e5edf5",
-                  color: "#64748d",
-                  fontWeight: 400,
-                }}
-              >
-                新对话
-              </Button>
-              <Button
-                type="primary"
-                size="small"
-                onClick={handleOpenSaveModal}
-                style={{ borderRadius: 4, fontWeight: 400 }}
-              >
-                保存到知识库
-              </Button>
-            </div>
-          )}
+        <MessageList
+          onNewChat={handleNewChat}
+          onSaveToKnowledge={handleOpenSaveModal}
+        />
         </>
       )}
 
@@ -381,26 +370,34 @@ const AnalysisPage: React.FC = () => {
           >
             关联行业标签（至少1个）
           </Text>
-          <IndustryTag
-            industries={editIndustries}
-            editable
-            onRemove={(idx) => {
-              const next = [...editIndustries];
-              next.splice(idx, 1);
-              setEditIndustries(next);
-            }}
-          />
-          {editIndustries.length === 0 && (
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#ea2261",
-                marginTop: 8,
-                display: "block",
-              }}
-            >
-              请至少保留1个行业标签
+          {extractingIndustries ? (
+            <Text style={{ fontSize: 13, color: "#64748d" }}>
+              正在自动识别行业...
             </Text>
+          ) : (
+            <>
+              <IndustryTag
+                industries={editIndustries}
+                editable
+                onRemove={(idx) => {
+                  const next = [...editIndustries];
+                  next.splice(idx, 1);
+                  setEditIndustries(next);
+                }}
+              />
+              {editIndustries.length === 0 && (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#ea2261",
+                    marginTop: 8,
+                    display: "block",
+                  }}
+                >
+                  请至少保留1个行业标签
+                </Text>
+              )}
+            </>
           )}
         </div>
       </Modal>

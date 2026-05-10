@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 from app.domain.entities.article import Article, IndustryRef, StockRef
 from app.domain.repositories.article_repo import ArticleRepository
 from app.domain.repositories.industry_repo import IndustryRepository
-from app.core.exceptions import EmptyContentError
+from app.core.exceptions import EmptyContentError, NoIndustryTagError
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 class SaveArticleUseCase:
     """保存分析结果到知识库"""
 
-    def __init__(self, article_repo: ArticleRepository):
+    def __init__(self, article_repo: ArticleRepository, industry_repo: IndustryRepository):
         self.article_repo = article_repo
+        self.industry_repo = industry_repo
 
     async def execute(
         self,
@@ -36,6 +37,18 @@ class SaveArticleUseCase:
         if not summary or not summary.strip():
             summary = content.strip()[:80] + "..." if len(content.strip()) > 80 else content.strip()
 
+        # 将行业名称转换为行业代码
+        resolved_codes: List[str] = []
+        for name in industry_codes:
+            industry = await self.industry_repo.find_by_name(name)
+            if industry:
+                resolved_codes.append(industry.industry_code)
+            else:
+                logger.warning("行业名称未找到对应代码: %s", name)
+
+        if not resolved_codes:
+            raise NoIndustryTagError()
+
         article = Article(
             article_id="",
             title=title,
@@ -50,7 +63,7 @@ class SaveArticleUseCase:
                     industry_code=code,
                     chain_level=None,
                 )
-                for code in industry_codes
+                for code in resolved_codes
             ],
             stocks=[
                 StockRef(stock_code=s["code"], stock_name=s["name"])
@@ -59,7 +72,7 @@ class SaveArticleUseCase:
         )
 
         saved = await self.article_repo.save(article)
-        logger.info("文章已保存: id=%s, title=%s, industries=%d", saved.article_id, title, len(industry_codes))
+        logger.info("文章已保存: id=%s, title=%s, industries=%d", saved.article_id, title, len(resolved_codes))
         return saved
 
 
