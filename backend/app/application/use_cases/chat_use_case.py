@@ -326,14 +326,18 @@ class ChatUseCase:
             elif msg.role == "assistant":
                 messages.append({"role": "assistant", "content": msg.content})
 
-        if not messages:
-            return messages
-
         # 判断是否为追问（历史中已有 assistant 回复）
         has_prior_response = any(m.role == "assistant" for m in recent[:-1]) if len(recent) > 1 else False
 
-        # 当前用户输入
-        user_content = raw_text or messages[-1].get("content", "")
+        # 当前用户输入（优先使用 raw_text，新会话时 messages 为空必须依赖 raw_text）
+        user_content = raw_text or (messages[-1].get("content", "") if messages else "")
+
+        # 新会话无历史消息时，构建 user 消息
+        if not messages and user_content:
+            messages.append({"role": "user", "content": user_content})
+
+        if not messages:
+            return messages
 
         if has_prior_response:
             # === 追问模式 ===

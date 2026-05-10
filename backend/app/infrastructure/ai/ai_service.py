@@ -45,6 +45,9 @@ class AIService:
         2. 多轮对话：传入 history_messages 完整消息列表
 
         返回 StreamChunk，type 为 "content"（正式回答）或 "reasoning"（推理思考）。
+
+        注意：部分推理模型（如 GLM-5.1）可能只输出 reasoning_content 而无 content，
+        此时自动将 reasoning_content 作为 content 输出，确保前端有内容展示。
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -71,6 +74,7 @@ class AIService:
 
         logger.info("AI 流式调用开始: url=%s, model=%s, messages数=%d", url, use_model, len(messages))
         chunk_count = 0
+        has_content = False  # 跟踪是否有正式 content 输出
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -82,6 +86,8 @@ class AIService:
 
                     raw_line_count = 0
                     first_data_line_found = False
+                    reasoning_buffer = ""  # 缓存 reasoning_content，在无 content 时使用
+
                     async for line in response.aiter_lines():
                         raw_line_count += 1
                         line = line.strip()
@@ -129,11 +135,13 @@ class AIService:
                             reasoning = delta.get("reasoning_content", "")
                             if reasoning:
                                 chunk_count += 1
+                                reasoning_buffer += reasoning
                                 yield StreamChunk("reasoning", reasoning)
 
                             # 正式回答内容
                             content = delta.get("content", "")
                             if content:
+                                has_content = True
                                 chunk_count += 1
                                 yield StreamChunk("content", content)
 
@@ -141,7 +149,15 @@ class AIService:
                             logger.warning("SSE chunk 解析跳过: %s, data=%s", e, data[:200])
                             continue
 
-            logger.info("AI 流式调用完成: 共 %d 个有效 chunk", chunk_count)
+                    # 流结束后，如果只有 reasoning_content 没有 content，将 reasoning 作为 content 输出
+                    if not has_content and reasoning_buffer:
+                        logger.warning(
+                            "LLM 只输出了 reasoning_content（%d 字符），没有 content。将 reasoning 作为 content 输出。",
+                            len(reasoning_buffer),
+                        )
+                        yield StreamChunk("content", reasoning_buffer)
+
+            logger.info("AI 流式调用完成: 共 %d 个有效 chunk, has_content=%s", chunk_count, has_content)
         except Exception as e:
             logger.error("AI 流式调用异常: %s", e, exc_info=True)
             raise
@@ -241,6 +257,9 @@ class AIService:
 
         logger.info("AI stream_chat_with_tools: url=%s, model=%s, tools=%d", url, use_model, len(tools or []))
 
+        has_content = False
+        reasoning_buffer = ""
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as response:
                 if response.status_code != 200:
@@ -268,10 +287,19 @@ class AIService:
 
                         reasoning = delta.get("reasoning_content", "")
                         if reasoning:
+                            reasoning_buffer += reasoning
                             yield StreamChunk("reasoning", reasoning)
 
                         content = delta.get("content", "")
                         if content:
+                            has_content = True
                             yield StreamChunk("content", content)
                     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
+
+                # 如果只有 reasoning_content 没有 content，将 reasoning 作为 content 输出
+                if not has_content and reasoning_buffer:
+                    logger.warning(
+                        "stream_chat_with_tools: LLM 只输出了 reasoning_content，将 reasoning 作为 content 输出",
+                    )
+                    yield StreamChunk("content", reasoning_buffer)
