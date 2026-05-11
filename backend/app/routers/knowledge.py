@@ -43,11 +43,11 @@ def _article_to_list_item(article) -> ArticleListItemDTO:
         title=article.title,
         summary=article.summary,
         industries=[
-            IndustryRefDTO(code=ind.industry_code, name="", chain_level=ind.chain_level)
+            IndustryRefDTO(code=ind.industry_code, name="", chain_level=ind.chain_level, sentiment=ind.sentiment)
             for ind in article.industries
         ],
         stocks=[
-            StockRefDTO(code=st.stock_code, name=st.stock_name)
+            StockRefDTO(code=st.stock_code, name=st.stock_name, sentiment=st.sentiment)
             for st in article.stocks
         ],
         event_type=article.event_type,
@@ -105,7 +105,7 @@ async def list_articles(
             result = await db.execute(stmt)
             ind_map = {m.industry_code: m.name for m in result.scalars().all()}
             dto.industries = [
-                IndustryRefDTO(code=ind.industry_code, name=ind_map.get(ind.industry_code, ""), chain_level=ind.chain_level)
+                IndustryRefDTO(code=ind.industry_code, name=ind_map.get(ind.industry_code, ""), chain_level=ind.chain_level, sentiment=ind.sentiment)
                 for ind in article.industries
             ]
         items.append(dto)
@@ -134,7 +134,7 @@ async def get_article_detail(article_id: str, db: AsyncSession = Depends(get_db)
         result = await db.execute(stmt)
         ind_map = {m.industry_code: m.name for m in result.scalars().all()}
         industries = [
-            IndustryRefDTO(code=ind.industry_code, name=ind_map.get(ind.industry_code, ""), chain_level=ind.chain_level)
+            IndustryRefDTO(code=ind.industry_code, name=ind_map.get(ind.industry_code, ""), chain_level=ind.chain_level, sentiment=ind.sentiment)
             for ind in article.industries
         ]
 
@@ -146,7 +146,7 @@ async def get_article_detail(article_id: str, db: AsyncSession = Depends(get_db)
         event_type=article.event_type,
         raw_input=article.raw_input,
         industries=industries,
-        stocks=[StockRefDTO(code=s.stock_code, name=s.stock_name) for s in article.stocks],
+        stocks=[StockRefDTO(code=s.stock_code, name=s.stock_name, sentiment=s.sentiment) for s in article.stocks],
         chain_table=article.chain_table,
         created_at=article.create_time.isoformat() if article.create_time else "",
         updated_at=article.update_time.isoformat() if article.update_time else "",

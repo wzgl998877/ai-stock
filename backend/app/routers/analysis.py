@@ -23,6 +23,7 @@ from app.application.dtos.analysis_dto import (
     ExtractMetadataRequestDTO,
     ExtractMetadataResponseDTO,
     ExtractedStockDTO,
+    IndustrySentimentDTO,
 )
 from app.application.use_cases.analyze_event import AnalyzeEventUseCase
 from app.application.use_cases.manage_article import SaveArticleUseCase
@@ -208,9 +209,10 @@ async def save_article(
         event_type=body.event_type,
         raw_input=body.raw_input,
         industry_codes=body.industry_codes,
-        stock_refs=[{"code": s.code, "name": s.name} for s in body.stock_refs],
+        stock_refs=[{"code": s.code, "name": s.name, "sentiment": s.sentiment} for s in body.stock_refs],
         chain_table=body.chain_table,
         user_id=current_user.user_id,
+        industry_sentiments=[{"name": item.name, "sentiment": item.sentiment} for item in (body.industry_sentiments or [])],
     )
     await db.commit()
 
@@ -266,7 +268,14 @@ async def extract_metadata(body: ExtractMetadataRequestDTO, request: Request, db
     )
     return ExtractMetadataResponseDTO(
         industries=result["industries"],
-        stocks=[ExtractedStockDTO(code=s["code"], name=s["name"]) for s in result["stocks"]],
+        industry_sentiments=[
+            IndustrySentimentDTO(name=item["name"], sentiment=item["sentiment"])
+            for item in result.get("industry_sentiments", [])
+        ],
+        stocks=[
+            ExtractedStockDTO(code=s["code"], name=s["name"], sentiment=s.get("sentiment"))
+            for s in result["stocks"]
+        ],
     )
 
 

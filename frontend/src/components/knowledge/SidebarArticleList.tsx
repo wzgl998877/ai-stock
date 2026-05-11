@@ -1,6 +1,6 @@
 /** SidebarArticleList — 侧边栏 + 文章列表共用组件 */
 
-import React from "react";
+import React, { useState } from "react";
 import { Typography, Empty, Input } from "antd";
 import ArticleCard from "./ArticleCard";
 import type { ArticleListItem } from "../../domain/types";
@@ -25,7 +25,7 @@ interface Props {
   emptyArticlesTextUnselected?: string;
   onSelectItem: (code: string) => void;
   onDelete: (id: string) => void;
-  renderSidebarItemExtra?: (item: SidebarItem) => React.ReactNode;
+  renderSidebarItemExtra?: (item: SidebarItem, hovered: boolean) => React.ReactNode;
   sidebarSearch?: { value: string; onChange: (val: string) => void; placeholder?: string };
 }
 
@@ -43,12 +43,14 @@ const SidebarArticleList: React.FC<Props> = ({
   renderSidebarItemExtra,
   sidebarSearch,
 }) => {
+  const [hoveredCode, setHoveredCode] = useState<string | null>(null);
+
   return (
     <div style={{ display: "flex", gap: 20 }}>
       {/* 左侧：列表 */}
       <div
         style={{
-          width: 200,
+          width: 240,
           flexShrink: 0,
           borderRight: "1px solid #e5edf5",
           paddingRight: 16,
@@ -88,16 +90,19 @@ const SidebarArticleList: React.FC<Props> = ({
           <div className="sidebar-list" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {items.map((item) => {
               const isActive = selectedCode === item.code;
+              const isHovered = hoveredCode === item.code;
               return (
                 <div
                   key={item.code}
                   className="sidebar-item"
                   onClick={() => onSelectItem(item.code)}
+                  onMouseEnter={() => setHoveredCode(item.code)}
+                  onMouseLeave={() => setHoveredCode(null)}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 4,
                     cursor: "pointer",
-                    background: isActive ? "rgba(83,58,253,0.08)" : "transparent",
+                    background: isActive ? "rgba(83,58,253,0.08)" : isHovered ? "#f7f9fc" : "transparent",
                     borderLeft: isActive ? "2px solid #533afd" : "2px solid transparent",
                   }}
                 >
@@ -114,7 +119,7 @@ const SidebarArticleList: React.FC<Props> = ({
                     </Text>
                     <Text style={{ fontSize: 11, color: "#b0b8c4" }}>{item.article_count}</Text>
                   </div>
-                  {renderSidebarItemExtra?.(item) ?? item.extra}
+                  {renderSidebarItemExtra ? renderSidebarItemExtra(item, isHovered) : item.extra}
                 </div>
               );
             })}

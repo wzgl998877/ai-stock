@@ -139,12 +139,13 @@ const ArticleDetailPage: React.FC = () => {
               key={idx}
               style={{
                 borderRadius: 4,
-                border: "1px solid #d6d9fc",
-                background: "rgba(83,58,253,0.05)",
-                color: "#533afd",
+                border: `1px solid ${ind.sentiment === "positive" ? "#86efac" : ind.sentiment === "negative" ? "#fca5a5" : "#d6d9fc"}`,
+                background: ind.sentiment === "positive" ? "rgba(34,197,94,0.08)" : ind.sentiment === "negative" ? "rgba(239,68,68,0.08)" : "rgba(83,58,253,0.05)",
+                color: ind.sentiment === "positive" ? "#16a34a" : ind.sentiment === "negative" ? "#dc2626" : "#533afd",
                 fontSize: 12,
               }}
             >
+              {ind.sentiment === "positive" ? "利好 " : ind.sentiment === "negative" ? "利空 " : ""}
               {ind.name || ind.code}
             </Tag>
           ))}
@@ -177,11 +178,45 @@ const ArticleDetailPage: React.FC = () => {
           >
             本文关联股票
           </Text>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {article.stocks.map((s, idx) => (
-              <StockCodeLink key={idx} code={s.code} name={s.name} />
-            ))}
-          </div>
+          {/* 利好分组 */}
+          {article.stocks.some(s => s.sentiment === "positive") && (
+            <div style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: "#16a34a", fontWeight: 500, marginBottom: 6, display: "block" }}>
+                利好
+              </Text>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {article.stocks.filter(s => s.sentiment === "positive").map((s, idx) => (
+                  <StockCodeLink key={`p-${idx}`} code={s.code} name={s.name} />
+                ))}
+              </div>
+            </div>
+          )}
+          {/* 利空分组 */}
+          {article.stocks.some(s => s.sentiment === "negative") && (
+            <div style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: "#dc2626", fontWeight: 500, marginBottom: 6, display: "block" }}>
+                利空
+              </Text>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {article.stocks.filter(s => s.sentiment === "negative").map((s, idx) => (
+                  <StockCodeLink key={`n-${idx}`} code={s.code} name={s.name} />
+                ))}
+              </div>
+            </div>
+          )}
+          {/* 未标注 */}
+          {article.stocks.some(s => !s.sentiment) && (
+            <div>
+              <Text style={{ fontSize: 12, color: "#64748d", fontWeight: 500, marginBottom: 6, display: "block" }}>
+                其他
+              </Text>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {article.stocks.filter(s => !s.sentiment).map((s, idx) => (
+                  <StockCodeLink key={`u-${idx}`} code={s.code} name={s.name} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -29,6 +29,7 @@ class SaveArticleUseCase:
         stock_refs: List[dict],
         chain_table: Optional[List[dict]] = None,
         user_id: str = "default",
+        industry_sentiments: Optional[List[dict]] = None,
     ) -> Article:
         if not content or not content.strip():
             raise EmptyContentError()
@@ -39,15 +40,25 @@ class SaveArticleUseCase:
 
         # 将行业名称转换为行业代码
         resolved_codes: List[str] = []
+        name_to_code: dict = {}
         for name in industry_codes:
             industry = await self.industry_repo.find_by_name(name)
             if industry:
                 resolved_codes.append(industry.industry_code)
+                name_to_code[name] = industry.industry_code
             else:
                 logger.warning("行业名称未找到对应代码: %s", name)
 
         if not resolved_codes:
             raise NoIndustryTagError()
+
+        # 构建行业 sentiment 映射
+        ind_sent_map: dict = {}
+        if industry_sentiments:
+            for item in industry_sentiments:
+                code = name_to_code.get(item.get("name", ""))
+                if code:
+                    ind_sent_map[code] = item.get("sentiment")
 
         article = Article(
             article_id="",
@@ -62,11 +73,12 @@ class SaveArticleUseCase:
                 IndustryRef(
                     industry_code=code,
                     chain_level=None,
+                    sentiment=ind_sent_map.get(code),
                 )
                 for code in resolved_codes
             ],
             stocks=[
-                StockRef(stock_code=s["code"], stock_name=s["name"])
+                StockRef(stock_code=s["code"], stock_name=s["name"], sentiment=s.get("sentiment"))
                 for s in stock_refs
             ],
         )

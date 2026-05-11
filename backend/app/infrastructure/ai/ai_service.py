@@ -35,7 +35,7 @@ class AIService:
         history_messages: list[dict] | None = None,
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
+        max_tokens: int = 100000,
     ) -> AsyncGenerator[StreamChunk, None]:
         """
         流式调用 LLM，逐块 yield StreamChunk。
@@ -163,7 +163,7 @@ class AIService:
             raise
 
     async def generate_title_and_summary(
-        self, system_prompt: str, user_message: str,
+        self, system_prompt: str, user_message: str, max_tokens: int = 256,
     ) -> tuple[str, str]:
         """非流式调用 LLM，生成标题和摘要（降级方案）"""
         url = f"{self.base_url}/chat/completions"
@@ -179,10 +179,10 @@ class AIService:
             ],
             "stream": False,
             "temperature": 0.3,
-            "max_tokens": 256,
+            "max_tokens": max_tokens,
         }
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:
                 raise RuntimeError(f"AI API error: {response.status_code}")
@@ -235,7 +235,7 @@ class AIService:
         tool_choice: str = "auto",
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
+        max_tokens: int = 100000,
     ) -> AsyncGenerator[StreamChunk, None]:
         """流式调用 LLM，支持 function calling + 流式输出"""
         url = f"{self.base_url}/chat/completions"

@@ -8,6 +8,7 @@ class IndustryRef:
     """文章关联的行业引用"""
     industry_code: str
     chain_level: Optional[int] = None
+    sentiment: Optional[str] = None
 
 
 @dataclass
@@ -15,6 +16,7 @@ class StockRef:
     """文章关联的股票引用"""
     stock_code: str
     stock_name: str
+    sentiment: Optional[str] = None
 
 
 @dataclass

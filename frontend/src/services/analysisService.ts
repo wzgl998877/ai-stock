@@ -71,7 +71,8 @@ export async function saveArticle(data: {
   event_type: string;
   raw_input: string;
   industry_codes: string[];
-  stock_refs: { code: string; name: string }[];
+  industry_sentiments: { name: string; sentiment: string }[];
+  stock_refs: { code: string; name: string; sentiment?: string | null }[];
   chain_table: unknown[] | null;
 }) {
   const res = await api.post(`${BASE}/articles`, data);
@@ -168,7 +169,8 @@ export async function extractMetadata(
   eventType: string
 ): Promise<{
   industries: string[];
-  stocks: { code: string; name: string }[];
+  industry_sentiments: { name: string; sentiment: string }[];
+  stocks: { code: string; name: string; sentiment?: string | null }[];
 }> {
   const res = await api.post(`${BASE}/extract-metadata`, {
     content,

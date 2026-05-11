@@ -46,8 +46,10 @@ const AddToWatchlistButton: React.FC<AddToWatchlistButtonProps> = ({ stockCode, 
 
   return (
     <>
-      <Button icon={<StarOutlined />} size="small" onClick={handleOpen}>
-        加入自选股
+      <Button icon={<StarOutlined />} size="small" type="text" onClick={handleOpen}
+        style={{ fontSize: 12, color: '#94a3b8', padding: '0 4px', height: 20 }}
+      >
+        加入自选
       </Button>
       <Modal
         title="选择分组"

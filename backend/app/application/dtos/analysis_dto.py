@@ -16,6 +16,7 @@ class SaveArticleDTO(BaseModel):
     event_type: str = Field(..., description="事件类型")
     raw_input: str = Field(..., max_length=500, description="用户原始输入")
     industry_codes: List[str] = Field(..., description="行业代码列表", examples=[["410000", "240000"]])
+    industry_sentiments: Optional[List["IndustrySentimentDTO"]] = Field(None, description="行业利好/利空标注")
     stock_refs: List["StockRefDTO"] = Field(default_factory=list, description="股票引用列表")
     chain_table: Optional[List[dict]] = Field(None, description="产业链传导表")
 
@@ -23,6 +24,7 @@ class SaveArticleDTO(BaseModel):
 class StockRefDTO(BaseModel):
     code: str = Field(..., description="股票代码")
     name: str = Field(..., description="股票名称")
+    sentiment: Optional[str] = Field(None, description="利好/利空: positive/negative")
 
 
 class SimilarityRequestDTO(BaseModel):
@@ -63,8 +65,15 @@ class ExtractMetadataRequestDTO(BaseModel):
 class ExtractedStockDTO(BaseModel):
     code: str = Field(..., description="股票代码")
     name: str = Field(..., description="股票名称")
+    sentiment: Optional[str] = Field(None, description="利好/利空: positive/negative")
+
+
+class IndustrySentimentDTO(BaseModel):
+    name: str = Field(..., description="行业名称")
+    sentiment: str = Field(..., description="利好/利空: positive/negative")
 
 
 class ExtractMetadataResponseDTO(BaseModel):
     industries: List[str] = Field(..., description="申万一级行业名称列表")
+    industry_sentiments: List[IndustrySentimentDTO] = Field(default_factory=list, description="行业利好/利空标注")
     stocks: List[ExtractedStockDTO] = Field(..., description="关联股票列表")

@@ -31,11 +31,11 @@ def _to_entity(model: ArticleModel) -> Article:
         analysis_data=getattr(model, 'analysis_data', None),
         status=getattr(model, 'status', 'completed'),
         industries=[
-            IndustryRef(industry_code=ai.industry_code, chain_level=ai.chain_level)
+            IndustryRef(industry_code=ai.industry_code, chain_level=ai.chain_level, sentiment=ai.sentiment)
             for ai in model.article_industries
         ],
         stocks=[
-            StockRef(stock_code=ast.stock_code, stock_name=ast.stock_name)
+            StockRef(stock_code=ast.stock_code, stock_name=ast.stock_name, sentiment=ast.sentiment)
             for ast in model.article_stocks
         ],
         create_time=model.create_time,
@@ -71,6 +71,7 @@ class MySQLArticleRepository(ArticleRepository):
                 article_id=model.article_id,
                 industry_code=ind.industry_code,
                 chain_level=ind.chain_level,
+                sentiment=ind.sentiment,
             )
             self.session.add(ai)
 
@@ -81,6 +82,7 @@ class MySQLArticleRepository(ArticleRepository):
                 article_id=model.article_id,
                 stock_code=st.stock_code,
                 stock_name=st.stock_name,
+                sentiment=st.sentiment,
             )
             self.session.add(ast)
 

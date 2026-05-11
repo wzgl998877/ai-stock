@@ -43,10 +43,10 @@ const StockView: React.FC<Props> = ({
     article_count: s.article_count,
   }));
 
-  const renderStockExtra = (item: SidebarItem) => (
-    <div style={{ marginTop: 4, display: "flex", gap: 4, alignItems: "center" }}>
+  const renderStockExtra = (item: SidebarItem, hovered: boolean) => (
+    <div style={{ marginTop: 4, display: "flex", gap: 4, alignItems: "center", justifyContent: "space-between" }}>
       <Text style={{ fontSize: 11, color: "#b0b8c4" }}>{item.code}</Text>
-      <AddToWatchlistButton stockCode={item.code} stockName={item.name} />
+      {hovered && <AddToWatchlistButton stockCode={item.code} stockName={item.name} />}
     </div>
   );
 

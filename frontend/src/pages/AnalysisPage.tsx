@@ -1,13 +1,13 @@
 /** AnalysisPage — AI 事件分析主页面（ChatGPT 对话式布局） */
 
 import React, { useState, useCallback, useRef } from "react";
-import { Modal, Input, Typography, message } from "antd";
+import { Modal, Input, Typography, message, Tag } from "antd";
 import MessageList from "../components/chat/MessageList";
 import AnalysisInput from "../components/analysis/AnalysisInput";
 import EventTypeSelector from "../components/analysis/EventTypeSelector";
 import IndustryTag from "../components/common/IndustryTag";
 import { EventType } from "../domain/types";
-import type { SSEEvent } from "../domain/types";
+import type { SSEEvent, IndustrySentiment } from "../domain/types";
 import { useChatStore } from "../store/chatStore";
 import * as chatService from "../services/chatService";
 import { saveArticle, extractMetadata } from "../services/analysisService";
@@ -46,7 +46,8 @@ const AnalysisPage: React.FC = () => {
   const [editTitle, setEditTitle] = useState("");
   const [editSummary, setEditSummary] = useState("");
   const [editIndustries, setEditIndustries] = useState<string[]>([]);
-  const [editStocks, setEditStocks] = useState<{ code: string; name: string }[]>([]);
+  const [editIndustrySentiments, setEditIndustrySentiments] = useState<IndustrySentiment[]>([]);
+  const [editStocks, setEditStocks] = useState<{ code: string; name: string; sentiment?: string | null }[]>([]);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extractingIndustries, setExtractingIndustries] = useState(false);
@@ -168,6 +169,7 @@ const AnalysisPage: React.FC = () => {
     try {
       const result = await extractMetadata(content, eventType ?? "");
       setEditIndustries(result.industries);
+      setEditIndustrySentiments(result.industry_sentiments || []);
       setEditStocks(result.stocks);
     } catch {
       // 降级：如果后端提取失败，尝试用 SSE 流中的行业数据
@@ -196,6 +198,7 @@ const AnalysisPage: React.FC = () => {
         event_type: eventType ?? EventType.OTHER,
         raw_input: firstUserMsg?.content || "",
         industry_codes: editIndustries,
+        industry_sentiments: editIndustrySentiments,
         stock_refs: editStocks,
         chain_table: null,
       });
@@ -380,8 +383,11 @@ const AnalysisPage: React.FC = () => {
                 editable
                 onRemove={(idx) => {
                   const next = [...editIndustries];
-                  next.splice(idx, 1);
+                  const removed = next.splice(idx, 1);
                   setEditIndustries(next);
+                  if (removed.length > 0) {
+                    setEditIndustrySentiments(prev => prev.filter(s => s.name !== removed[0]));
+                  }
                 }}
               />
               {editIndustries.length === 0 && (
@@ -396,33 +402,75 @@ const AnalysisPage: React.FC = () => {
                   请至少保留1个行业标签
                 </Text>
               )}
+              {/* 行业利好/利空标注 */}
+              {editIndustries.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Text style={{ fontSize: 13, color: "#273951", display: "block", marginBottom: 8 }}>
+                    行业影响（点击可切换）
+                  </Text>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {editIndustries.map((name) => {
+                      const sent = editIndustrySentiments.find(s => s.name === name)?.sentiment;
+                      const isPos = sent === "positive";
+                      const isNeg = sent === "negative";
+                      return (
+                        <div key={name} style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          background: isPos ? "#f0fdf4" : isNeg ? "#fef2f2" : "#f6f9fc",
+                          border: `1px solid ${isPos ? "#86efac" : isNeg ? "#fca5a5" : "#e5edf5"}`,
+                          borderRadius: 4, padding: "3px 8px", cursor: "pointer",
+                        }}
+                          onClick={() => {
+                            setEditIndustrySentiments(prev => {
+                              const exists = prev.find(s => s.name === name);
+                              if (exists) return prev.map(s => s.name === name ? { ...s, sentiment: s.sentiment === "positive" ? "negative" : "positive" } : s);
+                              return [...prev, { name, sentiment: "positive" }];
+                            });
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, color: "#273951" }}>{name}</Text>
+                          <Tag style={{
+                            fontSize: 11, margin: 0, padding: "0 8px", borderRadius: 3, border: "none",
+                            background: isPos ? "#22c55e" : isNeg ? "#ef4444" : "#cbd5e1",
+                            color: "#fff",
+                          }}>
+                            {isPos ? "利好" : isNeg ? "利空" : "未判断"}
+                          </Tag>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {editStocks.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      color: "#273951",
-                      marginBottom: 6,
-                      display: "block",
-                    }}
-                  >
-                    关联股票（{editStocks.length}只）
+                  <Text style={{ fontSize: 14, color: "#273951", marginBottom: 6, display: "block" }}>
+                    关联股票（{editStocks.length}只，点击可切换）
                   </Text>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {editStocks.map((s) => (
-                      <Text
-                        key={s.code}
-                        style={{
-                          fontSize: 12,
-                          color: "#3b82f6",
-                          background: "#eff6ff",
-                          padding: "2px 8px",
-                          borderRadius: 4,
+                    {editStocks.map((s) => {
+                      const isPos = s.sentiment === "positive";
+                      const isNeg = s.sentiment === "negative";
+                      return (
+                        <div key={s.code} style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          background: isPos ? "#f0fdf4" : isNeg ? "#fef2f2" : "#eff6ff",
+                          border: `1px solid ${isPos ? "#86efac" : isNeg ? "#fca5a5" : "#bfdbfe"}`,
+                          borderRadius: 4, padding: "3px 8px", cursor: "pointer",
                         }}
-                      >
-                        {s.name}({s.code})
-                      </Text>
-                    ))}
+                          onClick={() => setEditStocks(prev => prev.map(st => st.code === s.code ? { ...st, sentiment: st.sentiment === "positive" ? "negative" : "positive" } : st))}
+                        >
+                          <Text style={{ fontSize: 12, color: "#3b82f6" }}>{s.name}({s.code})</Text>
+                          <Tag style={{
+                            fontSize: 11, margin: 0, padding: "0 8px", borderRadius: 3, border: "none",
+                            background: isPos ? "#22c55e" : isNeg ? "#ef4444" : "#cbd5e1",
+                            color: "#fff",
+                          }}>
+                            {isPos ? "利好" : isNeg ? "利空" : "未判断"}
+                          </Tag>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

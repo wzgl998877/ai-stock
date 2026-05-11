@@ -19,6 +19,7 @@ export interface StockReference {
   code: string;
   name: string;
   industry?: string;
+  sentiment?: string | null;
 }
 
 // === 文章（列表项） ===
@@ -26,11 +27,13 @@ export interface IndustryRefItem {
   code: string;
   name: string;
   chain_level?: number | null;
+  sentiment?: string | null;
 }
 
 export interface StockRefItem {
   code: string;
   name: string;
+  sentiment?: string | null;
 }
 
 export interface ArticleListItem {
@@ -128,6 +131,12 @@ export interface ChatMessageType {
   created_at: string;
 }
 
+// === 行业利好/利空标注 ===
+export interface IndustrySentiment {
+  name: string;
+  sentiment: string;  // positive / negative
+}
+
 // === 保存文章请求 ===
 export interface SaveArticleDTO {
   title: string;
@@ -136,6 +145,7 @@ export interface SaveArticleDTO {
   event_type: string;
   raw_input: string;
   industry_codes: string[];
+  industry_sentiments: IndustrySentiment[];
   stock_refs: StockReference[];
   chain_table: ChainTableEntry[] | null;
 }

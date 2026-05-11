@@ -36,44 +36,72 @@ class MetadataExtractor:
 
     async def extract(self, content: str, event_type: str) -> dict:
         """
-        一次调用同时提取行业和股票。
+        从 AI 输出内容中提取行业和股票（含利好/利空标注），全部用正则，不额外调 LLM。
 
         Returns:
-            {"industries": ["电子", "汽车", ...], "stocks": [{"code": "600519", "name": "贵州茅台"}, ...]}
+            {"industries": ["电子", ...], "industry_sentiments": [{"name": "电子", "sentiment": "positive"}, ...],
+             "stocks": [{"code": "600519", "name": "贵州茅台", "sentiment": "positive"}, ...]}
         """
-        industries = await self._extract_industries(content, event_type)
-        stocks = self._extract_stocks(content)
-        # 统一去重（保持顺序）
-        industries = list(dict.fromkeys(industries))
+        # 1. 解析器提取行业（含利好/利空方向）
+        parse_result = self.parser.parse(content, event_type)
+        raw_industries = parse_result.industry_names
+        raw_sentiments = parse_result.industry_sentiments
+
+        # 2. 校验行业名（申万标准）
+        validated = self._validate_industries(raw_industries)
+        if not validated:
+            logger.info("[行业提取] 解析器未提取到有效行业，降级调用 LLM")
+            validated = await self._extract_industries_by_llm(content)
+            raw_sentiments = []  # LLM 兜底时无方向信息
+
+        # 3. 过滤 sentiments 只保留校验通过的行业名
+        validated_set = set(validated)
+        industry_sentiments = [
+            s for s in raw_sentiments
+            if s["name"] in validated_set or any(v in s["name"] or s["name"] in v for v in validated_set)
+        ]
+        # 模糊匹配修正：把 sentiments 中的 name 替换为校验后的标准名
+        name_map = {}
+        for s in industry_sentiments:
+            for v in validated:
+                if v in s["name"] or s["name"] in v:
+                    name_map[s["name"]] = v
+                    break
+        industry_sentiments = [
+            {"name": name_map.get(s["name"], s["name"]), "sentiment": s["sentiment"]}
+            for s in industry_sentiments
+        ]
+
+        # 4. 提取股票并根据上下文判断利好/利空
+        stocks = self._extract_stocks_with_sentiment(content)
+
+        # 5. 统一去重
+        industries = list(dict.fromkeys(validated))
         seen_codes: set[str] = set()
         unique_stocks = []
         for s in stocks:
             if s["code"] not in seen_codes:
                 seen_codes.add(s["code"])
                 unique_stocks.append(s)
-        return {"industries": industries, "stocks": unique_stocks}
+        seen_industries = set()
+        unique_industry_sentiments = []
+        for item in industry_sentiments:
+            if item["name"] not in seen_industries:
+                seen_industries.add(item["name"])
+                unique_industry_sentiments.append(item)
+
+        logger.info("[元数据提取] 行业=%s, sentiments=%s, stocks=%d",
+                    industries, unique_industry_sentiments, len(unique_stocks))
+
+        return {
+            "industries": industries,
+            "industry_sentiments": unique_industry_sentiments,
+            "stocks": unique_stocks,
+        }
 
     # ================================================================
-    # 行业提取
+    # 行业校验 + LLM 兜底
     # ================================================================
-
-    async def _extract_industries(self, content: str, event_type: str) -> List[str]:
-        """行业提取：解析器（正则） → 标准校验 → LLM 兜底"""
-
-        # 1. 先用解析器从结构化章节提取
-        parse_result = self.parser.parse(content, event_type)
-        raw_industries = parse_result.industry_names
-
-        # 2. 校验：只保留匹配申万标准的行业名
-        validated = self._validate_industries(raw_industries)
-        if validated:
-            logger.info("[行业提取] 解析器提取+校验通过: %s", validated)
-            return validated
-
-        # 3. 兜底：调 LLM 提取
-        logger.info("[行业提取] 解析器未提取到有效行业，降级调用 LLM")
-        llm_industries = await self._extract_industries_by_llm(content)
-        return llm_industries
 
     def _validate_industries(self, names: List[str]) -> List[str]:
         """校验行业名是否属于 31 个申万一级行业（支持模糊匹配），去重"""
@@ -135,8 +163,49 @@ class MetadataExtractor:
         return [s.strip() for s in items if s.strip() in SW_INDUSTRIES_SET]
 
     # ================================================================
-    # 股票提取（纯数据库匹配，不依赖 LLM）
+    # 股票提取 + sentiment（纯正则，根据章节上下文判断）
     # ================================================================
+
+    def _extract_stocks_with_sentiment(self, content: str) -> List[dict]:
+        """提取股票并根据所在章节判断利好/利空"""
+        stocks = self._extract_stocks(content)
+        if not stocks:
+            return stocks
+
+        # 按 ## 拆分内容为段落，记录每段所属章节
+        sections = re.split(r"^##\s+", content, flags=re.MULTILINE)
+        # 构建"章节名 → 正文"映射
+        section_map: dict[str, str] = {}
+        for section_text in sections:
+            lines = section_text.strip().split("\n", 1)
+            if not lines:
+                continue
+            section_title = lines[0].strip()
+            section_body = lines[1].strip() if len(lines) > 1 else ""
+            if section_title.startswith("TITLE:") or section_title.startswith("SUMMARY:"):
+                continue
+            section_map[section_title] = section_body
+
+        # 获取"受损行业"章节的正文
+        negative_body = section_map.get("受损行业", "")
+        # 合并"受益行业"和"推荐关注股票"作为 positive 区域
+        positive_bodies = [
+            section_map.get("受益行业", ""),
+            section_map.get("推荐关注股票", ""),
+        ]
+        positive_body = "\n".join(positive_bodies)
+
+        for s in stocks:
+            code = s["code"]
+            name = s["name"]
+            # 先检查是否在"受损行业"段落中
+            if name in negative_body or code in negative_body:
+                s["sentiment"] = "negative"
+            # 再检查是否在"受益行业"/"推荐关注股票"段落中
+            elif name in positive_body or code in positive_body:
+                s["sentiment"] = "positive"
+
+        return stocks
 
     def _extract_stocks(self, content: str) -> List[dict]:
         """
@@ -174,9 +243,6 @@ class MetadataExtractor:
                 found[stock["code"]] = {"code": stock["code"], "name": name}
 
         return list(found.values())
-
-
-# === 行业提取 LLM Prompt ===
 _INDUSTRY_PROMPT = """你是一名行业分析助手。请从以下文章内容中提取涉及的申万一级行业名称。
 
 ## 要求

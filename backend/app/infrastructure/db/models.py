@@ -191,6 +191,7 @@ class ArticleIndustry(AuditMixin, Base):
         String(10), ForeignKey("t_industry.industry_code"), nullable=False
     )
     chain_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sentiment: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("article_id", "industry_code", name="uk_article_industry"),
@@ -215,6 +216,7 @@ class ArticleStock(AuditMixin, Base):
         String(10), ForeignKey("t_stock.stock_code"), nullable=False
     )
     stock_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    sentiment: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("article_id", "stock_code", name="uk_article_stock"),

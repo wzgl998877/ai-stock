@@ -8,11 +8,13 @@ class IndustryRefDTO(BaseModel):
     code: str
     name: str
     chain_level: Optional[int] = None
+    sentiment: Optional[str] = None
 
 
 class StockRefDTO(BaseModel):
     code: str
     name: str
+    sentiment: Optional[str] = None
 
 
 class ArticleListItemDTO(BaseModel):

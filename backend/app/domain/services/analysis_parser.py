@@ -14,6 +14,7 @@ class AnalysisParseResult:
         self.summary: Optional[str] = None
         self.raw_content: str = ""
         self.industry_names: List[str] = []
+        self.industry_sentiments: List[Dict[str, str]] = []  # [{"name": "电子", "sentiment": "positive"}, ...]
         self.chain_table_raw: Optional[str] = None
         self.is_degraded: bool = False  # 降级标记
 
@@ -69,38 +70,40 @@ class AnalysisParser:
         return result
 
     def _extract_industry_names(self, result: AnalysisParseResult) -> None:
-        """从受益行业/受损行业章节提取行业名称"""
+        """从受益行业/受损行业章节提取行业名称，保留利好/利空方向"""
         names = set()
-        for section_key in ["受益行业", "受损行业"]:
+        sentiments = []  # [{"name": "电子", "sentiment": "positive"}, ...]
+
+        for section_key, sentiment in [("受益行业", "positive"), ("受损行业", "negative")]:
             content = result.sections.get(section_key, "")
             for line in content.split("\n"):
                 line = line.strip()
                 if not line:
                     continue
-                # 去掉常见的前缀符号: "- ", "* ", "**", "1. ", "1) " 等
                 cleaned = re.sub(r"^[-*•]\s*", "", line)
                 cleaned = re.sub(r"^\*+", "", cleaned)
                 cleaned = re.sub(r"^\d+[\.\)、]\s*", "", cleaned)
-                # 去掉尾部 markdown 加粗标记
                 cleaned = re.sub(r"\*+$", "", cleaned)
 
-                # 格式1: "行业名称：逻辑" 或 "行业名称:逻辑"
+                # 格式1: "行业名称：逻辑"
                 match = re.match(r"^([^：:]+)[：:]", cleaned)
                 if match:
                     name = match.group(1).strip()
                     if self._is_valid_industry_name(name):
                         names.add(name)
+                        sentiments.append({"name": name, "sentiment": sentiment})
                         continue
 
-                # 格式2: "**行业名称**：逻辑" 或 "**行业名称**"
+                # 格式2: "**行业名称**"
                 match = re.match(r"^\*{1,2}([^*]+)\*{1,2}", cleaned)
                 if match:
                     name = match.group(1).strip()
                     if self._is_valid_industry_name(name):
                         names.add(name)
+                        sentiments.append({"name": name, "sentiment": sentiment})
                         continue
 
-        # 从产业链传导表中提取行业名称
+        # 从产业链传导表中提取行业名称（带方向）
         chain_content = result.sections.get("产业链传导表", "")
         if chain_content:
             for line in chain_content.split("\n"):
@@ -111,12 +114,21 @@ class AnalysisParser:
                     continue
                 cells = [c.strip() for c in line.split("|")]
                 cells = [c for c in cells if c]
-                if len(cells) >= 2:
+                if len(cells) >= 4:
+                    industry_name = cells[1].strip()
+                    direction = cells[3].strip()
+                    if self._is_valid_industry_name(industry_name):
+                        names.add(industry_name)
+                        sent = "positive" if direction == "受益" else "negative" if direction == "受损" else None
+                        if sent:
+                            sentiments.append({"name": industry_name, "sentiment": sent})
+                elif len(cells) >= 2:
                     industry_name = cells[1].strip()
                     if self._is_valid_industry_name(industry_name):
                         names.add(industry_name)
 
         result.industry_names = list(names)
+        result.industry_sentiments = sentiments
 
     @staticmethod
     def _is_valid_industry_name(name: str) -> bool:
