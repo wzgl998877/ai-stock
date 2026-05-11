@@ -39,7 +39,8 @@
       "Bash(npx vite:*)",
       "Bash(/d/tool/node/node:*)",
       "Bash(LC_ALL=C sort:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "WebFetch(domain:akshare.akfamily.xyz)"
     ]
   }
 }
