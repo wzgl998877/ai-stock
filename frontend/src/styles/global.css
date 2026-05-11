@@ -338,3 +338,12 @@ body {
   padding-bottom: 4px;
   border-bottom: 1px solid transparent;
 }
+
+/* === 自选股页面 === */
+.watchlist-row-alt > td {
+  background: #fafbfc;
+}
+
+.watchlist-row-alt:hover > td {
+  background: #f0f1ff !important;
+}

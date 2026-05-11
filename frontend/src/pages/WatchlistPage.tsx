@@ -2,9 +2,12 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Modal, Input, Popconfirm, Empty, Spin, Tag, Alert,
-  Table, Pagination, message, Select,
+  Table, Pagination, message, Select, Tooltip,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
+  ReloadOutlined, ClockCircleOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useWatchlistStore, type WatchlistStock } from '../store/watchlistStore';
 import { stockDataService } from '../services/stockDataService';
@@ -24,8 +27,32 @@ const formatDate = (v: string | null | undefined) => {
 };
 
 const getChangeColor = (value: number | null | undefined) => {
-  if (value === undefined || value === null) return '#999';
-  return value >= 0 ? '#f5222d' : '#52c41a';
+  if (value === undefined || value === null) return '#64748d';
+  return value >= 0 ? '#cf1322' : '#389e0d';
+};
+
+const getChangeBg = (value: number | null | undefined) => {
+  if (value === undefined || value === null) return 'transparent';
+  if (value === 0) return 'transparent';
+  return value > 0
+    ? 'rgba(207, 19, 34, 0.06)'
+    : 'rgba(56, 158, 13, 0.06)';
+};
+
+const formatRefreshTime = (ts: number | null) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+};
+
+const isMarketOpen = () => {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const t = h * 60 + m;
+  return (t >= 570 && t <= 690) || (t >= 780 && t <= 900);
 };
 
 // ---------------------------------------------------------------------------
@@ -35,38 +62,68 @@ const getChangeColor = (value: number | null | undefined) => {
 const WatchlistPage: React.FC = () => {
   const navigate = useNavigate();
   const {
-    groups, loading, error, fetchGroups, createGroup, renameGroup,
-    deleteGroup, removeStock, addStock, loadQuotes,
+    groups, loading, refreshing, error, lastRefreshTime,
+    fetchGroups, createGroup, renameGroup,
+    deleteGroup, removeStock, addStock, refreshQuotes,
   } = useWatchlistStore();
 
-  // Selected group
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
-
-  // Pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-
-  // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [renameModalOpen, setRenameModalOpen] = useState<{ id: number; name: string } | null>(null);
-
-  // Search within group
   const [searchText, setSearchText] = useState('');
-
-  // Add stock modal
   const [addModalOpen, setAddModalOpen] = useState(false);
+
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     fetchGroups();
   }, []);
 
-  // Auto-select first group when groups load
+  // Auto-select first group
   useEffect(() => {
     if (groups.length > 0 && !selectedGroupId) {
       setSelectedGroupId(groups[0].id);
     }
   }, [groups]);
+
+  // Reset selectedGroupId if group was deleted
+  useEffect(() => {
+    if (selectedGroupId && !groups.find((g) => g.id === selectedGroupId)) {
+      setSelectedGroupId(groups.length > 0 ? groups[0].id : null);
+    }
+  }, [groups, selectedGroupId]);
+
+  // Auto-refresh: trading hours 30s, off-hours stop
+  useEffect(() => {
+    const tick = () => {
+      if (isMarketOpen()) {
+        refreshQuotes();
+      } else if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+
+    // Start immediately if market open
+    if (isMarketOpen()) {
+      refreshTimerRef.current = setInterval(tick, 30000);
+    }
+
+    // Re-check every 60s to resume when market opens
+    const guard = setInterval(() => {
+      if (isMarketOpen() && !refreshTimerRef.current) {
+        refreshTimerRef.current = setInterval(tick, 30000);
+      }
+    }, 60000);
+
+    return () => {
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+      clearInterval(guard);
+    };
+  }, [refreshQuotes]);
 
   const handleCreate = async () => {
     if (!newGroupName.trim()) return;
@@ -93,6 +150,10 @@ const WatchlistPage: React.FC = () => {
     message.success(`已添加 ${stockName}`);
   }, [addStock]);
 
+  const handleManualRefresh = useCallback(() => {
+    refreshQuotes();
+  }, [refreshQuotes]);
+
   // -----------------------------------------------------------------------
   // Derived data
   // -----------------------------------------------------------------------
@@ -100,7 +161,6 @@ const WatchlistPage: React.FC = () => {
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
   const stocks = selectedGroup?.stocks ?? [];
 
-  // Filter by search
   const filteredStocks = searchText
     ? stocks.filter(
         (s) =>
@@ -109,41 +169,47 @@ const WatchlistPage: React.FC = () => {
       )
     : stocks;
 
-  // Paginate
   const total = filteredStocks.length;
   const pagedStocks = filteredStocks.slice((page - 1) * pageSize, page * pageSize);
 
-  // Reset page when group or search changes
   useEffect(() => {
     setPage(1);
   }, [selectedGroupId, searchText]);
+
+  // Check if quotes data is available
+  const hasQuotes = stocks.some((s) => s.price != null);
 
   // -----------------------------------------------------------------------
   // Table columns
   // -----------------------------------------------------------------------
 
-  const linkStyle = { color: '#533afd', textDecoration: 'none' };
+  const linkStyle = { color: '#533afd', textDecoration: 'none', cursor: 'pointer' };
+
+  const numStyle: React.CSSProperties = {
+    fontVariantNumeric: 'tabular-nums',
+    letterSpacing: '-0.01em',
+  };
 
   const columns: ColumnsType<WatchlistStock> = [
     {
       title: '序号',
       key: 'index',
-      width: 60,
+      width: 52,
       align: 'center',
       render: (_: unknown, _record: WatchlistStock, index: number) => (
-        <span style={{ color: '#999' }}>{(page - 1) * pageSize + index + 1}</span>
+        <span style={{ color: '#999', fontSize: 12 }}>{(page - 1) * pageSize + index + 1}</span>
       ),
     },
     {
       title: '代码',
       dataIndex: 'code',
       key: 'code',
-      width: 90,
+      width: 88,
       fixed: 'left',
       align: 'center',
       render: (code: string) => (
         <a onClick={() => navigate(`/market/stock/${code}`)} style={linkStyle}>
-          <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{code}</span>
+          {code}
         </a>
       ),
     },
@@ -164,50 +230,65 @@ const WatchlistPage: React.FC = () => {
       title: '最新价',
       dataIndex: 'price',
       key: 'price',
-      width: 90,
+      width: 96,
       align: 'center',
-      render: (v: number | undefined) => (
-        <span style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums' }}>
-          {formatNumber(v)}
-        </span>
-      ),
+      render: (v: number | undefined) => {
+        const hasValue = v !== undefined && v !== null;
+        return (
+          <span style={{
+            ...numStyle,
+            fontWeight: 600,
+            fontSize: 14,
+            color: hasValue ? '#061b31' : '#bfbfbf',
+          }}>
+            {formatNumber(v)}
+          </span>
+        );
+      },
     },
     {
       title: '涨跌幅',
       dataIndex: 'change_pct',
       key: 'change_pct',
-      width: 90,
+      width: 100,
       align: 'center',
-      render: (v: number | undefined) => (
-        <span
-          style={{
-            fontFamily: 'monospace',
-            fontVariantNumeric: 'tabular-nums',
+      render: (v: number | undefined) => {
+        const hasValue = v !== undefined && v !== null;
+        return (
+          <span style={{
+            ...numStyle,
+            fontWeight: 600,
+            fontSize: 13,
             color: getChangeColor(v),
-            fontWeight: 500,
-          }}
-        >
-          {v === undefined || v === null ? '--' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`}
-        </span>
-      ),
+            background: getChangeBg(v),
+            padding: '2px 8px',
+            borderRadius: 4,
+          }}>
+            {hasValue ? `${v > 0 ? '+' : ''}${v.toFixed(2)}%` : '--'}
+          </span>
+        );
+      },
+      sorter: (a, b) => (a.change_pct ?? -999) - (b.change_pct ?? -999),
     },
     {
       title: '涨跌额',
       dataIndex: 'change_amount',
       key: 'change_amount',
-      width: 90,
+      width: 88,
       align: 'center',
-      render: (v: number | undefined) => (
-        <span
-          style={{
-            fontFamily: 'monospace',
-            fontVariantNumeric: 'tabular-nums',
+      render: (v: number | undefined) => {
+        const hasValue = v !== undefined && v !== null;
+        return (
+          <span style={{
+            ...numStyle,
+            fontSize: 13,
+            fontWeight: 500,
             color: getChangeColor(v),
-          }}
-        >
-          {v === undefined || v === null ? '--' : `${v > 0 ? '+' : ''}${v.toFixed(2)}`}
-        </span>
-      ),
+          }}>
+            {hasValue ? `${v > 0 ? '+' : ''}${v.toFixed(2)}` : '--'}
+          </span>
+        );
+      },
     },
     {
       title: '所属行业',
@@ -215,26 +296,30 @@ const WatchlistPage: React.FC = () => {
       key: 'industry',
       width: 100,
       align: 'center',
-      render: (v: string | undefined) => (v ? <Tag>{v}</Tag> : <span style={{ color: '#999' }}>--</span>),
+      render: (v: string | undefined) => (
+        v
+          ? <Tag style={{ margin: 0, fontSize: 12, borderRadius: 4, color: '#273951', borderColor: '#e5edf5', background: '#f5f7fa' }}>{v}</Tag>
+          : <span style={{ color: '#bfbfbf', fontSize: 12 }}>--</span>
+      ),
     },
     {
       title: '自选日',
       dataIndex: 'add_time',
       key: 'add_time',
-      width: 110,
+      width: 100,
       align: 'center',
       render: (v: string | undefined) => (
-        <span style={{ color: '#64748d', fontSize: 12 }}>{formatDate(v)}</span>
+        <span style={{ color: '#061b31', fontSize: 13 }}>{formatDate(v)}</span>
       ),
     },
     {
       title: '自选价',
       dataIndex: 'add_price',
       key: 'add_price',
-      width: 90,
+      width: 88,
       align: 'center',
       render: (v: number | undefined) => (
-        <span style={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', color: '#64748d' }}>
+        <span style={{ ...numStyle, color: '#061b31', fontSize: 14, fontWeight: 500 }}>
           {formatNumber(v)}
         </span>
       ),
@@ -245,26 +330,34 @@ const WatchlistPage: React.FC = () => {
       width: 100,
       align: 'center',
       render: (_: unknown, record) => {
-        if (record.price == null || record.add_price == null) return '--';
+        if (record.price == null || record.add_price == null) {
+          return <span style={{ color: '#bfbfbf', fontSize: 12 }}>--</span>;
+        }
         const pct = ((record.price - record.add_price) / record.add_price) * 100;
         return (
-          <span
-            style={{
-              fontFamily: 'monospace',
-              fontVariantNumeric: 'tabular-nums',
-              color: getChangeColor(pct),
-              fontWeight: 500,
-            }}
-          >
+          <span style={{
+            ...numStyle,
+            fontWeight: 600,
+            fontSize: 13,
+            color: getChangeColor(pct),
+            background: getChangeBg(pct),
+            padding: '2px 8px',
+            borderRadius: 4,
+          }}>
             {pct > 0 ? '+' : ''}{pct.toFixed(2)}%
           </span>
         );
+      },
+      sorter: (a, b) => {
+        const pctA = (a.price != null && a.add_price != null) ? ((a.price - a.add_price) / a.add_price) : -999;
+        const pctB = (b.price != null && b.add_price != null) ? ((b.price - b.add_price) / b.add_price) : -999;
+        return pctA - pctB;
       },
     },
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 64,
       fixed: 'right',
       align: 'center',
       render: (_: unknown, record) => (
@@ -272,7 +365,7 @@ const WatchlistPage: React.FC = () => {
           title={`确定将 ${record.name} 移出分组？`}
           onConfirm={() => handleRemoveStock(selectedGroupId!, record.code, record.name)}
         >
-          <Button type="link" size="small" danger style={{ padding: 0 }}>
+          <Button type="link" size="small" danger style={{ padding: 0, fontSize: 12 }}>
             移除
           </Button>
         </Popconfirm>
@@ -326,15 +419,19 @@ const WatchlistPage: React.FC = () => {
     setAddSearchValue('');
     setAddSearchOptions([]);
     setSelectedStock(null);
-    await loadQuotes();
-  }, [selectedGroupId, selectedStock, handleAddStock, loadQuotes]);
+    await refreshQuotes();
+  }, [selectedGroupId, selectedStock, handleAddStock, refreshQuotes]);
 
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
 
   if (loading && groups.length === 0) {
-    return <div style={{ textAlign: 'center', padding: 80 }}><Spin tip="加载自选股..." /></div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)', background: '#f5f7fa' }}>
+        <Spin tip="加载自选股..." />
+      </div>
+    );
   }
 
   return (
@@ -343,9 +440,11 @@ const WatchlistPage: React.FC = () => {
       <div style={{
         width: 220, background: '#fff', borderRight: '1px solid #e5edf5',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
+        boxShadow: 'rgba(23,23,23,0.06) 3px 0 6px',
       }}>
         <div style={{
-          padding: '16px 12px', borderBottom: '1px solid #e5edf5',
+          padding: '16px 16px', borderBottom: '1px solid #e5edf5',
+          display: 'flex', alignItems: 'center', gap: 8,
         }}>
           <span style={{ fontWeight: 600, fontSize: 15, color: '#061b31' }}>自选分组</span>
         </div>
@@ -366,13 +465,14 @@ const WatchlistPage: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                 <span style={{
                   fontSize: 14, color: group.id === selectedGroupId ? '#533afd' : '#061b31',
+                  fontWeight: group.id === selectedGroupId ? 500 : 400,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {group.name}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                <Tag style={{ margin: 0, fontSize: 11, lineHeight: '16px' }}>{group.stock_count}</Tag>
+                <Tag style={{ margin: 0, fontSize: 11, lineHeight: '16px', borderRadius: 4 }}>{group.stock_count}</Tag>
                 {!group.is_default && (
                   <>
                     <EditOutlined
@@ -398,13 +498,11 @@ const WatchlistPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Add group button at bottom */}
-        <div style={{
-          padding: '12px 16px', borderTop: '1px solid #e5edf5',
-        }}>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid #e5edf5' }}>
           <Button
             type="dashed" block icon={<PlusOutlined />}
             onClick={() => setCreateModalOpen(true)}
+            style={{ borderRadius: 4 }}
           >
             新增分组
           </Button>
@@ -413,29 +511,55 @@ const WatchlistPage: React.FC = () => {
 
       {/* ---- Right: Stock table ---- */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header */}
+        {/* Header bar */}
         <div style={{
           padding: '12px 20px', background: '#fff', borderBottom: '1px solid #e5edf5',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          boxShadow: 'rgba(23,23,23,0.06) 0 3px 6px',
+          position: 'relative', zIndex: 10,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 16, color: '#061b31' }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: '#061b31', fontWeight: 600 }}>
               {selectedGroup?.name ?? '自选股'}
             </h3>
             <span style={{ color: '#999', fontSize: 13 }}>
-              共 {filteredStocks.length} 只股票
+              共 {filteredStocks.length} 只
             </span>
+            {!hasQuotes && stocks.length > 0 && (
+              <Tag color="warning" style={{ fontSize: 11, borderRadius: 4 }}>暂无行情</Tag>
+            )}
           </div>
 
-          <Input
-            placeholder="搜索代码/名称"
-            prefix={<SearchOutlined style={{ color: '#999' }} />}
-            style={{ width: 220 }}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            allowClear
-            size="small"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {lastRefreshTime && (
+              <Tooltip title="行情刷新时间">
+                <span style={{ color: '#999', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <ClockCircleOutlined style={{ fontSize: 12 }} />
+                  {formatRefreshTime(lastRefreshTime)}
+                </span>
+              </Tooltip>
+            )}
+            <Tooltip title="刷新行情">
+              <Button
+                type="text"
+                icon={<ReloadOutlined spin={refreshing} />}
+                onClick={handleManualRefresh}
+                size="small"
+                style={{ color: '#533afd' }}
+              >
+                刷新
+              </Button>
+            </Tooltip>
+            <Input
+              placeholder="搜索代码/名称"
+              prefix={<SearchOutlined style={{ color: '#999' }} />}
+              style={{ width: 200 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
+              size="small"
+            />
+          </div>
         </div>
 
         {/* Error alert */}
@@ -456,7 +580,7 @@ const WatchlistPage: React.FC = () => {
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             >
               {!searchText && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)} style={{ borderRadius: 4 }}>
                   添加股票
                 </Button>
               )}
@@ -467,15 +591,26 @@ const WatchlistPage: React.FC = () => {
                 columns={columns}
                 dataSource={pagedStocks}
                 rowKey="code"
-                size="small"
+                size="middle"
                 pagination={false}
-                scroll={{ x: 900 }}
+                scroll={{ x: 1000 }}
                 tableLayout="fixed"
+                style={{ background: '#fff', borderRadius: 6, overflow: 'hidden' }}
+                loading={refreshing}
+                rowClassName={(_, index) =>
+                  index % 2 === 0 ? '' : 'watchlist-row-alt'
+                }
               />
               <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0',
               }}>
-                <Button type="dashed" icon={<PlusOutlined />} size="small" onClick={() => setAddModalOpen(true)}>
+                <Button
+                  type="dashed"
+                  icon={<PlusOutlined />}
+                  size="small"
+                  onClick={() => setAddModalOpen(true)}
+                  style={{ borderRadius: 4 }}
+                >
                   添加股票
                 </Button>
                 <Pagination

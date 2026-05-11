@@ -82,31 +82,51 @@ async def get_stock_quotes_batch(
     body: dict,
     repo: StockDataRepository = Depends(_get_repo),
 ):
-    """批量获取多只股票最新行情（含行业）。"""
+    """批量获取多只股票实时行情（优先实时数据源，数据库补充行业）。"""
     codes = body.get("codes", [])
     if not codes:
         raise HTTPException(status_code=400, detail="codes 不能为空")
     if len(codes) > 100:
         raise HTTPException(status_code=400, detail="最多支持 100 只股票")
 
-    quotes = await repo.get_quotes_batch(codes)
-    all_stocks = await repo.get_all_stocks()
-    stock_map = {s.code: s for s in all_stocks}
+    # 1. 实时数据源获取行情
+    from app.infrastructure.market.batch_quote_client import get_batch_quotes
+    live_quotes = await get_batch_quotes(codes)
 
-    from decimal import Decimal
+    # 2. 行业信息从数据库补充
+    stock_map = {}
+    try:
+        all_stocks = await repo.get_all_stocks()
+        stock_map = {s.code: s for s in all_stocks}
+    except Exception:
+        pass
 
     items = []
-    for q in quotes:
-        stock = stock_map.get(q.code)
-        items.append({
-            "code": q.code,
-            "price": float(q.price) if q.price else None,
-            "change_pct": float(q.change_pct) if q.change_pct else None,
-            "change_amount": float(q.change_amount) if q.change_amount else None,
-            "industry": getattr(stock, "industry_name", None) if stock else None,
-            "quote_time": q.quote_time.isoformat() if q.quote_time else None,
-            "data_source": q.data_source,
-        })
+    for code in codes:
+        q = live_quotes.get(code)
+        stock = stock_map.get(code)
+        industry = getattr(stock, "industry_name", None) if stock else None
+
+        if q and q.price is not None:
+            items.append({
+                "code": q.code,
+                "price": q.price,
+                "change_pct": q.change_pct,
+                "change_amount": q.change_amount,
+                "industry": industry,
+                "quote_time": q.quote_time,
+                "data_source": q.data_source,
+            })
+        else:
+            items.append({
+                "code": code,
+                "price": None,
+                "change_pct": None,
+                "change_amount": None,
+                "industry": industry,
+                "quote_time": None,
+                "data_source": "",
+            })
 
     return {"data": {"items": items}}
 
