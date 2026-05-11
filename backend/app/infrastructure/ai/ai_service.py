@@ -73,6 +73,10 @@ class AIService:
         }
 
         logger.info("AI 流式调用开始: url=%s, model=%s, messages数=%d", url, use_model, len(messages))
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "?")
+            content = msg.get("content", "")
+            logger.info("  messages[%d] role=%s, content前200字=%s", i, role, (content or "")[:200])
         chunk_count = 0
         has_content = False  # 跟踪是否有正式 content 输出
 
@@ -82,6 +86,8 @@ class AIService:
                     if response.status_code != 200:
                         error_body = await response.aread()
                         logger.error("AI API error: status=%d body=%s", response.status_code, error_body[:500])
+                        if response.status_code in (502, 503, 504):
+                            raise RuntimeError(f"AI 服务暂时不可用（{response.status_code}），请稍后重试")
                         raise RuntimeError(f"AI API error: {response.status_code} - {error_body[:200]}")
 
                     raw_line_count = 0
@@ -256,6 +262,10 @@ class AIService:
             payload["tool_choice"] = tool_choice
 
         logger.info("AI stream_chat_with_tools: url=%s, model=%s, tools=%d", url, use_model, len(tools or []))
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "?")
+            content = msg.get("content", "")
+            logger.info("  messages[%d] role=%s, content前200字=%s", i, role, (content or "")[:200])
 
         has_content = False
         reasoning_buffer = ""
