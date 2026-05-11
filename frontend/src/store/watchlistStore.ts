@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { watchlistService } from '../services/watchlistService';
+import { watchlistService, stockQuoteService } from '../services/watchlistService';
 
 export interface WatchlistGroup {
   id: number;
@@ -15,8 +15,11 @@ export interface WatchlistStock {
   name: string;
   price?: number;
   change_pct?: number;
+  change_amount?: number;
   industry?: string;
   signal?: string;
+  add_price?: number;
+  add_time?: string;
 }
 
 interface WatchlistState {
@@ -30,9 +33,10 @@ interface WatchlistState {
   deleteGroup: (groupId: number) => Promise<void>;
   addStock: (groupId: number, stockCode: string, stockName: string) => Promise<void>;
   removeStock: (groupId: number, stockCode: string) => Promise<void>;
+  loadQuotes: () => Promise<void>;
 }
 
-export const useWatchlistStore = create<WatchlistState>((set) => ({
+export const useWatchlistStore = create<WatchlistState>((set, get) => ({
   groups: [],
   loading: false,
   error: null,
@@ -42,17 +46,59 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
     try {
       const res = await watchlistService.getGroups();
       set({ groups: res.data.groups || [], loading: false });
+      // 加载行情数据
+      await get().loadQuotes();
     } catch (e: any) {
       set({ error: e.message || '加载自选股失败', loading: false });
+    }
+  },
+
+  loadQuotes: async () => {
+    const { groups } = get();
+    // 收集所有股票代码
+    const codes = new Set<string>();
+    for (const group of groups) {
+      for (const stock of group.stocks) {
+        codes.add(stock.code);
+      }
+    }
+    if (codes.size === 0) return;
+
+    try {
+      const res = await stockQuoteService.getQuotesBatch(Array.from(codes));
+      const quoteMap = new Map<string, any>();
+      for (const item of res.data.items) {
+        quoteMap.set(item.code, item);
+      }
+
+      // 更新 groups 中的行情数据
+      const updatedGroups = groups.map((group) => ({
+        ...group,
+        stocks: group.stocks.map((stock) => {
+          const quote = quoteMap.get(stock.code);
+          if (!quote) return stock;
+          return {
+            ...stock,
+            price: quote.price ?? stock.price,
+            change_pct: quote.change_pct ?? stock.change_pct,
+            change_amount: quote.change_amount ?? stock.change_amount,
+            industry: quote.industry ?? stock.industry,
+          };
+        }),
+      }));
+      set({ groups: updatedGroups });
+    } catch (e: any) {
+      // 行情加载失败不阻塞主流程
+      console.error('加载行情失败:', e);
     }
   },
 
   createGroup: async (name: string) => {
     try {
       await watchlistService.createGroup(name);
-      // 重新获取分组列表
       const res = await watchlistService.getGroups();
       set({ groups: res.data.groups || [] });
+      await get().loadQuotes();
     } catch (e: any) {
       set({ error: e.message });
     }
@@ -63,6 +109,7 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
       await watchlistService.renameGroup(groupId, name);
       const res = await watchlistService.getGroups();
       set({ groups: res.data.groups || [] });
+      await get().loadQuotes();
     } catch (e: any) {
       set({ error: e.message });
     }
@@ -73,6 +120,7 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
       await watchlistService.deleteGroup(groupId);
       const res = await watchlistService.getGroups();
       set({ groups: res.data.groups || [] });
+      await get().loadQuotes();
     } catch (e: any) {
       set({ error: e.message });
     }
@@ -81,9 +129,9 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
   addStock: async (groupId: number, stockCode: string, stockName: string) => {
     try {
       await watchlistService.addStock(groupId, stockCode, stockName);
-      // 刷新分组数据
       const res = await watchlistService.getGroups();
       set({ groups: res.data.groups || [] });
+      await get().loadQuotes();
     } catch (e: any) {
       set({ error: e.message });
     }
@@ -94,6 +142,7 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
       await watchlistService.removeStock(groupId, stockCode);
       const res = await watchlistService.getGroups();
       set({ groups: res.data.groups || [] });
+      await get().loadQuotes();
     } catch (e: any) {
       set({ error: e.message });
     }

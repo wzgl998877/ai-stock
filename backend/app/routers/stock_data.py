@@ -77,6 +77,40 @@ async def get_all_stocks(
     return {"data": result}
 
 
+@router.post("/quotes/batch")
+async def get_stock_quotes_batch(
+    body: dict,
+    repo: StockDataRepository = Depends(_get_repo),
+):
+    """批量获取多只股票最新行情（含行业）。"""
+    codes = body.get("codes", [])
+    if not codes:
+        raise HTTPException(status_code=400, detail="codes 不能为空")
+    if len(codes) > 100:
+        raise HTTPException(status_code=400, detail="最多支持 100 只股票")
+
+    quotes = await repo.get_quotes_batch(codes)
+    all_stocks = await repo.get_all_stocks()
+    stock_map = {s.code: s for s in all_stocks}
+
+    from decimal import Decimal
+
+    items = []
+    for q in quotes:
+        stock = stock_map.get(q.code)
+        items.append({
+            "code": q.code,
+            "price": float(q.price) if q.price else None,
+            "change_pct": float(q.change_pct) if q.change_pct else None,
+            "change_amount": float(q.change_amount) if q.change_amount else None,
+            "industry": getattr(stock, "industry_name", None) if stock else None,
+            "quote_time": q.quote_time.isoformat() if q.quote_time else None,
+            "data_source": q.data_source,
+        })
+
+    return {"data": {"items": items}}
+
+
 # -------------------------------------------------------------------
 # 动态路由 /{code}
 # -------------------------------------------------------------------

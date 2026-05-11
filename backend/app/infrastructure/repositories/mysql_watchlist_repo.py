@@ -1,6 +1,7 @@
 """MySQL Repository implementation for watchlist (自选股)."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import select, func, delete
@@ -33,6 +34,7 @@ def _item_to_entity(model: WatchlistItemModel) -> WatchlistItem:
         stock_name=model.stock_name,
         add_time=model.add_time,
         create_time=model.create_time,
+        add_price=float(model.add_price) if model.add_price else None,
     )
 
 
@@ -118,6 +120,7 @@ class MySQLWatchlistRepository(WatchlistRepository):
             group_id=item.group_id,
             stock_code=item.stock_code,
             stock_name=item.stock_name,
+            add_price=Decimal(str(item.add_price)) if item.add_price is not None else None,
         )
         self.session.add(model)
         await self.session.flush()

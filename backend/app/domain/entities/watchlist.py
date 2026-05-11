@@ -34,3 +34,4 @@ class WatchlistItem:
     change_pct: Optional[float] = None
     industry: Optional[str] = None
     signal: Optional[str] = None
+    add_price: Optional[float] = None

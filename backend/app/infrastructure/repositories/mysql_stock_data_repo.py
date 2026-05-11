@@ -265,6 +265,49 @@ class MySQLStockDataRepository(StockDataRepository):
 
         return _to_market_quote(all_quotes[0])
 
+    async def get_quotes_batch(self, codes: List[str]) -> List[MarketQuote]:
+        """批量获取多只股票最新行情，按 code 分组后取优先级最高的数据源"""
+        if not codes:
+            return []
+
+        stmt = (
+            select(MarketQuoteModel)
+            .where(MarketQuoteModel.code.in_(codes))
+            .order_by(MarketQuoteModel.code, MarketQuoteModel.quote_time.desc())
+        )
+        result = await self.session.execute(stmt)
+        all_quotes = result.scalars().all()
+
+        # Group by code
+        quote_map: dict[str, list] = {}
+        for q in all_quotes:
+            quote_map.setdefault(q.code, []).append(q)
+
+        results: List[MarketQuote] = []
+        for code, quotes in quote_map.items():
+            available = []
+            for q in quotes:
+                try:
+                    available.append(SourceType(q.data_source))
+                except ValueError:
+                    continue
+            if available:
+                best = get_highest_priority_source(available)
+                if best:
+                    best_str = best.value
+                    for q in quotes:
+                        if q.data_source == best_str:
+                            results.append(_to_market_quote(q))
+                            break
+                    else:
+                        results.append(_to_market_quote(quotes[0]))
+                else:
+                    results.append(_to_market_quote(quotes[0]))
+            else:
+                results.append(_to_market_quote(quotes[0]))
+
+        return results
+
     # --- Daily Quote ---
 
     async def upsert_daily(self, quote: StockDailyQuote) -> None:

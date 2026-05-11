@@ -14,12 +14,18 @@ export const watchlistService = {
   deleteGroup: (groupId: number) =>
     api.delete(`${BASE}/${groupId}`).then((res) => res.data),
 
-  addStock: (groupId: number, stockCode: string, stockName: string) =>
+  addStock: (groupId: number, stockCode: string, stockName: string, addPrice?: number) =>
     api.post(`${BASE}/${groupId}/stocks`, {
       stock_code: stockCode,
       stock_name: stockName,
+      add_price: addPrice,
     }).then((res) => res.data),
 
   removeStock: (groupId: number, stockCode: string) =>
     api.delete(`${BASE}/${groupId}/stocks/${stockCode}`).then((res) => res.data),
+};
+
+export const stockQuoteService = {
+  getQuotesBatch: (codes: string[]) =>
+    api.post('/api/v1/stocks/quotes/batch', { codes }).then((res) => res.data),
 };
