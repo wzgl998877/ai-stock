@@ -45,6 +45,11 @@ class StockDataRepository(ABC):
         """获取最新行情（返回优先级最高的数据源）"""
         ...
 
+    @abstractmethod
+    async def get_quotes_batch(self, codes: List[str]) -> List[MarketQuote]:
+        """批量获取多只股票最新行情"""
+        ...
+
     # --- Daily Quote (K-line) ---
 
     @abstractmethod

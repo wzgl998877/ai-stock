@@ -539,6 +539,7 @@ class WatchlistItemModel(Base):
     )
     stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
     stock_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    add_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(10, 3), nullable=True)
     add_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
     create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 

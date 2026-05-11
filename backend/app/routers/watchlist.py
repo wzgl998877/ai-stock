@@ -28,6 +28,8 @@ def _group_to_dict(g) -> dict:
             {
                 "code": s.stock_code,
                 "name": s.stock_name,
+                "add_price": getattr(s, "add_price", None),
+                "add_time": s.add_time.isoformat() if s.add_time else None,
             }
             for s in getattr(g, "stocks", [])
         ],
@@ -97,9 +99,10 @@ async def add_stock(
     uc, db = uc_db
     stock_code = body.get("stock_code", "").strip()
     stock_name = body.get("stock_name", "").strip()
+    add_price = body.get("add_price")
     if not stock_code:
         raise HTTPException(status_code=400, detail="stock_code 不能为空")
-    item = await uc.add_stock(current_user.user_id, group_id, stock_code, stock_name)
+    item = await uc.add_stock(current_user.user_id, group_id, stock_code, stock_name, add_price)
     await db.commit()
     return {"data": {"id": item.id, "group_id": item.group_id, "stock_code": item.stock_code, "stock_name": item.stock_name}}
 
