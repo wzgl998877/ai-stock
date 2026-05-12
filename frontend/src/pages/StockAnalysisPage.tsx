@@ -971,37 +971,47 @@ const StockAnalysisPage: React.FC = () => {
 
   // === Idle 态（增强版） ===
   if (isIdle) {
+    // 外层 AppLayout 有 56px 的 Header，这里减去
+    const panelStyle: React.CSSProperties = {
+      display: "flex",
+      flexDirection: "column",
+      background: "#fff",
+      borderRadius: 12,
+      border: "1px solid #f0f0f0",
+      padding: "24px 24px 18px",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+    };
+    // 两个面板底部区域统一高度，确保按钮与提示框对齐
+    const bottomStyle: React.CSSProperties = {
+      marginTop: "auto",
+      minHeight: 72,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-end",
+    };
+
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "24px 32px", minHeight: "100vh" }}>
+      <div style={{ height: "calc(100vh - 56px)", display: "flex", flexDirection: "column", padding: "24px 32px", overflow: "hidden" }}>
         <SystemStatusBar />
 
         <div style={{ display: "flex", gap: 24, flex: 1, minHeight: 0, alignItems: "stretch" }}>
           {/* ===== 左侧：分析配置卡片 ===== */}
-          <div style={{
-            flex: "0 0 44%",
-            display: "flex",
-            flexDirection: "column",
-            background: "#fff",
-            borderRadius: 12,
-            border: "1px solid #f0f0f0",
-            padding: "28px 28px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-          }}>
-            <div style={{ marginBottom: 24, minHeight: 48 }}>
-              <h1 style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", fontWeight: 500, fontSize: 20, color: "#061b31", margin: 0, marginBottom: 4, letterSpacing: "-0.3px" }}>
+          <div style={{ ...panelStyle, flex: "0 0 44%" }}>
+            <div style={{ marginBottom: 20 }}>
+              <h1 style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", fontWeight: 500, fontSize: 18, color: "#061b31", margin: 0, marginBottom: 4, letterSpacing: "-0.3px" }}>
                 分析配置
               </h1>
-              <span style={{ fontSize: 13, color: "#8c8c8c" }}>选择标的和分析模式</span>
+              <span style={{ fontSize: 12, color: "#8c8c8c" }}>选择标的和分析模式</span>
             </div>
 
             {/* 当前分析中的股票提示 */}
             {currentAnalyzing && (
               <div style={{
-                padding: "12px 16px",
-                borderRadius: 10,
+                padding: "10px 14px",
+                borderRadius: 8,
                 background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
                 border: "1px solid #fde68a",
-                marginBottom: 24,
+                marginBottom: 16,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -1012,7 +1022,7 @@ const StockAnalysisPage: React.FC = () => {
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#92400e" }}>
                       正在分析：{currentAnalyzing.name}({currentAnalyzing.code})
                     </div>
-                    <div style={{ fontSize: 12, color: "#a16207", marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: "#a16207", marginTop: 2 }}>
                       分析进行中，点击查看实时进度
                     </div>
                   </div>
@@ -1029,20 +1039,20 @@ const StockAnalysisPage: React.FC = () => {
             )}
 
             {/* 标的搜索 */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 8 }}>分析标的</label>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#273951", display: "block", marginBottom: 6 }}>分析标的</label>
               <StockSearchInput />
             </div>
 
             {/* 模式选择卡片 */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 8 }}>分析模式</label>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#273951", display: "block", marginBottom: 6 }}>分析模式</label>
               <ModeSelectionCards value={store.analysisMode} onChange={store.setMode} />
             </div>
 
             {/* 分析维度（只读，随模式切换） */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: "#273951", display: "block", marginBottom: 10 }}>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#273951", display: "block", marginBottom: 6 }}>
                 分析维度
                 <span style={{ fontWeight: 400, color: "#bfbfbf", marginLeft: 6, fontSize: 11 }}>
                   {isQuickMode ? "快速模式 · 2项" : "深度模式 · 4项"}
@@ -1055,11 +1065,8 @@ const StockAnalysisPage: React.FC = () => {
               </div>
             </div>
 
-            {/* 弹性填充 */}
-            <div style={{ flex: 1 }} />
-
             {/* 底部：开始按钮 + 合规提示 */}
-            <div>
+            <div style={bottomStyle}>
               <Button
                 type="primary"
                 size="large"
@@ -1068,69 +1075,56 @@ const StockAnalysisPage: React.FC = () => {
                 onClick={handleStart}
                 loading={starting}
                 icon={!starting ? <PlayCircleOutlined /> : undefined}
-                style={{ borderRadius: 8, fontWeight: 500, height: 48, fontSize: 15 }}
+                style={{ borderRadius: 8, fontWeight: 500, height: 44, fontSize: 15 }}
               >
                 {starting ? "正在调动分析师..." : "开始分析"}
               </Button>
-              <div style={{ textAlign: "center", marginTop: 10 }}>
+              <div style={{ textAlign: "center", marginTop: 8 }}>
                 <Text style={{ fontSize: 11, color: "#c0c6cf" }}>本工具仅供投研参考，不构成任何投资建议</Text>
               </div>
             </div>
           </div>
 
           {/* ===== 右侧：AI 协作分析面板 ===== */}
-          <div style={{
-            flex: "1 1 56%",
-            display: "flex",
-            flexDirection: "column",
-            background: "#fff",
-            borderRadius: 12,
-            border: "1px solid #f0f0f0",
-            padding: "28px 28px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-          }}>
+          <div style={{ ...panelStyle, flex: "1 1 56%" }}>
             {/* 价值主张 */}
-            <div style={{ marginBottom: 24, minHeight: 48 }}>
-              <h1 style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", fontWeight: 500, fontSize: 20, color: "#061b31", margin: 0, marginBottom: 4, letterSpacing: "-0.3px" }}>
+            <div style={{ marginBottom: 20 }}>
+              <h1 style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", fontWeight: 500, fontSize: 18, color: "#061b31", margin: 0, marginBottom: 4, letterSpacing: "-0.3px" }}>
                 AI 协作分析
               </h1>
-              <span style={{ fontSize: 13, color: "#8c8c8c", lineHeight: 1.6, display: "block" }}>
+              <span style={{ fontSize: 12, color: "#8c8c8c", lineHeight: 1.5, display: "block" }}>
                 多 Agent 协作，从技术面到风险评估，生成结构化投资分析报告
               </span>
             </div>
 
             {/* 分析师待命卡片 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {(isQuickMode ? QUICK_ANALYSTS : FULL_ANALYSTS).map((card) => (
                 <AnalystReadyCardItem key={card.name} card={card} />
               ))}
             </div>
 
-            {/* 弹性填充 */}
-            <div style={{ flex: 1 }} />
-
-            {/* 底部：模式提示 + 历史快捷 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* 模式动态提示 */}
+            {/* 底部：模式动态提示（与左侧按钮对齐） */}
+            <div style={bottomStyle}>
               <div style={{
-                padding: "14px 18px",
+                padding: "10px 16px",
                 borderRadius: 10,
                 background: isQuickMode ? "#f0fdf4" : "#f8f7ff",
                 border: `1px solid ${isQuickMode ? "#bbf7d0" : "#e8e0ff"}`,
                 display: "flex",
                 alignItems: "center",
-                gap: 12,
+                gap: 10,
               }}>
                 {isQuickMode ? (
-                  <ThunderboltOutlined style={{ fontSize: 20, color: "#22c55e", flexShrink: 0 }} />
+                  <ThunderboltOutlined style={{ fontSize: 18, color: "#22c55e", flexShrink: 0 }} />
                 ) : (
-                  <ExperimentOutlined style={{ fontSize: 20, color: "#533afd", flexShrink: 0 }} />
+                  <ExperimentOutlined style={{ fontSize: 18, color: "#533afd", flexShrink: 0 }} />
                 )}
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: isQuickMode ? "#166534" : "#3b1fde", marginBottom: 2 }}>
                     {isQuickMode ? "快速分析" : "深度分析"}
                   </div>
-                  <div style={{ fontSize: 12, color: "#8c8c8c", lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 12, color: "#8c8c8c", lineHeight: 1.5 }}>
                     {isQuickMode
                       ? "2 位分析师协作 · 约 30-60 秒出结果"
                       : "4 位分析师 + 多空辩论 + 风险评估 · 约 3-5 分钟出完整报告"}

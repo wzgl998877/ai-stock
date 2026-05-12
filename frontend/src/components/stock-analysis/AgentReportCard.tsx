@@ -1,7 +1,5 @@
 import React from "react";
 import { Card, Typography, Tag, Button } from "antd";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { CheckCircleFilled, CloseCircleFilled, LoadingOutlined, ClockCircleOutlined, FileTextOutlined } from "@ant-design/icons";
 import { AGENT_DISPLAY_NAMES, AGENT_PROFILES } from "../../domain/constants";
 import { useStockAnalysisStore } from "../../store/stockAnalysisStore";
@@ -156,19 +154,22 @@ const AgentReportCard: React.FC<AgentReportCardProps> = ({ agent, summary, isRun
         )}
       </div>
 
-      {/* 核心结论摘要行 — Markdown 渲染 */}
+      {/* 核心结论摘要行 — 纯文本展示 */}
       {headline && (
         <div
-          className="markdown-body"
           style={{
             fontSize: 13,
             fontWeight: 500,
             color: "#061b31",
             lineHeight: 1.6,
             marginBottom: 8,
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
           }}
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{headline}</ReactMarkdown>
+          {headline}
         </div>
       )}
 
