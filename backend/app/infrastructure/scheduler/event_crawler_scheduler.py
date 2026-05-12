@@ -29,7 +29,7 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
             from app.domain.services.impact_assessment import assess_event
             from app.domain.services.event_dedup import url_hash
             from app.infrastructure.repositories.mysql_impact_event_repo import MySQLImpactEventRepository
-            from app.infrastructure.repositories.mysql_impact_article_repo import MySQLImpactArticleRepo
+            from app.infrastructure.repositories.mysql_impact_article_repo import MySQLImpactArticleRepository
 
             provider = ClsProvider()
             articles = await provider.fetch_latest(limit=50)
@@ -40,7 +40,7 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
 
             async with session_factory() as session:
                 event_repo = MySQLImpactEventRepository(session)
-                article_repo = MySQLImpactArticleRepo(session)
+                article_repo = MySQLImpactArticleRepository(session)
 
                 # 获取已有 URL hash
                 existing_hashes = set()
