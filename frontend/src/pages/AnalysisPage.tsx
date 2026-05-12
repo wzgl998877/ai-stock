@@ -1,7 +1,8 @@
 /** AnalysisPage — AI 事件分析主页面（ChatGPT 对话式布局） */
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, Input, Typography, message, Tag } from "antd";
+import { useSearchParams } from "react-router-dom";
 import MessageList from "../components/chat/MessageList";
 import AnalysisInput from "../components/analysis/AnalysisInput";
 import EventTypeSelector from "../components/analysis/EventTypeSelector";
@@ -16,6 +17,8 @@ const { Text } = Typography;
 
 const AnalysisPage: React.FC = () => {
   const [eventType, setEventType] = useState<EventType | null>(null);
+  const [searchParams] = useSearchParams();
+  const prefillRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const [inputClearFlag, setInputClearFlag] = useState(false);
 
@@ -54,6 +57,22 @@ const AnalysisPage: React.FC = () => {
 
   const isStreaming = streamingMessageId !== null;
   const isIdle = messages.length === 0 && !isStreaming;
+
+  // 从事件雷达跳转的预填数据
+  useEffect(() => {
+    if (prefillRef.current) return;
+    const eventTitle = searchParams.get("eventTitle");
+    const eventSummary = searchParams.get("eventSummary");
+    const eventTypeParam = searchParams.get("eventType");
+    if (eventTitle) {
+      prefillRef.current = true;
+      if (eventTypeParam && Object.values(EventType).includes(eventTypeParam as EventType)) {
+        setEventType(eventTypeParam as EventType);
+      }
+      const combined = eventSummary ? `${eventTitle}\n\n${eventSummary}` : eventTitle;
+      handleSubmit(combined);
+    }
+  }, [searchParams]);
 
   // === 提交消息 ===
   const handleSubmit = useCallback(

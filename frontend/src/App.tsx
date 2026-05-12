@@ -17,6 +17,7 @@ import SyncPanel from "./pages/SyncPanel";
 import StockDetailPage from "./pages/StockDetailPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import IndustryPage from "./pages/IndustryPage";
+import EventRadarPage from "./pages/EventRadarPage";
 import { useAuthStore } from "./store/authStore";
 import "./styles/global.css";
 
@@ -55,6 +56,8 @@ const AppContent: React.FC = () => {
         <Route path="/market/stock/:code" element={<StockDetailPage />} />
         <Route path="/market/watchlist" element={<WatchlistPage />} />
         <Route path="/market/industry" element={<IndustryPage />} />
+        {/* 模块四：事件影响雷达 */}
+        <Route path="/event-radar" element={<EventRadarPage />} />
         <Route path="*" element={<Navigate to="/analysis" replace />} />
       </Routes>
     </AppLayout>

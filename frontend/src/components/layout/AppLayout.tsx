@@ -1,9 +1,8 @@
 /** AppLayout — 左右布局框架（侧边栏 + 主区域） — Stripe Design */
 
 import React, { useEffect, useCallback, useState } from "react";
-import { Layout, Menu, Typography, Button, Popconfirm, message, Tooltip, Dropdown, Badge, Drawer, Modal, Form, Input } from "antd";
+import { Layout, Menu, Typography, Button, Popconfirm, message, Tooltip, Dropdown, Drawer, Modal, Form, Input } from "antd";
 import {
-  ExperimentOutlined,
   StockOutlined,
   BarChartOutlined,
   RadarChartOutlined,
@@ -21,6 +20,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { MenuProps } from "antd";
 import { useChatStore } from "../../store/chatStore";
 import StockDetailDrawer from "../stock/StockDetailDrawer";
+import AlertBell from "./AlertBell";
 import { useStockDrawerStore } from "../../store/stockDrawerStore";
 import * as chatService from "../../services/chatService";
 import * as authService from "../../services/authService";
@@ -187,6 +187,11 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       key: "/analysis",
       icon: <MessageOutlined />,
       label: "事件分析",
+    },
+    {
+      key: "/event-radar",
+      icon: <RadarChartOutlined />,
+      label: "事件雷达",
     },
     {
       key: "stock-group",
@@ -531,29 +536,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {/* 右侧：通知铃铛 + 用户信息 */}
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             {/* 通知铃铛 */}
-            <Tooltip title="消息通知" placement="bottom">
-              <Badge count={0} offset={[0, 0]}>
-                <BellOutlined
-                  onClick={() => setNotificationOpen(true)}
-                  style={{
-                    fontSize: 18,
-                    color: "#64748d",
-                    cursor: "pointer",
-                    padding: 6,
-                    borderRadius: 6,
-                    transition: "color 0.2s, background 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "#533afd";
-                    e.currentTarget.style.background = "#f6f9fc";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "#64748d";
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                />
-              </Badge>
-            </Tooltip>
+            <AlertBell />
 
             {/* 欢迎文字 */}
             {user && (

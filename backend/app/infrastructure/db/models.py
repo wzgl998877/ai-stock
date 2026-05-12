@@ -4,12 +4,13 @@ DDL source: docs/FEATURES/AI_Analysis/ai-analysis.ddl.md
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Optional
 
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CHAR,
     Date,
@@ -18,10 +19,13 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
+from sqlalchemy.sql import func as sa_func
 from sqlalchemy.dialects.mysql import DECIMAL, JSON, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -575,4 +579,130 @@ class StockIndicatorModel(Base):
     __table_args__ = (
         UniqueConstraint("stock_code", "trade_date", "period", name="uk_stock_indicator"),
         Index("idx_si_stock_date", "stock_code", "trade_date"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module 4: 事件影响雷达
+# ---------------------------------------------------------------------------
+
+class ImpactEventModel(Base):
+    __tablename__ = "t_impact_event"
+
+    event_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    event_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    sentiment: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    importance: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    affected_industries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    affected_stocks: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    is_active: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    articles = relationship(
+        "ImpactArticleModel", backref="event", lazy="selectin",
+    )
+
+    __table_args__ = (
+        Index("idx_ie_first_seen", "first_seen_at"),
+        Index("idx_ie_event_type", "event_type"),
+        Index("idx_ie_is_active", "is_active"),
+    )
+
+
+class ImpactArticleModel(Base):
+    __tablename__ = "t_impact_article"
+
+    article_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("t_impact_event.event_id"), nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    url_hash: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    crawled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_ia_url_hash", "url_hash", unique=True),
+        Index("idx_ia_event_id", "event_id"),
+    )
+
+
+class UserImpactModel(Base):
+    __tablename__ = "t_user_impact"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("t_impact_event.event_id"), nullable=False,
+    )
+    matched_stocks: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    matched_industries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    priority: Mapped[str] = mapped_column(String(5), nullable=False)
+    is_read: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    is_alert_sent: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_ui_user_priority", "user_id", "priority"),
+        Index("idx_ui_user_read", "user_id", "is_read"),
+        Index("idx_ui_event_id", "event_id"),
+    )
+
+
+class UserAlertModel(Base):
+    __tablename__ = "t_user_alert"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    user_impact_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("t_user_impact.id"), nullable=False,
+    )
+    priority: Mapped[str] = mapped_column(String(5), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_read: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_ua_user_read", "user_id", "is_read"),
+        Index("idx_ua_created", "created_at"),
+    )
+
+
+class MorningBriefingModel(Base):
+    __tablename__ = "t_morning_briefing"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    briefing_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ai_summary: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    content: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_read: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "briefing_date", name="uq_user_briefing_date"),
+    )
+
+
+class RadarConfigModel(Base):
+    __tablename__ = "t_radar_config"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    focused_industries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    event_types: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    alert_sensitivity: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    quiet_hours_start: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    quiet_hours_end: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now,
     )
