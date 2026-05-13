@@ -262,13 +262,13 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             borderBottom: "1px solid #e5edf5",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
               className="brand-gradient"
               style={{
                 width: 34,
                 height: 34,
-                borderRadius: 6,
+                borderRadius: 8,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -281,30 +281,17 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             >
               AI
             </div>
-            <div>
-              <Text
-                style={{
-                  fontSize: 15,
-                  color: "#061b31",
-                  display: "block",
-                  fontWeight: 400,
-                  fontFeatureSettings: "'ss01' on",
-                  lineHeight: 1.3,
-                }}
-              >
-                AI 投研助手
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: "#94a3b8",
-                  lineHeight: 1.2,
-                  fontFeatureSettings: "'ss01' on",
-                }}
-              >
-                Smart Investment Research
-              </Text>
-            </div>
+            <Text
+              style={{
+                fontSize: 16,
+                color: "#061b31",
+                fontWeight: 500,
+                fontFeatureSettings: "'ss01' on",
+                letterSpacing: "-0.3px",
+              }}
+            >
+              AI 投研助手
+            </Text>
           </div>
         </div>
 
@@ -497,15 +484,14 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Paragraph
             style={{
               fontSize: 12,
-              color: "#98a2b3",
+              color: "#b0b8c4",
               margin: 0,
               lineHeight: 1.5,
               fontFeatureSettings: "'ss01' on",
+              textAlign: "center",
             }}
           >
-            本工具仅供投研参考
-            <br />
-            不构成任何投资建议
+            仅供投研参考，不构成投资建议
           </Paragraph>
         </div>
       </Sider>

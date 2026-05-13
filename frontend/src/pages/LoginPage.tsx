@@ -124,17 +124,15 @@ const LoginPage: React.FC = () => {
           <h1
             style={{
               fontSize: 28,
-              fontWeight: 300,
+              fontWeight: 400,
               color: "#061b31",
               margin: 0,
               lineHeight: 1.3,
+              letterSpacing: "-0.5px",
             }}
           >
             AI 投研助手
           </h1>
-          <p style={{ fontSize: 14, color: "#94a3b8", marginTop: 8 }}>
-            Smart Investment Research
-          </p>
         </div>
 
         {/* 模式切换按钮 */}
