@@ -10,7 +10,10 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useWatchlistStore, type WatchlistStock } from '../store/watchlistStore';
+import { useEventRadarStore } from '../store/eventRadarStore';
 import { stockDataService } from '../services/stockDataService';
+import { eventRadarService } from '../services/eventRadarService';
+import WatchlistImpactColumn from '../components/event-radar/WatchlistImpactColumn';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,6 +70,8 @@ const WatchlistPage: React.FC = () => {
     deleteGroup, removeStock, addStock, refreshQuotes,
   } = useWatchlistStore();
 
+  const { stockImpacts, setStockImpacts } = useEventRadarStore();
+
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -81,6 +86,19 @@ const WatchlistPage: React.FC = () => {
   useEffect(() => {
     fetchGroups();
   }, []);
+
+  // 加载自选股事件影响数据
+  useEffect(() => {
+    const loadStockImpacts = async () => {
+      try {
+        const res = await eventRadarService.getStockImpacts();
+        setStockImpacts(res?.data ?? []);
+      } catch {
+        // 静默失败，不影响自选股页面主流程
+      }
+    };
+    loadStockImpacts();
+  }, [groups, setStockImpacts]);
 
   // Auto-select first group
   useEffect(() => {
@@ -269,6 +287,22 @@ const WatchlistPage: React.FC = () => {
         );
       },
       sorter: (a, b) => (a.change_pct ?? -999) - (b.change_pct ?? -999),
+    },
+    {
+      title: '影响',
+      key: 'event_impact',
+      width: 100,
+      align: 'center',
+      render: (_: unknown, record: WatchlistStock) => {
+        const impact = stockImpacts.find((s) => s.code === record.code);
+        return (
+          <WatchlistImpactColumn
+            impactCount={impact?.impact_count_24h ?? 0}
+            direction={impact?.direction ?? 'neutral'}
+            recentImpacts={impact?.recent_impacts ?? []}
+          />
+        );
+      },
     },
     {
       title: '涨跌额',

@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/v1/event-radar", tags=["event-radar"])
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _impact_to_dict(imp, event=None):
+def _impact_to_dict(imp, event=None, has_related_analysis=False):
     """将 UserImpact + ImpactEvent 序列化为响应 dict"""
     ev = event or {}
     return {
@@ -45,7 +45,7 @@ def _impact_to_dict(imp, event=None):
         "priority": imp.priority,
         "is_read": imp.is_read,
         "has_ai_insight": False,
-        "has_related_analysis": False,
+        "has_related_analysis": has_related_analysis,
         "first_seen_at": (ev.first_seen_at.isoformat() if ev and hasattr(ev, "first_seen_at") and ev.first_seen_at else None),
         "source_name": "",
         "source_url": "",
@@ -112,6 +112,11 @@ async def get_impact_detail(
     ev = result["event"]
     articles = result["articles"]
 
+    # 查询知识库关联分析
+    related_analyses = []
+    if ev:
+        related_analyses = await uc._find_related_analyses(ev)
+
     return {
         "id": imp.id,
         "event_id": imp.event_id,
@@ -138,7 +143,8 @@ async def get_impact_detail(
             for a in articles
         ],
         "ai_insight": None,
-        "related_analyses": [],
+        "has_related_analysis": len(related_analyses) > 0,
+        "related_analyses": related_analyses,
     }
 
 

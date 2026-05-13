@@ -5,6 +5,7 @@ import { Card, Tag, Button, Typography } from "antd";
 import {
   EyeOutlined,
   ThunderboltOutlined,
+  CheckCircleOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
@@ -30,6 +31,7 @@ interface ImpactEventCardProps {
     matched_stocks: MatchedStock[];
     priority: string;
     is_read: boolean;
+    has_related_analysis?: boolean;
     first_seen_at: string | null;
     source_name: string;
   };
@@ -108,6 +110,9 @@ const ImpactEventCard: React.FC<ImpactEventCardProps> = ({ impact, onViewDetail 
             )}
             {impact.source_count >= 3 && (
               <Tag color="volcano" style={{ margin: 0, fontSize: 11 }}>热点</Tag>
+            )}
+            {impact.has_related_analysis && (
+              <Tag icon={<CheckCircleOutlined />} color="blue" style={{ margin: 0, fontSize: 11 }}>已分析</Tag>
             )}
             <Text style={{ fontSize: 12, color: "#b0b8c4", marginLeft: "auto" }}>
               {formatTime(impact.first_seen_at)}

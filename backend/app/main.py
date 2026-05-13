@@ -82,6 +82,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("清理残留任务失败（非致命）: %s", e)
 
+    # 注入股票名称映射（供事件雷达股票匹配使用）
+    try:
+        from sqlalchemy import text
+        from app.domain.services.event_stock_matcher import set_stock_name_map
+        async with async_session() as map_session:
+            result = await map_session.execute(
+                text("SELECT name, stock_code FROM t_stock WHERE is_active = 1")
+            )
+            name_map = {row[0]: row[1] for row in result.fetchall()}
+            set_stock_name_map(name_map)
+            logger.info("股票名称映射已注入: %d 条", len(name_map))
+    except Exception as e:
+        logger.warning("股票名称映射注入失败（非致命）: %s", e)
+
     # 初始化事件采集调度器（APScheduler）
     _event_scheduler = None
     try:

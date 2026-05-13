@@ -5,6 +5,8 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
+from sqlalchemy import text
+
 from app.domain.entities.impact_event import ImpactEvent
 from app.domain.entities.user_impact import UserImpact
 from app.domain.entities.impact_article import ImpactArticle
@@ -204,61 +206,173 @@ class EventRadarUseCase:
 
     async def _match_users_for_events(self, events: list[ImpactEvent]):
         """将新事件匹配到用户，生成 UserImpact 记录"""
-        from sqlalchemy import text
+        from app.domain.services.impact_assessment import compute_user_impact
 
         session = self.impact_repo.session
 
-        # 获取所有有自选股的用户及其股票代码
+        # 获取所有有自选股的用户及其股票信息
         stmt = text(
-            "SELECT wg.user_id, wi.stock_code "
+            "SELECT wg.user_id, wi.stock_code, wi.stock_name "
             "FROM t_watchlist_group wg "
             "JOIN t_watchlist_item wi ON wg.id = wi.group_id"
         )
         result = await session.execute(stmt)
-        user_stocks: dict[str, set[str]] = {}
+        user_watchlists: dict[str, list[dict]] = {}
         for row in result.fetchall():
-            user_stocks.setdefault(row[0], set()).add(row[1])
+            user_watchlists.setdefault(row[0], []).append({"code": row[1], "name": row[2] or ""})
 
-        if not user_stocks:
+        if not user_watchlists:
             logger.info("无自选股用户，跳过用户匹配")
             return
 
-        importance_priority = {"high": "P1", "medium": "P2", "low": "P3"}
-
+        matched_count = 0
         for event in events:
-            event_stock_codes = set()
-            for s in (event.affected_stocks or []):
-                code = s.get("code", "")
-                if code:
-                    event_stock_codes.add(code)
-
-            for user_id, watch_codes in user_stocks.items():
-                matched = event_stock_codes & watch_codes
-                priority = importance_priority.get(event.importance or "low", "P3")
-
-                if matched:
-                    matched_stocks = [
-                        {"code": c, "direction": event.sentiment or "neutral"}
-                        for c in matched
-                    ]
-                elif event.importance in ("high", "medium"):
-                    # 高/中重要性事件广播给所有用户
-                    matched_stocks = event.affected_stocks or []
-                    priority = "P3"
-                else:
-                    continue
-
+            for user_id, watchlist in user_watchlists.items():
+                # 跳过已存在的记录
                 existing = await self.impact_repo.get_by_user_and_event(user_id, event.event_id)
                 if existing:
                     continue
 
-                user_impact = UserImpact(
-                    user_id=user_id,
-                    event_id=event.event_id,
-                    matched_stocks=matched_stocks,
-                    matched_industries=event.affected_industries or [],
-                    priority=priority,
-                )
-                await self.impact_repo.create(user_impact)
+                # 使用领域服务的双维度匹配（股票+行业）和加权优先级
+                impact = compute_user_impact(event, watchlist)
+
+                if impact:
+                    impact.user_id = user_id
+                elif event.importance in ("high", "medium"):
+                    # 高/中重要性事件广播给所有用户
+                    impact = UserImpact(
+                        user_id=user_id,
+                        event_id=event.event_id,
+                        matched_stocks=event.affected_stocks or [],
+                        matched_industries=event.affected_industries or [],
+                        priority="P3",
+                    )
+                else:
+                    continue
+
+                await self.impact_repo.create(impact)
+                matched_count += 1
+
+                # P0/P1 级别触发预警创建
+                if impact.priority in ("P0", "P1"):
+                    await self._create_alert_if_needed(user_id, impact, event, session)
 
         await session.flush()
+        logger.info("用户影响匹配完成: %d 条记录", matched_count)
+
+    async def _create_alert_if_needed(self, user_id: str, impact: UserImpact, event: ImpactEvent, session):
+        """检查约束后创建预警记录"""
+        try:
+            from app.infrastructure.repositories.mysql_user_alert_repo import MySQLUserAlertRepository
+            from app.domain.entities.user_alert import UserAlert
+
+            alert_repo = MySQLUserAlertRepository(session)
+
+            # 每日预警上限 5 条
+            today_count = await alert_repo.count_today_alerts(user_id)
+            if today_count >= 5:
+                return
+
+            # 检查免打扰时段
+            from app.infrastructure.repositories.mysql_radar_config_repo import MySQLRadarConfigRepository
+            config_repo = MySQLRadarConfigRepository(session)
+            config = await config_repo.get_by_user(user_id)
+            if config and config.quiet_hours_start and config.quiet_hours_end:
+                from datetime import time as dt_time
+                now_time = datetime.now().time()
+                if config.quiet_hours_start <= now_time <= config.quiet_hours_end:
+                    return
+
+            stock_names = [s.get("name", s.get("code", "")) for s in (impact.matched_stocks or [])[:3]]
+            summary = f"影响股票：{', '.join(stock_names)}" if stock_names else ""
+
+            alert = UserAlert(
+                user_id=user_id,
+                user_impact_id=impact.id or 0,
+                priority=impact.priority,
+                title=event.title[:200],
+                summary=summary[:500],
+            )
+            await alert_repo.create(alert)
+        except Exception as e:
+            logger.warning("预警创建失败: %s", e)
+
+    async def _find_related_analyses(self, event: ImpactEvent) -> list[dict]:
+        """根据事件的 affected_stocks / affected_industries 查询知识库中的历史分析文章。
+
+        查询逻辑：
+        1. 从 affected_stocks 提取 stock_code 列表 → 通过 t_article_stock 关联表找到 article_id
+        2. 从 affected_industries 提取行业代码列表 → 通过 t_article_industry 关联表找到 article_id
+        3. 合并去重后从 t_analysis_article 取文章详情，按创建时间倒序，最多 5 条
+        4. 任何异常均静默处理，返回空列表
+        """
+        try:
+            session = self.impact_repo.session
+
+            stock_codes: list[str] = []
+            for s in (event.affected_stocks or []):
+                code = s.get("code", "") if isinstance(s, dict) else ""
+                if code:
+                    stock_codes.append(code)
+
+            industry_codes: list[str] = []
+            for ind in (event.affected_industries or []):
+                code = ind.get("code", "") if isinstance(ind, dict) else ""
+                if code:
+                    industry_codes.append(code)
+
+            if not stock_codes and not industry_codes:
+                return []
+
+            # 收集关联的 article_id
+            article_ids: set[str] = set()
+
+            if stock_codes:
+                placeholders = ",".join([f":s{i}" for i in range(len(stock_codes))])
+                stmt = text(
+                    f"SELECT DISTINCT article_id FROM t_article_stock "
+                    f"WHERE stock_code IN ({placeholders}) AND deleted = '0'"
+                )
+                params = {f"s{i}": code for i, code in enumerate(stock_codes)}
+                result = await session.execute(stmt, params)
+                for row in result.fetchall():
+                    article_ids.add(row[0])
+
+            if industry_codes:
+                placeholders = ",".join([f":i{i}" for i in range(len(industry_codes))])
+                stmt = text(
+                    f"SELECT DISTINCT article_id FROM t_article_industry "
+                    f"WHERE industry_code IN ({placeholders}) AND deleted = '0'"
+                )
+                params = {f"i{i}": code for i, code in enumerate(industry_codes)}
+                result = await session.execute(stmt, params)
+                for row in result.fetchall():
+                    article_ids.add(row[0])
+
+            if not article_ids:
+                return []
+
+            # 查询文章详情
+            placeholders = ",".join([f":a{i}" for i in range(len(article_ids))])
+            stmt = text(
+                f"SELECT article_id, title, summary, create_time "
+                f"FROM t_analysis_article "
+                f"WHERE article_id IN ({placeholders}) AND deleted = '0' AND status = 'completed' "
+                f"ORDER BY create_time DESC LIMIT 5"
+            )
+            params = {f"a{i}": aid for i, aid in enumerate(article_ids)}
+            result = await session.execute(stmt, params)
+
+            analyses = []
+            for row in result.fetchall():
+                analyses.append({
+                    "article_id": row[0],
+                    "title": row[1],
+                    "analyzed_at": row[3].isoformat() if row[3] else None,
+                    "summary": row[2] or "",
+                })
+            return analyses
+
+        except Exception as e:
+            logger.warning("查询关联分析失败: %s", e)
+            return []

@@ -22,124 +22,23 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
     scheduler = AsyncIOScheduler()
 
     async def crawl_and_process():
-        """采集并处理财经新闻"""
+        """采集并处理财经新闻（委托给 EventRadarUseCase）"""
         logger.info("事件采集任务开始")
         try:
-            from app.infrastructure.crawler.cls_provider import ClsProvider
-            from app.domain.services.impact_assessment import assess_event
-            from app.domain.services.event_dedup import url_hash
             from app.infrastructure.repositories.mysql_impact_event_repo import MySQLImpactEventRepository
             from app.infrastructure.repositories.mysql_impact_article_repo import MySQLImpactArticleRepository
             from app.infrastructure.repositories.mysql_user_impact_repo import MySQLUserImpactRepository
-            from app.domain.entities.user_impact import UserImpact
-
-            provider = ClsProvider()
-            articles = await provider.fetch_latest(limit=50)
-
-            if not articles:
-                logger.info("未采集到新文章")
-                return
+            from app.application.use_cases.event_radar import EventRadarUseCase
 
             async with session_factory() as session:
-                event_repo = MySQLImpactEventRepository(session)
-                article_repo = MySQLImpactArticleRepository(session)
-                impact_repo = MySQLUserImpactRepository(session)
-
-                existing_hashes = set()
-                existing_titles = []
-                new_events = []
-
-                processed = 0
-                for article in articles:
-                    result = assess_event(
-                        title=article.title,
-                        content=article.content,
-                        source_url=article.url,
-                        existing_url_hashes=existing_hashes,
-                        existing_titles=existing_titles,
-                    )
-                    if not result:
-                        continue
-
-                    from app.domain.entities.impact_event import ImpactEvent
-                    event = ImpactEvent(
-                        title=result["title"],
-                        summary=result["summary"],
-                        sentiment=result["sentiment"],
-                        importance=result["importance"],
-                        affected_stocks=result["affected_stocks"],
-                        affected_industries=result["affected_industries"],
-                        source_count=1,
-                        first_seen_at=datetime.now(),
-                        last_seen_at=datetime.now(),
-                    )
-                    event = await event_repo.create(event)
-
-                    from app.domain.entities.impact_article import ImpactArticle
-                    impact_article = ImpactArticle(
-                        event_id=event.event_id,
-                        title=article.title,
-                        content=article.content[:500],
-                        source=article.source,
-                        url=article.url,
-                        url_hash=result["url_hash"] or url_hash(article.url),
-                        published_at=article.published_at,
-                    )
-                    await article_repo.create(impact_article)
-
-                    existing_hashes.add(impact_article.url_hash)
-                    existing_titles.append(article.title)
-                    new_events.append(event)
-                    processed += 1
-
-                # 将事件匹配到用户
-                if new_events:
-                    from sqlalchemy import text
-                    stmt = text(
-                        "SELECT wg.user_id, wi.stock_code "
-                        "FROM t_watchlist_group wg "
-                        "JOIN t_watchlist_item wi ON wg.id = wi.group_id"
-                    )
-                    r = await session.execute(stmt)
-                    user_stocks: dict = {}
-                    for row in r.fetchall():
-                        user_stocks.setdefault(row[0], set()).add(row[1])
-
-                    importance_priority = {"high": "P1", "medium": "P2", "low": "P3"}
-                    matched_count = 0
-                    if user_stocks:
-                        for ev in new_events:
-                            ev_codes = set(
-                                s.get("code", "")
-                                for s in (ev.affected_stocks or [])
-                                if s.get("code")
-                            )
-                            for uid, watch_codes in user_stocks.items():
-                                overlap = ev_codes & watch_codes
-                                pri = importance_priority.get(ev.importance or "low", "P3")
-                                if overlap:
-                                    ms = [{"code": c, "direction": ev.sentiment or "neutral"} for c in overlap]
-                                elif ev.importance in ("high", "medium"):
-                                    ms = ev.affected_stocks or []
-                                    pri = "P3"
-                                else:
-                                    continue
-
-                                existing = await impact_repo.get_by_user_and_event(uid, ev.event_id)
-                                if existing:
-                                    continue
-                                await impact_repo.create(UserImpact(
-                                    user_id=uid,
-                                    event_id=ev.event_id,
-                                    matched_stocks=ms,
-                                    matched_industries=ev.affected_industries or [],
-                                    priority=pri,
-                                ))
-                                matched_count += 1
-                    logger.info("用户影响匹配完成: %d 条记录", matched_count)
-
+                uc = EventRadarUseCase(
+                    event_repo=MySQLImpactEventRepository(session),
+                    article_repo=MySQLImpactArticleRepository(session),
+                    impact_repo=MySQLUserImpactRepository(session),
+                )
+                result = await uc.crawl_and_process()
                 await session.commit()
-                logger.info("事件采集完成: 采集 %d 条，新增 %d 条", len(articles), processed)
+                logger.info("事件采集完成: 采集 %d 条，新增 %d 条", result.get("crawled", 0), result.get("new_events", 0))
 
         except Exception as e:
             logger.error("事件采集任务失败: %s", e, exc_info=True)
@@ -148,8 +47,31 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
         """为所有有自选股的用户生成晨报"""
         logger.info("晨报生成任务开始")
         try:
-            # TODO: 实现晨报生成逻辑（Phase 8）
-            pass
+            from sqlalchemy import text as sql_text
+            from app.infrastructure.repositories.mysql_morning_briefing_repo import MySQLMorningBriefingRepository
+            from app.application.use_cases.morning_briefing import MorningBriefingUseCase
+
+            async with session_factory() as session:
+                # 获取所有有自选股的用户
+                stmt = sql_text("SELECT DISTINCT wg.user_id FROM t_watchlist_group wg")
+                result = await session.execute(stmt)
+                user_ids = [row[0] for row in result.fetchall()]
+
+                briefing_repo = MySQLMorningBriefingRepository(session)
+                uc = MorningBriefingUseCase(briefing_repo=briefing_repo, ai_service=ai_service)
+
+                generated = 0
+                for uid in user_ids:
+                    try:
+                        briefing = await uc.generate_for_user(uid, session)
+                        if briefing:
+                            generated += 1
+                    except Exception as e:
+                        logger.warning("用户 %s 晨报生成失败: %s", uid, e)
+
+                await session.commit()
+                logger.info("晨报生成完成: %d/%d 个用户", generated, len(user_ids))
+
         except Exception as e:
             logger.error("晨报生成任务失败: %s", e, exc_info=True)
 

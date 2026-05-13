@@ -86,6 +86,29 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   }, [isEventAnalysisPage, loadSessions]);
 
+  // 每日首次登录弹出晨报
+  const [briefingVisible, setBriefingVisible] = useState(false);
+  const [briefingData, setBriefingData] = useState<any>(null);
+  useEffect(() => {
+    const checkBriefing = async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const key = `briefing_seen_${today}`;
+      if (localStorage.getItem(key)) return;
+      try {
+        const res = await fetch("/api/v1/event-radar/briefing/today", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBriefingData(data);
+          setBriefingVisible(true);
+          localStorage.setItem(key, "1");
+        }
+      } catch {}
+    };
+    checkBriefing();
+  }, []);
+
   // 当前选中的菜单项
   const selectedKeys = [location.pathname];
 
@@ -647,6 +670,41 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <Input.Password prefix={<LockOutlined style={{ color: "#b0b8c4" }} />} placeholder="确认新密码" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 晨报弹窗 */}
+      <Modal
+        title="📰 今日投资影响晨报"
+        open={briefingVisible}
+        onCancel={() => setBriefingVisible(false)}
+        footer={null}
+        width={520}
+      >
+        {briefingData && (
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 500, marginBottom: 12 }}>
+              {briefingData.ai_summary || "暂无重要事件"}
+            </p>
+            {briefingData.content?.impact_events?.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>影响事件</Text>
+                <ul style={{ paddingLeft: 16, margin: "4px 0" }}>
+                  {briefingData.content.impact_events.slice(0, 5).map((e: any, i: number) => (
+                    <li key={i} style={{ fontSize: 13, marginBottom: 2 }}>
+                      <Text type={e.sentiment === "positive" ? "success" : e.sentiment === "negative" ? "danger" : undefined}>
+                        {e.sentiment === "positive" ? "▲" : e.sentiment === "negative" ? "▼" : "—"}
+                      </Text>{" "}
+                      {e.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>
+              以上为 AI 分析参考，不构成投资建议
+            </p>
+          </div>
+        )}
       </Modal>
     </Layout>
   );

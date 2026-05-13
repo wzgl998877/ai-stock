@@ -8,12 +8,14 @@ import {
   Divider,
   Button,
   Spin,
+  List,
   message,
 } from "antd";
 import {
   ThunderboltOutlined,
   LineChartOutlined,
   LinkOutlined,
+  FileTextOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { eventRadarService } from "../../services/eventRadarService";
@@ -143,6 +145,63 @@ const EventDetailDrawer: React.FC<EventDetailDrawerProps> = ({
           </div>
 
           <Divider style={{ margin: "12px 0" }} />
+
+          {/* 知识库关联区域 */}
+          {detail.related_analyses && detail.related_analyses.length > 0 && (
+            <>
+              <div style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 12, color: "#94a3b8" }}>
+                  <FileTextOutlined style={{ marginRight: 4 }} />
+                  知识库关联
+                </Text>
+                <List
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  dataSource={detail.related_analyses}
+                  renderItem={(item: any) => (
+                    <List.Item style={{ padding: "8px 0", border: "none" }}>
+                      <List.Item.Meta
+                        title={
+                          <a
+                            href={`/analysis?articleId=${item.article_id}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const params = new URLSearchParams({
+                                articleId: item.article_id,
+                              });
+                              onClose();
+                              navigate(`/analysis?${params.toString()}`);
+                            }}
+                            style={{ color: "#1677ff", fontSize: 13 }}
+                          >
+                            {item.title}
+                          </a>
+                        }
+                        description={
+                          <div>
+                            {item.analyzed_at && (
+                              <Text style={{ fontSize: 12, color: "#94a3b8", marginRight: 8 }}>
+                                {item.analyzed_at.substring(0, 10)}
+                              </Text>
+                            )}
+                            {item.summary && (
+                              <Paragraph
+                                ellipsis={{ rows: 2 }}
+                                style={{ fontSize: 12, color: "#64748b", margin: 0 }}
+                              >
+                                {item.summary}
+                              </Paragraph>
+                            )}
+                          </div>
+                        }
+                      />
+                    </List.Item>
+                  )}
+                />
+              </div>
+              <Divider style={{ margin: "12px 0" }} />
+            </>
+          )}
 
           {/* 第三段：行动按钮 */}
           <div>
