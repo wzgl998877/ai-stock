@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>事件影响雷达 - UI 原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: #0a0e1a; color: #e2e8f0; height: 100vh; overflow: hidden; }
+
+/* Layout */
+.app { display: flex; height: 100vh; }
+
+/* Sidebar - Dark terminal style */
+.sidebar {
+  width: 220px; background: #0f1422; border-right: 1px solid #1e293b;
+  display: flex; flex-direction: column; flex-shrink: 0;
+}
+.sidebar-brand {
+  padding: 20px 20px 16px; border-bottom: 1px solid #1e293b;
+  display: flex; align-items: center; gap: 12px;
+}
+.sidebar-brand .logo {
+  width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; font-weight: 700;
+}
+.sidebar-brand h1 { font-size: 16px; font-weight: 600; color: #f1f5f9; }
+.sidebar-brand p { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+.sidebar-nav { padding: 12px 8px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: 6px; cursor: pointer; color: #94a3b8; font-size: 14px;
+  transition: all 0.2s; margin-bottom: 2px; text-decoration: none;
+}
+.nav-item:hover { background: #1e293b; color: #e2e8f0; }
+.nav-item.active { background: rgba(99,102,241,0.15); color: #6366f1; font-weight: 500; }
+.nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-item.active::before {
+  content: ''; position: absolute; left: 0; width: 3px; height: 24px;
+  background: #6366f1; border-radius: 0 2px 2px 0;
+}
+.nav-item { position: relative; }
+.nav-badge { margin-left: auto; background: #ef4444; color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+
+/* Main content */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+.header {
+  height: 48px; border-bottom: 1px solid #1e293b; background: #0f1422;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-title { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+.header-subtitle { font-size: 12px; color: #64748b; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+
+.btn {
+  padding: 6px 14px; border-radius: 4px; font-size: 13px; cursor: pointer;
+  border: 1px solid #1e293b; background: #1e293b; color: #e2e8f0;
+  transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+}
+.btn:hover { background: #2d3a4f; border-color: #334155; }
+.btn-primary { background: #6366f1; border-color: #6366f1; color: #fff; }
+.btn-primary:hover { background: #5558e6; }
+.bell-icon { cursor: pointer; color: #94a3b8; font-size: 18px; position: relative; }
+.bell-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
+
+/* Content area */
+.content { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+/* AI Status Bar */
+.status-bar {
+  background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+  padding: 12px 20px; display: flex; align-items: center; gap: 24px;
+  box-shadow: 0 0 20px rgba(99,102,241,0.06); margin-bottom: 16px;
+  position: relative; overflow: hidden;
+}
+.status-bar::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.4), transparent);
+}
+.status-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.status-label { color: #64748b; }
+.status-value { color: #f1f5f9; font-weight: 600; }
+.status-value.positive { color: #22c55e; }
+.status-value.negative { color: #ef4444; }
+.status-value.ai { color: #6366f1; }
+.status-divider { width: 1px; height: 20px; background: #1e293b; }
+
+/* Pulse animation */
+.pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+}
+.scan-text { color: #22c55e; font-size: 12px; font-weight: 500; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab {
+  padding: 6px 16px; border-radius: 20px; font-size: 13px; cursor: pointer;
+  color: #94a3b8; background: transparent; border: 1px solid transparent;
+  transition: all 0.2s;
+}
+.tab:hover { color: #e2e8f0; background: #1e293b; }
+.tab.active { color: #6366f1; background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.3); font-weight: 500; }
+.tab .count { font-size: 12px; opacity: 0.7; margin-left: 2px; }
+
+/* Event Cards */
+.event-list { display: flex; flex-direction: column; gap: 8px; }
+
+.event-card {
+  background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+  padding: 14px 18px; cursor: pointer; transition: all 0.25s;
+  border-left: 3px solid transparent; position: relative;
+}
+.event-card:hover {
+  border-color: #334155; border-left-color: inherit;
+  box-shadow: 0 0 16px rgba(99,102,241,0.08);
+  transform: translateY(-1px);
+}
+.event-card.positive { border-left-color: #22c55e; }
+.event-card.negative { border-left-color: #ef4444; }
+.event-card.neutral { border-left-color: #6366f1; }
+.event-card.positive:hover { box-shadow: 0 0 16px rgba(34,197,94,0.1), 0 2px 8px rgba(0,0,0,0.2); }
+.event-card.negative:hover { box-shadow: 0 0 16px rgba(239,68,68,0.1), 0 2px 8px rgba(0,0,0,0.2); }
+.event-card.neutral:hover { box-shadow: 0 0 16px rgba(99,102,241,0.1), 0 2px 8px rgba(0,0,0,0.2); }
+
+.card-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.tag {
+  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.tag-p0 { background: rgba(239,68,68,0.15); color: #ef4444; }
+.tag-p1 { background: rgba(249,115,22,0.15); color: #f97316; }
+.tag-p2 { background: rgba(99,102,241,0.15); color: #6366f1; }
+.tag-positive { background: rgba(34,197,94,0.15); color: #22c55e; }
+.tag-negative { background: rgba(239,68,68,0.15); color: #ef4444; }
+.tag-neutral { background: rgba(100,116,139,0.2); color: #94a3b8; }
+.tag-hot { background: rgba(251,146,60,0.15); color: #fb923c; }
+.tag-analyzed { background: rgba(99,102,241,0.12); color: #818cf8; }
+.card-time { font-size: 12px; color: #475569; margin-left: auto; }
+
+.card-title { font-size: 15px; font-weight: 600; color: #f1f5f9; line-height: 1.5; margin-bottom: 8px; }
+
+/* AI Inference Chain */
+.inference-chain {
+  background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.12);
+  border-radius: 6px; padding: 10px 14px; margin-bottom: 10px;
+}
+.inference-label { font-size: 11px; color: #818cf8; font-weight: 600; margin-bottom: 6px; letter-spacing: 0.5px; }
+.inference-path { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inference-step { font-size: 13px; color: #c7d2fe; background: rgba(99,102,241,0.1); padding: 3px 10px; border-radius: 4px; }
+.inference-arrow { color: #6366f1; font-size: 12px; }
+
+/* Matched items */
+.matched-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.matched-label { font-size: 12px; color: #475569; margin-right: 2px; }
+.matched-tag {
+  padding: 2px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  transition: all 0.2s;
+}
+.matched-tag.positive { background: rgba(34,197,94,0.1); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+.matched-tag.negative { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+.matched-tag.industry { background: rgba(99,102,241,0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.2); }
+.matched-tag:hover { filter: brightness(1.2); }
+
+/* AI Judgment */
+.ai-judgment {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 12px;
+}
+.ai-judgment .ai-icon { color: #6366f1; font-size: 14px; }
+.ai-judgment .label { color: #64748b; }
+.ai-judgment .value { color: #22c55e; font-weight: 500; }
+
+/* Card actions */
+.card-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+.card-btn {
+  padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  border: 1px solid #1e293b; background: transparent; color: #94a3b8;
+  transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+}
+.card-btn:hover { border-color: #334155; color: #e2e8f0; background: #1e293b; }
+.card-btn.primary { border-color: #6366f1; color: #6366f1; }
+.card-btn.primary:hover { background: rgba(99,102,241,0.15); }
+
+/* Footer disclaimer */
+.disclaimer {
+  margin-top: 20px; padding: 10px 16px; text-align: center;
+  background: rgba(30,41,59,0.5); border-radius: 6px;
+  font-size: 12px; color: #475569;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 80px 0; color: #475569;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+.empty-state p { font-size: 14px; margin-bottom: 8px; }
+.empty-state .sub { font-size: 12px; color: #334155; }
+
+/* Scrollbar */
+.content::-webkit-scrollbar { width: 6px; }
+.content::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+.content::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+/* Loading shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.loading-bar {
+  height: 12px; border-radius: 4px; margin-bottom: 8px;
+  background: linear-gradient(90deg, #1e293b 25%, #2d3a4f 50%, #1e293b 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo">Ai</div>
+      <div>
+        <h1>AI Stock</h1>
+        <p>智能投研助手</p>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <a class="nav-item" href="#"><span class="icon">📊</span>事件分析</a>
+      <a class="nav-item" href="#"><span class="icon">💬</span>AI 对话</a>
+      <a class="nav-item" href="#"><span class="icon">📚</span>知识库</a>
+      <a class="nav-item" href="#"><span class="icon">📈</span>自选股</a>
+      <a class="nav-item" href="#"><span class="icon">🏭</span>行业分析</a>
+      <div style="border-top: 1px solid #1e293b; margin: 8px 0;"></div>
+      <a class="nav-item active" href="#">
+        <span class="icon">📡</span>事件雷达
+        <span class="nav-badge">3</span>
+      </a>
+    </div>
+    <div style="padding: 12px 16px; border-top: 1px solid #1e293b;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 32px; height: 32px; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center; color: #6366f1; font-size: 14px;">Z</div>
+        <div>
+          <div style="font-size: 13px; color: #e2e8f0;">zhengtao</div>
+          <div style="font-size: 11px; color: #475569;">免费版</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <span class="header-title">事件影响雷达</span>
+        <span class="header-subtitle">AI 实时监控影响你投资的事件</span>
+      </div>
+      <div class="header-actions">
+        <span class="bell-icon">🔔<span class="bell-dot"></span></span>
+        <button class="btn" onclick="loadData()">↻ 刷新</button>
+        <button class="btn">⚙ 设置</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content" id="content">
+      <!-- AI Status Bar -->
+      <div class="status-bar">
+        <div class="status-item" style="gap: 8px;">
+          <div class="pulse-dot"></div>
+          <span class="scan-text">AI 监控中</span>
+        </div>
+        <div class="status-divider"></div>
+        <div class="status-item">
+          <span class="status-label">市场情绪</span>
+          <span class="status-value positive">偏多 ▲</span>
+        </div>
+        <div class="status-divider"></div>
+        <div class="status-item">
+          <span class="status-label">今日影响</span>
+          <span class="status-value">3</span>
+          <span class="status-label">事件</span>
+        </div>
+        <div class="status-divider"></div>
+        <div class="status-item">
+          <span class="status-label">利好</span>
+          <span class="status-value positive">2</span>
+          <span class="status-label">/</span>
+          <span class="status-label">利空</span>
+          <span class="status-value negative">0</span>
+        </div>
+        <div class="status-divider"></div>
+        <div class="status-item">
+          <span class="status-label">涉及个股</span>
+          <span class="status-value">4</span>
+        </div>
+        <div class="status-divider"></div>
+        <div class="status-item">
+          <span class="status-label">本周累计</span>
+          <span class="status-value ai">3</span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this)">正在影响 <span class="count">(3)</span></div>
+        <div class="tab" onclick="switchTab(this)">今日已影响 <span class="count">(0)</span></div>
+        <div class="tab" onclick="switchTab(this)">全部</div>
+      </div>
+
+      <!-- Event Cards -->
+      <div class="event-list">
+
+        <!-- Card 1: Positive, P1 -->
+        <div class="event-card positive" onclick="showDetail(this)">
+          <div class="card-header">
+            <span class="tag tag-p1">重要</span>
+            <span class="tag tag-positive">利好</span>
+            <span class="tag tag-hot">热点</span>
+            <span class="tag tag-analyzed">✓ 已分析</span>
+            <span class="card-time">12 分钟前</span>
+          </div>
+          <div class="card-title">英伟达出口限制升级，国产 GPU 替代加速推进</div>
+          <div class="inference-chain">
+            <div class="inference-label">AI 影响路径</div>
+            <div class="inference-path">
+              <span class="inference-step">英伟达出口限制</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">国产 GPU 替代</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">AI 服务器需求提升</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">国产算力受益</span>
+            </div>
+          </div>
+          <div class="matched-row">
+            <span class="matched-label">关联个股</span>
+            <span class="matched-tag positive">寒武纪 ▲</span>
+            <span class="matched-tag positive">海光信息 ▲</span>
+            <span class="matched-tag positive">景嘉微 ▲</span>
+          </div>
+          <div class="matched-row">
+            <span class="matched-label">关联板块</span>
+            <span class="matched-tag industry">半导体</span>
+            <span class="matched-tag industry">AI 算力</span>
+          </div>
+          <div class="ai-judgment">
+            <span class="ai-icon">◆</span>
+            <span class="label">AI 判断：</span>
+            <span class="value">中期持续利好</span>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn">查看详情</button>
+            <button class="card-btn primary">一键分析</button>
+          </div>
+        </div>
+
+        <!-- Card 2: Positive, P2 -->
+        <div class="event-card positive" onclick="showDetail(this)">
+          <div class="card-header">
+            <span class="tag tag-p2">关注</span>
+            <span class="tag tag-positive">利好</span>
+            <span class="card-time">45 分钟前</span>
+          </div>
+          <div class="card-title">两部门联合发布新能源汽车下乡补贴新政策，最高补贴 8000 元/辆</div>
+          <div class="inference-chain">
+            <div class="inference-label">AI 影响路径</div>
+            <div class="inference-path">
+              <span class="inference-step">下乡补贴政策</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">新能源车销量提升</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">动力电池需求增加</span>
+            </div>
+          </div>
+          <div class="matched-row">
+            <span class="matched-label">关联个股</span>
+            <span class="matched-tag positive">宁德时代 ▲</span>
+          </div>
+          <div class="matched-row">
+            <span class="matched-label">关联板块</span>
+            <span class="matched-tag industry">新能源车</span>
+            <span class="matched-tag industry">锂电池</span>
+          </div>
+          <div class="ai-judgment">
+            <span class="ai-icon">◆</span>
+            <span class="label">AI 判断：</span>
+            <span class="value">短期利好，关注政策持续性</span>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn">查看详情</button>
+            <button class="card-btn primary">一键分析</button>
+          </div>
+        </div>
+
+        <!-- Card 3: Neutral, P2 -->
+        <div class="event-card neutral" onclick="showDetail(this)">
+          <div class="card-header">
+            <span class="tag tag-p2">关注</span>
+            <span class="tag tag-neutral">中性</span>
+            <span class="card-time">1 小时前</span>
+          </div>
+          <div class="card-title">斯洛伐克反对派联合多党提出重大宪法修正案，拟重新审议部分投资法案</div>
+          <div class="matched-row">
+            <span class="matched-label">关联个股</span>
+            <span class="matched-tag positive">寒武纪 ▲</span>
+          </div>
+          <div class="ai-judgment">
+            <span class="ai-icon">◆</span>
+            <span class="label">AI 判断：</span>
+            <span class="value" style="color: #94a3b8;">影响有限，持续观察</span>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn">查看详情</button>
+            <button class="card-btn primary">一键分析</button>
+          </div>
+        </div>
+
+        <!-- Card 4: Negative, P0 (hot) -->
+        <div class="event-card negative" onclick="showDetail(this)">
+          <div class="card-header">
+            <span class="tag tag-p0">紧急</span>
+            <span class="tag tag-negative">利空</span>
+            <span class="tag tag-hot">热点</span>
+            <span class="card-time">2 小时前</span>
+          </div>
+          <div class="card-title">证监会：对若干违规减持行为立案调查，涉及多家上市公司</div>
+          <div class="inference-chain">
+            <div class="inference-label">AI 影响路径</div>
+            <div class="inference-path">
+              <span class="inference-step">违规减持调查</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">市场信心短期承压</span>
+              <span class="inference-arrow">→</span>
+              <span class="inference-step">相关个股股价波动</span>
+            </div>
+          </div>
+          <div class="matched-row">
+            <span class="matched-label">关联个股</span>
+            <span class="matched-tag negative">新基因 ▼</span>
+            <span class="matched-tag negative">高企集团 ▼</span>
+          </div>
+          <div class="ai-judgment">
+            <span class="ai-icon">◆</span>
+            <span class="label">AI 判断：</span>
+            <span class="value" style="color: #ef4444;">短期利空，关注调查进展</span>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn">查看详情</button>
+            <button class="card-btn primary">一键分析</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="disclaimer">以上为 AI 分析参考，不构成投资建议</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function showDetail(card) {
+  // Simple visual feedback
+  const cards = document.querySelectorAll('.event-card');
+  cards.forEach(c => c.style.opacity = c === card ? '1' : '0.5');
+  setTimeout(() => cards.forEach(c => c.style.opacity = '1'), 500);
+}
+
+function loadData() {
+  const list = document.querySelector('.event-list');
+  list.innerHTML = '<div style="padding: 40px 0;"><div class="loading-bar" style="width:80%"></div><div class="loading-bar" style="width:60%"></div><div class="loading-bar" style="width:90%"></div><div class="loading-bar" style="width:45%"></div></div>';
+  setTimeout(() => location.reload(), 1500);
+}
+</script>
+
+</body>
+</html>

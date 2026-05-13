@@ -1,7 +1,7 @@
-/** 事件雷达主页面 */
+/** 事件雷达主页面 — AI 金融终端风格 */
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Typography, Spin, Empty, Button, Segmented } from "antd";
+import { Button, Spin, Empty, Segmented } from "antd";
 import { SettingOutlined, SyncOutlined } from "@ant-design/icons";
 import { useEventRadarStore } from "../store/eventRadarStore";
 import { eventRadarService } from "../services/eventRadarService";
@@ -9,8 +9,6 @@ import ImpactEventCard from "../components/event-radar/ImpactEventCard";
 import ImpactStatsCard from "../components/event-radar/ImpactStatsCard";
 import EventDetailDrawer from "../components/event-radar/EventDetailDrawer";
 import RadarConfigModal from "../components/event-radar/RadarConfigModal";
-
-const { Title, Text } = Typography;
 
 const EventRadarPage: React.FC = () => {
   const {
@@ -49,14 +47,11 @@ const EventRadarPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-
-    // 交易时段 60 秒自动刷新
     const now = new Date();
     const hour = now.getHours();
     if (hour >= 9 && hour < 15) {
       refreshTimer.current = setInterval(loadData, 60000);
     }
-
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
@@ -75,30 +70,28 @@ const EventRadarPage: React.FC = () => {
       : [...activeImpacts, ...archivedImpacts];
 
   return (
-    <div style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      {/* 标题栏 */}
+    <div style={{ padding: "16px 20px", height: "100%", overflowY: "auto" }}>
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div>
-          <Title level={4} style={{ margin: 0 }}>事件影响雷达</Title>
-          <Text style={{ fontSize: 13, color: "#94a3b8" }}>
-            系统正在监控影响你投资的财经事件
-          </Text>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>事件影响雷达</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>AI 实时监控影响你投资的事件</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button icon={<SyncOutlined />} onClick={loadData} loading={loading}>
+          <Button icon={<SyncOutlined />} onClick={loadData} loading={loading} size="middle">
             刷新
           </Button>
-          <Button icon={<SettingOutlined />} onClick={() => setConfigVisible(true)}>
+          <Button icon={<SettingOutlined />} onClick={() => setConfigVisible(true)} size="middle">
             设置
           </Button>
         </div>
       </div>
 
-      {/* 统计卡片 */}
+      {/* AI Status Bar */}
       {stats && <ImpactStatsCard stats={stats} />}
 
-      {/* 分段切换 */}
-      <div style={{ marginBottom: 12 }}>
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
         <Segmented
           value={statusFilter}
           onChange={(v) => setStatusFilter(v as string)}
@@ -110,16 +103,16 @@ const EventRadarPage: React.FC = () => {
         />
       </div>
 
-      {/* 事件列表 */}
+      {/* Event List */}
       {loading && !displayedImpacts.length ? (
         <div style={{ textAlign: "center", padding: "80px 0" }}>
           <Spin size="large" />
+          <div style={{ marginTop: 16, color: "#6366f1", fontSize: 13, fontWeight: 500 }}>AI 正在扫描市场...</div>
         </div>
       ) : error ? (
-        <div style={{ textAlign: "center", padding: "80px 0", color: "#ea2261" }}>
-          <Text type="danger">{error}</Text>
-          <br />
-          <Button onClick={loadData} style={{ marginTop: 8 }}>重试</Button>
+        <div style={{ textAlign: "center", padding: "80px 0" }}>
+          <div style={{ color: "#dc2626", marginBottom: 12 }}>{error}</div>
+          <Button onClick={loadData}>重试</Button>
         </div>
       ) : displayedImpacts.length === 0 ? (
         <Empty
@@ -142,29 +135,26 @@ const EventRadarPage: React.FC = () => {
         </div>
       )}
 
-      {/* 底部声明 */}
-      <div
-        style={{
-          marginTop: 24,
-          padding: "10px 16px",
-          background: "#f6f9fc",
-          borderRadius: 6,
-          textAlign: "center",
-        }}
-      >
-        <Text style={{ fontSize: 12, color: "#98a2b3" }}>
-          以上为 AI 分析参考，不构成投资建议
-        </Text>
+      {/* Disclaimer */}
+      <div style={{
+        marginTop: 20,
+        padding: "10px 16px",
+        background: "#f8fafc",
+        borderRadius: 6,
+        border: "1px solid #f1f5f9",
+        textAlign: "center",
+        fontSize: 12,
+        color: "#94a3b8",
+      }}>
+        以上为 AI 分析参考，不构成投资建议
       </div>
 
-      {/* Drawer */}
+      {/* Drawers */}
       <EventDetailDrawer
         visible={detailVisible}
         impactId={selectedImpactId}
         onClose={() => setDetailVisible(false)}
       />
-
-      {/* 配置弹窗 */}
       <RadarConfigModal
         visible={configVisible}
         onClose={() => setConfigVisible(false)}
