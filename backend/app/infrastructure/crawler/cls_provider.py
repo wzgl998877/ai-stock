@@ -10,25 +10,25 @@ from app.infrastructure.crawler.base_provider import BaseEventProvider, CrawledA
 
 logger = logging.getLogger(__name__)
 
-# 财联社快讯 API（公开接口）
-CLS_ROLL_URL = "https://www.cls.cn/api/sw?app=Cls2FinanceInfo&os=web&sv=8.4.6"
+CLS_ROLL_URL = "https://www.cls.cn/nodeapi/updateTelegraphList"
+
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Referer": "https://www.cls.cn/telegraph",
+}
 
 
 def _clean_html(text: str) -> str:
-    """去除 HTML 标签"""
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
 class ClsProvider(BaseEventProvider):
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=15, follow_redirects=True)
+        self.client = httpx.AsyncClient(timeout=15, follow_redirects=True, headers=_HEADERS)
 
     async def fetch_latest(self, limit: int = 50) -> list[CrawledArticle]:
         try:
-            resp = await self.client.get(
-                CLS_ROLL_URL,
-                params={"rn": limit},
-            )
+            resp = await self.client.get(CLS_ROLL_URL, params={"rn": limit})
             resp.raise_for_status()
             data = resp.json()
             articles = []
@@ -48,7 +48,7 @@ class ClsProvider(BaseEventProvider):
                         pass
                 articles.append(CrawledArticle(
                     title=title[:200],
-                    url=item.get("url", ""),
+                    url=item.get("shareurl", f"https://www.cls.cn/detail/{item.get('id', '')}"),
                     content=content,
                     source="cls",
                     published_at=published_at,
@@ -59,9 +59,7 @@ class ClsProvider(BaseEventProvider):
             return []
 
     async def fetch_by_stock(self, stock_code: str, limit: int = 20) -> list[CrawledArticle]:
-        # 财联社暂不支持按股票代码精确搜索，返回空
         return []
 
     async def fetch_by_keyword(self, keyword: str, limit: int = 20) -> list[CrawledArticle]:
-        # 暂不支持关键词搜索
         return []

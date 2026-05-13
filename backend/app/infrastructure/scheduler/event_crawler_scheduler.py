@@ -30,6 +30,8 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
             from app.domain.services.event_dedup import url_hash
             from app.infrastructure.repositories.mysql_impact_event_repo import MySQLImpactEventRepository
             from app.infrastructure.repositories.mysql_impact_article_repo import MySQLImpactArticleRepository
+            from app.infrastructure.repositories.mysql_user_impact_repo import MySQLUserImpactRepository
+            from app.domain.entities.user_impact import UserImpact
 
             provider = ClsProvider()
             articles = await provider.fetch_latest(limit=50)
@@ -41,10 +43,11 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
             async with session_factory() as session:
                 event_repo = MySQLImpactEventRepository(session)
                 article_repo = MySQLImpactArticleRepository(session)
+                impact_repo = MySQLUserImpactRepository(session)
 
-                # 获取已有 URL hash
                 existing_hashes = set()
                 existing_titles = []
+                new_events = []
 
                 processed = 0
                 for article in articles:
@@ -58,7 +61,6 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
                     if not result:
                         continue
 
-                    # 创建事件
                     from app.domain.entities.impact_event import ImpactEvent
                     event = ImpactEvent(
                         title=result["title"],
@@ -73,7 +75,6 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
                     )
                     event = await event_repo.create(event)
 
-                    # 创建报道
                     from app.domain.entities.impact_article import ImpactArticle
                     impact_article = ImpactArticle(
                         event_id=event.event_id,
@@ -88,12 +89,57 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
 
                     existing_hashes.add(impact_article.url_hash)
                     existing_titles.append(article.title)
+                    new_events.append(event)
                     processed += 1
+
+                # 将事件匹配到用户
+                if new_events:
+                    from sqlalchemy import text
+                    stmt = text(
+                        "SELECT wg.user_id, wi.stock_code "
+                        "FROM t_watchlist_group wg "
+                        "JOIN t_watchlist_item wi ON wg.id = wi.group_id"
+                    )
+                    r = await session.execute(stmt)
+                    user_stocks: dict = {}
+                    for row in r.fetchall():
+                        user_stocks.setdefault(row[0], set()).add(row[1])
+
+                    importance_priority = {"high": "P1", "medium": "P2", "low": "P3"}
+                    matched_count = 0
+                    if user_stocks:
+                        for ev in new_events:
+                            ev_codes = set(
+                                s.get("code", "")
+                                for s in (ev.affected_stocks or [])
+                                if s.get("code")
+                            )
+                            for uid, watch_codes in user_stocks.items():
+                                overlap = ev_codes & watch_codes
+                                pri = importance_priority.get(ev.importance or "low", "P3")
+                                if overlap:
+                                    ms = [{"code": c, "direction": ev.sentiment or "neutral"} for c in overlap]
+                                elif ev.importance in ("high", "medium"):
+                                    ms = ev.affected_stocks or []
+                                    pri = "P3"
+                                else:
+                                    continue
+
+                                existing = await impact_repo.get_by_user_and_event(uid, ev.event_id)
+                                if existing:
+                                    continue
+                                await impact_repo.create(UserImpact(
+                                    user_id=uid,
+                                    event_id=ev.event_id,
+                                    matched_stocks=ms,
+                                    matched_industries=ev.affected_industries or [],
+                                    priority=pri,
+                                ))
+                                matched_count += 1
+                    logger.info("用户影响匹配完成: %d 条记录", matched_count)
 
                 await session.commit()
                 logger.info("事件采集完成: 采集 %d 条，新增 %d 条", len(articles), processed)
-
-                # 匹配用户影响（TODO: 后续完善用户匹配逻辑）
 
         except Exception as e:
             logger.error("事件采集任务失败: %s", e, exc_info=True)

@@ -151,11 +151,11 @@ class EventRadarUseCase:
             logger.info("未采集到新文章")
             return {"crawled": 0, "new_events": 0}
 
-        # Get existing hashes and titles for dedup
         existing_hashes = set()
         existing_titles = []
 
         new_count = 0
+        new_events: list[ImpactEvent] = []
         for article in articles:
             result = assess_event(
                 title=article.title,
@@ -193,7 +193,72 @@ class EventRadarUseCase:
 
             existing_hashes.add(impact_article.url_hash)
             existing_titles.append(article.title)
+            new_events.append(event)
             new_count += 1
+
+        if new_events:
+            await self._match_users_for_events(new_events)
 
         logger.info("采集完成: 共 %d 条，新增 %d 条", len(articles), new_count)
         return {"crawled": len(articles), "new_events": new_count}
+
+    async def _match_users_for_events(self, events: list[ImpactEvent]):
+        """将新事件匹配到用户，生成 UserImpact 记录"""
+        from sqlalchemy import text
+
+        session = self.impact_repo.session
+
+        # 获取所有有自选股的用户及其股票代码
+        stmt = text(
+            "SELECT wg.user_id, wi.stock_code "
+            "FROM t_watchlist_group wg "
+            "JOIN t_watchlist_item wi ON wg.id = wi.group_id"
+        )
+        result = await session.execute(stmt)
+        user_stocks: dict[str, set[str]] = {}
+        for row in result.fetchall():
+            user_stocks.setdefault(row[0], set()).add(row[1])
+
+        if not user_stocks:
+            logger.info("无自选股用户，跳过用户匹配")
+            return
+
+        importance_priority = {"high": "P1", "medium": "P2", "low": "P3"}
+
+        for event in events:
+            event_stock_codes = set()
+            for s in (event.affected_stocks or []):
+                code = s.get("code", "")
+                if code:
+                    event_stock_codes.add(code)
+
+            for user_id, watch_codes in user_stocks.items():
+                matched = event_stock_codes & watch_codes
+                priority = importance_priority.get(event.importance or "low", "P3")
+
+                if matched:
+                    matched_stocks = [
+                        {"code": c, "direction": event.sentiment or "neutral"}
+                        for c in matched
+                    ]
+                elif event.importance in ("high", "medium"):
+                    # 高/中重要性事件广播给所有用户
+                    matched_stocks = event.affected_stocks or []
+                    priority = "P3"
+                else:
+                    continue
+
+                existing = await self.impact_repo.get_by_user_and_event(user_id, event.event_id)
+                if existing:
+                    continue
+
+                user_impact = UserImpact(
+                    user_id=user_id,
+                    event_id=event.event_id,
+                    matched_stocks=matched_stocks,
+                    matched_industries=event.affected_industries or [],
+                    priority=priority,
+                )
+                await self.impact_repo.create(user_impact)
+
+        await session.flush()
