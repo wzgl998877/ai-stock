@@ -81,7 +81,22 @@ class MySQLChatRepository(ChatRepository):
             .order_by(SessionModel.create_time.desc())
         )
         result = await self.session.execute(stmt)
-        return [_session_to_entity(m) for m in result.scalars().all()]
+        # 列表视图不加载消息，避免 N+1 懒加载和不必要的数据传输
+        return [
+            ChatSession(
+                session_id=m.session_id,
+                user_id=m.user_id,
+                title=m.title,
+                event_type=m.event_type,
+                session_type=m.session_type,
+                config=m.config,
+                messages=[],
+                create_time=m.create_time,
+                update_time=m.update_time,
+                deleted=m.deleted,
+            )
+            for m in result.scalars().all()
+        ]
 
     async def delete_session(self, session_id: str) -> bool:
         stmt = select(SessionModel).where(SessionModel.session_id == session_id)

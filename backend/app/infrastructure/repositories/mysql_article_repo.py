@@ -5,7 +5,7 @@ from typing import Optional, List, Tuple
 
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, defer
 
 from app.domain.entities.article import Article, IndustryRef, StockRef
 from app.domain.repositories.article_repo import ArticleRepository
@@ -42,6 +42,41 @@ def _to_entity(model: ArticleModel) -> Article:
         update_time=model.update_time,
         deleted=model.deleted,
     )
+
+
+def _to_list_entity(model: ArticleModel) -> Article:
+    """列表视图专用：跳过 content/raw_input 等大文本字段"""
+    return Article(
+        article_id=model.article_id,
+        title=model.title,
+        summary=model.summary,
+        content=None,
+        event_type=model.event_type,
+        raw_input=None,
+        user_id=model.user_id,
+        chain_table=model.chain_table,
+        article_type=getattr(model, 'article_type', 'event'),
+        analysis_data=getattr(model, 'analysis_data', None),
+        status=getattr(model, 'status', 'completed'),
+        industries=[
+            IndustryRef(industry_code=ai.industry_code, chain_level=ai.chain_level, sentiment=ai.sentiment)
+            for ai in model.article_industries
+        ],
+        stocks=[
+            StockRef(stock_code=ast.stock_code, stock_name=ast.stock_name, sentiment=ast.sentiment)
+            for ast in model.article_stocks
+        ],
+        create_time=model.create_time,
+        update_time=model.update_time,
+        deleted=model.deleted,
+    )
+
+
+# 列表查询公共 defer 选项：跳过大文本列
+_LIST_DEFER_OPTIONS = (
+    defer(ArticleModel.content),
+    defer(ArticleModel.raw_input),
+)
 
 
 class MySQLArticleRepository(ArticleRepository):
@@ -122,32 +157,23 @@ class MySQLArticleRepository(ArticleRepository):
             count_stmt = count_stmt.where(ArticleModel.event_type == event_type)
         total = (await self.session.execute(count_stmt)).scalar() or 0
 
-        # data
+        # data — defer 大文本 + selectinload 关联数据
         stmt = (
             select(ArticleModel)
             .where(ArticleModel.user_id == user_id, ArticleModel.deleted == "0")
             .order_by(ArticleModel.create_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
+            .options(*_LIST_DEFER_OPTIONS)
+            .options(selectinload(ArticleModel.article_industries))
+            .options(selectinload(ArticleModel.article_stocks))
         )
         if event_type:
             stmt = stmt.where(ArticleModel.event_type == event_type)
         result = await self.session.execute(stmt)
         models = result.scalars().all()
 
-        # 补充关联数据
-        articles = []
-        for m in models:
-            stmt_full = (
-                select(ArticleModel)
-                .where(ArticleModel.article_id == m.article_id)
-                .options(selectinload(ArticleModel.article_industries))
-                .options(selectinload(ArticleModel.article_stocks))
-            )
-            full = (await self.session.execute(stmt_full)).scalar_one()
-            articles.append(_to_entity(full))
-
-        return articles, total
+        return [_to_list_entity(m) for m in models], total
 
     async def list_by_industry(
         self, industry_code: str, user_id: str, page: int = 1, page_size: int = 20,
@@ -172,21 +198,14 @@ class MySQLArticleRepository(ArticleRepository):
             .order_by(ArticleModel.create_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
+            .options(*_LIST_DEFER_OPTIONS)
+            .options(selectinload(ArticleModel.article_industries))
+            .options(selectinload(ArticleModel.article_stocks))
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()
 
-        articles = []
-        for m in models:
-            stmt_full = (
-                select(ArticleModel)
-                .where(ArticleModel.article_id == m.article_id)
-                .options(selectinload(ArticleModel.article_industries))
-                .options(selectinload(ArticleModel.article_stocks))
-            )
-            full = (await self.session.execute(stmt_full)).scalar_one()
-            articles.append(_to_entity(full))
-        return articles, total
+        return [_to_list_entity(m) for m in models], total
 
     async def list_by_stock(
         self, stock_code: str, user_id: str, page: int = 1, page_size: int = 20,
@@ -210,21 +229,14 @@ class MySQLArticleRepository(ArticleRepository):
             .order_by(ArticleModel.create_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
+            .options(*_LIST_DEFER_OPTIONS)
+            .options(selectinload(ArticleModel.article_industries))
+            .options(selectinload(ArticleModel.article_stocks))
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()
 
-        articles = []
-        for m in models:
-            stmt_full = (
-                select(ArticleModel)
-                .where(ArticleModel.article_id == m.article_id)
-                .options(selectinload(ArticleModel.article_industries))
-                .options(selectinload(ArticleModel.article_stocks))
-            )
-            full = (await self.session.execute(stmt_full)).scalar_one()
-            articles.append(_to_entity(full))
-        return articles, total
+        return [_to_list_entity(m) for m in models], total
 
     async def delete(self, article_id: str) -> bool:
         stmt = select(ArticleModel).where(ArticleModel.article_id == article_id)

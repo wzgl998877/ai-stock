@@ -25,7 +25,7 @@ const AnalysisRecordsPage: React.FC = () => {
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    listAnalysisRecords({ page: 1, pageSize: 50 })
+    listAnalysisRecords({ page: 1, pageSize: 20 })
       .then((res) => {
         setRecords(res.items);
         setTotal(res.total);

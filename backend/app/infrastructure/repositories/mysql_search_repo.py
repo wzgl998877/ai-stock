@@ -47,22 +47,13 @@ class MySQLSearchRepository(SearchRepository):
             .order_by(ArticleModel.create_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
+            .options(selectinload(ArticleModel.article_industries))
+            .options(selectinload(ArticleModel.article_stocks))
         )
         result = await self.session.execute(stmt, {"q": query})
         models = result.scalars().all()
 
-        articles = []
-        for m in models:
-            full = (
-                await self.session.execute(
-                    select(ArticleModel)
-                    .where(ArticleModel.article_id == m.article_id)
-                    .options(selectinload(ArticleModel.article_industries))
-                    .options(selectinload(ArticleModel.article_stocks))
-                )
-            ).scalar_one()
-            articles.append(_to_entity(full))
-        return articles, total
+        return [_to_entity(m) for m in models], total
 
     async def search_by_industry(
         self, query: str, industry_code: str, user_id: str, page: int = 1, page_size: int = 20,

@@ -8,6 +8,7 @@ from typing import Optional, List, Tuple
 
 from sqlalchemy import select, func, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload, defer
 
 from app.domain.entities.stock_analysis import StockAnalysis, StockAnalysisDetail
 from app.domain.repositories.stock_analysis_repo import StockAnalysisRepository
@@ -91,6 +92,67 @@ def _to_entity(model: StockAnalysisModel) -> StockAnalysis:
     )
 
 
+def _to_summary_entity(model: StockAnalysisModel) -> StockAnalysis:
+    """列表视图专用：不访问 full_content/reasoning 等大文本字段"""
+    return StockAnalysis(
+        analysis_id=model.analysis_id,
+        stock_code=model.stock_code,
+        stock_name=model.stock_name,
+        user_id=model.user_id,
+        analysis_mode=model.analysis_mode,
+        status=model.status,
+        current_phase=model.current_phase,
+        title=model.title,
+        summary=model.summary,
+        full_content=None,
+        decision_action=model.decision_action,
+        target_price=model.target_price,
+        stop_loss_price=model.stop_loss_price,
+        confidence=model.confidence,
+        risk_score=model.risk_score,
+        reasoning=None,
+        industries=model.industries,
+        data_source=model.data_source,
+        article_id=model.article_id,
+        session_id=model.session_id,
+        details=[
+            StockAnalysisDetail(
+                detail_id=d.detail_id,
+                analysis_id=d.analysis_id,
+                agent_name=d.agent_name,
+                phase=d.phase,
+                status=d.status,
+                summary=None,
+                full_report=None,
+                thinking_steps=None,
+                debate_data=None,
+                error_message=None,
+                completed_at=d.completed_at,
+                display_order=d.display_order,
+                create_time=d.create_time,
+                update_time=d.update_time,
+            )
+            for d in model.details
+        ],
+        create_time=model.create_time,
+        update_time=model.update_time,
+    )
+
+
+# 列表查询：defer 主表 + details 的大文本列，避免远程传输 MEDIUMTEXT
+_LIST_DEFER_OPTIONS = (
+    defer(StockAnalysisModel.full_content),
+    defer(StockAnalysisModel.reasoning),
+    selectinload(StockAnalysisModel.details).options(
+        defer(StockAnalysisDetailModel.full_report),
+        defer(StockAnalysisDetailModel.summary),
+        defer(StockAnalysisDetailModel.thinking_steps),
+        defer(StockAnalysisDetailModel.debate_data),
+        defer(StockAnalysisDetailModel.error_message),
+    ),
+)
+
+
 class MySQLStockAnalysisRepository(StockAnalysisRepository):
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -137,6 +199,7 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
                 StockAnalysisModel.analysis_id == analysis_id,
                 StockAnalysisModel.deleted == "0",
             )
+            .options(selectinload(StockAnalysisModel.details))
         )
         result = await self.session.execute(stmt)
         model = result.scalar_one_or_none()
@@ -179,11 +242,12 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
             .order_by(StockAnalysisModel.update_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
+            .options(*_LIST_DEFER_OPTIONS)
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()
 
-        return [_to_entity(m) for m in models], total
+        return [_to_summary_entity(m) for m in models], total
 
     async def list_by_stock(
         self,
@@ -208,11 +272,12 @@ class MySQLStockAnalysisRepository(StockAnalysisRepository):
             .order_by(StockAnalysisModel.create_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
+            .options(*_LIST_DEFER_OPTIONS)
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()
 
-        return [_to_entity(m) for m in models], total
+        return [_to_summary_entity(m) for m in models], total
 
     async def get_recent_by_stock(self, stock_code: str, user_id: str, minutes: int = 5) -> Optional[StockAnalysis]:
         cutoff = datetime.now() - timedelta(minutes=minutes)

@@ -449,7 +449,6 @@ async def list_analysis_records(
 
     items = []
     for sa in records:
-        # 从 details 计算进度
         mode = sa.analysis_mode
         total_agents = 4 if mode == "full" else 2
         agents_done = len([d for d in sa.details if d.phase == "analysts" and d.status == "done"])
@@ -471,8 +470,6 @@ async def list_analysis_records(
                     "agent_name": d.agent_name,
                     "phase": d.phase,
                     "status": d.status,
-                    "summary": d.summary or "",
-                    "full_report": d.full_report or "",
                     "completed_at": d.completed_at.isoformat() if d.completed_at else None,
                 }
                 for d in sa.details

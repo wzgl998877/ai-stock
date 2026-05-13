@@ -271,7 +271,7 @@ class ChatSession(AuditMixin, Base):
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     messages = relationship(
-        "ChatMessage", backref="session", lazy="selectin", order_by="ChatMessage.create_time"
+        "ChatMessage", backref="session", lazy="noload", order_by="ChatMessage.create_time"
     )
 
     __table_args__ = (
