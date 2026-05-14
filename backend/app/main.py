@@ -1,9 +1,11 @@
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.logging import setup_logging
@@ -206,6 +208,33 @@ app.include_router(watchlist.router)
 app.include_router(industry.router)
 app.include_router(search.router)
 app.include_router(event_radar.router)
+
+# 托管前端静态文件（与后端同端口）
+_frontend_dist = Path(__file__).resolve().parent.parent / "dist"
+if _frontend_dist.is_dir():
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from fastapi.responses import FileResponse
+
+    _api_prefixes = ("/api", "/health", "/docs", "/openapi", "/redoc")
+
+    class SPAMiddleware(BaseHTTPMiddleware):
+        """非 API 请求返回前端 SPA，API 请求正常放行"""
+
+        async def dispatch(self, request, call_next):
+            response = await call_next(request)
+            if (
+                request.method == "GET"
+                and response.status_code == 404
+                and not request.url.path.startswith(_api_prefixes)
+            ):
+                file = _frontend_dist / request.url.path.lstrip("/")
+                if file.is_file():
+                    return FileResponse(file)
+                return FileResponse(_frontend_dist / "index.html")
+            return response
+
+    app.add_middleware(SPAMiddleware)
+    app.mount("/assets", StaticFiles(directory=_frontend_dist / "assets"), name="assets")
 
 
 @app.get("/health")
