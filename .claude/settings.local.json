@@ -40,7 +40,17 @@
       "Bash(/d/tool/node/node:*)",
       "Bash(LC_ALL=C sort:*)",
       "Bash(sed:*)",
-      "WebFetch(domain:akshare.akfamily.xyz)"
+      "WebFetch(domain:akshare.akfamily.xyz)",
+      "Bash(bash deploy.sh)",
+      "Read(//c/Users/zhengtao/.ssh/**)",
+      "Bash(ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=yes root@106.52.235.247 \"mkdir -p ~/.ssh && chmod 700 ~/.ssh\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(ssh-copy-id *)",
+      "Bash(ssh -o StrictHostKeyChecking=no root@106.52.235.247 \"mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys\")",
+      "Bash(npm run *)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Bash(ls \"/c/nvm\"*/v*/node.exe)",
+      "Read(//c/Users/zhengtao/AppData/**)"
     ]
   }
 }

@@ -1,7 +1,7 @@
-/** 事件雷达主页面 — AI 金融终端风格 */
+/** 事件雷达主页面 — 重构版 */
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { Button, Spin, Empty, Segmented } from "antd";
+import { Button, Spin, Empty } from "antd";
 import { SettingOutlined, SyncOutlined } from "@ant-design/icons";
 import { useEventRadarStore } from "../store/eventRadarStore";
 import { eventRadarService } from "../services/eventRadarService";
@@ -29,6 +29,8 @@ const EventRadarPage: React.FC = () => {
   const [selectedImpactId, setSelectedImpactId] = useState<number | null>(null);
   const [configVisible, setConfigVisible] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -69,96 +71,162 @@ const EventRadarPage: React.FC = () => {
       ? archivedImpacts
       : [...activeImpacts, ...archivedImpacts];
 
+  // 标签页配置
+  const tabs = [
+    { label: "正在影响", value: "active", count: activeImpacts.length },
+    { label: "今日已影响", value: "archived", count: archivedImpacts.length },
+  ];
+
+  // 滑动下划线位置
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (!tabsRef.current) return;
+      const tabElements = tabsRef.current.querySelectorAll("[data-tab]");
+      const activeIndex = tabs.findIndex((t) => t.value === statusFilter);
+      if (activeIndex >= 0 && tabElements[activeIndex]) {
+        const el = tabElements[activeIndex] as HTMLElement;
+        setUnderlineStyle({ left: el.offsetLeft, width: el.offsetWidth });
+      }
+    });
+  }, [statusFilter, activeImpacts.length, archivedImpacts.length]);
+
   return (
-    <div style={{ padding: "16px 20px", height: "100%", overflowY: "auto" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>事件影响雷达</div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>AI 实时监控影响你投资的事件</div>
+    <div style={{ background: "#F7F9FC", padding: 24, height: "100%", overflowY: "auto" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a" }}>事件影响雷达</div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>AI 实时监控影响你投资的事件</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button icon={<SyncOutlined />} onClick={loadData} loading={loading}>
+              刷新
+            </Button>
+            <Button icon={<SettingOutlined />} onClick={() => setConfigVisible(true)}>
+              设置
+            </Button>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button icon={<SyncOutlined />} onClick={loadData} loading={loading} size="middle">
-            刷新
-          </Button>
-          <Button icon={<SettingOutlined />} onClick={() => setConfigVisible(true)} size="middle">
-            设置
-          </Button>
-        </div>
-      </div>
 
-      {/* AI Status Bar */}
-      {stats && <ImpactStatsCard stats={stats} />}
+        {/* 仪表盘 */}
+        {stats && <ImpactStatsCard stats={stats} />}
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-        <Segmented
-          value={statusFilter}
-          onChange={(v) => setStatusFilter(v as string)}
-          options={[
-            { label: `正在影响 (${activeImpacts.length})`, value: "active" },
-            { label: `今日已影响 (${archivedImpacts.length})`, value: "archived" },
-            { label: "全部", value: "all" },
-          ]}
-        />
-      </div>
-
-      {/* Event List */}
-      {loading && !displayedImpacts.length ? (
-        <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <Spin size="large" />
-          <div style={{ marginTop: 16, color: "#6366f1", fontSize: 13, fontWeight: 500 }}>AI 正在扫描市场...</div>
-        </div>
-      ) : error ? (
-        <div style={{ textAlign: "center", padding: "80px 0" }}>
-          <div style={{ color: "#dc2626", marginBottom: 12 }}>{error}</div>
-          <Button onClick={loadData}>重试</Button>
-        </div>
-      ) : displayedImpacts.length === 0 ? (
-        <Empty
-          description={
-            activeImpacts.length === 0 && archivedImpacts.length === 0
-              ? "尚未检测到影响事件，系统正在持续监控中"
-              : "该分类下暂无事件"
-          }
-          style={{ padding: "60px 0" }}
-        />
-      ) : (
-        <div>
-          {displayedImpacts.map((impact) => (
-            <ImpactEventCard
-              key={impact.id}
-              impact={impact}
-              onViewDetail={handleViewDetail}
-            />
+        {/* 标签页 + 滑动下划线 */}
+        <div
+          ref={tabsRef}
+          style={{ display: "flex", borderBottom: "2px solid #e5edf5", marginBottom: 16, position: "relative" }}
+        >
+          {tabs.map((tab) => (
+            <div
+              key={tab.value}
+              data-tab={tab.value}
+              onClick={() => setStatusFilter(tab.value)}
+              style={{
+                padding: "12px 24px",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: statusFilter === tab.value ? 600 : 400,
+                color: statusFilter === tab.value ? "#2A6DFF" : "#64748b",
+                transition: "color 0.2s",
+                userSelect: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span
+                  style={{
+                    padding: "1px 8px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    background: statusFilter === tab.value ? "rgba(42,109,255,0.1)" : "#f1f5f9",
+                    color: statusFilter === tab.value ? "#2A6DFF" : "#94a3b8",
+                  }}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </div>
           ))}
+          <div
+            style={{
+              position: "absolute",
+              bottom: -2,
+              height: 2,
+              background: "#2A6DFF",
+              borderRadius: 1,
+              transition: "left 0.3s ease, width 0.3s ease",
+              left: underlineStyle.left,
+              width: underlineStyle.width,
+            }}
+          />
         </div>
-      )}
 
-      {/* Disclaimer */}
-      <div style={{
-        marginTop: 20,
-        padding: "10px 16px",
-        background: "#f8fafc",
-        borderRadius: 6,
-        border: "1px solid #f1f5f9",
-        textAlign: "center",
-        fontSize: 12,
-        color: "#94a3b8",
-      }}>
-        以上为 AI 分析参考，不构成投资建议
+        {/* 事件列表 — 双列网格 */}
+        {loading && !displayedImpacts.length ? (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <Spin size="large" />
+            <div style={{ marginTop: 16, color: "#2A6DFF", fontSize: 13, fontWeight: 500 }}>AI 正在扫描市场...</div>
+          </div>
+        ) : error ? (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <div style={{ color: "#E74C3C", marginBottom: 12 }}>{error}</div>
+            <Button onClick={loadData}>重试</Button>
+          </div>
+        ) : displayedImpacts.length === 0 ? (
+          <Empty
+            description={
+              activeImpacts.length === 0 && archivedImpacts.length === 0
+                ? "尚未检测到影响事件，系统正在持续监控中"
+                : "该分类下暂无事件"
+            }
+            style={{ padding: "60px 0" }}
+          />
+        ) : (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 480px), 1fr))",
+            gap: 16,
+            alignItems: "start",
+          }}>
+            {displayedImpacts.map((impact) => (
+              <ImpactEventCard
+                key={impact.id}
+                impact={impact}
+                onViewDetail={handleViewDetail}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* 免责声明 */}
+        <div style={{
+          marginTop: 24,
+          padding: "10px 16px",
+          background: "#ffffff",
+          borderRadius: 16,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)",
+          textAlign: "center",
+          fontSize: 12,
+          color: "#94a3b8",
+        }}>
+          以上为 AI 分析参考，不构成投资建议
+        </div>
+
+        {/* Drawers */}
+        <EventDetailDrawer
+          visible={detailVisible}
+          impactId={selectedImpactId}
+          onClose={() => setDetailVisible(false)}
+        />
+        <RadarConfigModal
+          visible={configVisible}
+          onClose={() => setConfigVisible(false)}
+        />
       </div>
-
-      {/* Drawers */}
-      <EventDetailDrawer
-        visible={detailVisible}
-        impactId={selectedImpactId}
-        onClose={() => setDetailVisible(false)}
-      />
-      <RadarConfigModal
-        visible={configVisible}
-        onClose={() => setConfigVisible(false)}
-      />
     </div>
   );
 };

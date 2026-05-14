@@ -1,0 +1,8 @@
+# 远程主机（用户@IP 或 用户@域名）
+REMOTE=root@192.168.1.100
+
+# 远程部署目录
+DEPLOY_DIR=/opt/ai-stock
+
+# SSH 密码（留空则使用 SSH 密钥认证）
+SSH_PASSWORD=

@@ -1,12 +1,8 @@
-/** AI 推演事件卡片 */
+/** AI 推演事件卡片 — 紧凑设计版 */
 
 import React from "react";
-import { Button } from "antd";
-import {
-  EyeOutlined,
-  ThunderboltOutlined,
-  CheckCircleOutlined,
-} from "@ant-design/icons";
+import { Button, Tooltip } from "antd";
+import { ThunderboltOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
 interface MatchedStock {
@@ -37,22 +33,17 @@ interface ImpactEventCardProps {
   onViewDetail: (impactId: number) => void;
 }
 
-const sentimentCfg: Record<string, { label: string; color: string; tagBg: string; tagBorder: string }> = {
-  positive: { label: "利好", color: "#16a34a", tagBg: "#f0fdf4", tagBorder: "#bbf7d0" },
-  negative: { label: "利空", color: "#dc2626", tagBg: "#fef2f2", tagBorder: "#fecaca" },
-  neutral:  { label: "中性", color: "#64748b", tagBg: "#f8fafc", tagBorder: "#e2e8f0" },
-};
-
-const priorityCfg: Record<string, { label: string; bg: string; color: string }> = {
-  P0: { label: "紧急", bg: "#fef2f2", color: "#dc2626" },
-  P1: { label: "重要", bg: "#fff7ed", color: "#ea580c" },
-  P2: { label: "关注", bg: "#f0f0ff", color: "#6366f1" },
+const sentimentCfg: Record<string, { label: string; color: string; bg: string }> = {
+  positive: { label: "利好", color: "#00A86B", bg: "rgba(0,168,107,0.1)" },
+  negative: { label: "利空", color: "#E74C3C", bg: "rgba(231,76,60,0.1)" },
+  neutral:  { label: "中性", color: "#F39C12", bg: "rgba(243,156,18,0.1)" },
 };
 
 const ImpactEventCard: React.FC<ImpactEventCardProps> = ({ impact, onViewDetail }) => {
   const navigate = useNavigate();
   const s = sentimentCfg[impact.sentiment || "neutral"] || sentimentCfg.neutral;
-  const p = priorityCfg[impact.priority] || priorityCfg.P2;
+  const primaryStock = impact.matched_stocks?.[0];
+  const primaryName = primaryStock?.name || primaryStock?.code || "";
 
   const handleQuickAnalysis = () => {
     const params = new URLSearchParams({
@@ -64,160 +55,147 @@ const ImpactEventCard: React.FC<ImpactEventCardProps> = ({ impact, onViewDetail 
   };
 
   const formatTime = (dateStr: string | null) => {
-    if (!dateStr) return "";
+    if (!dateStr) return { short: "", full: "" };
     const d = new Date(dateStr);
     const now = new Date();
     const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
-    if (diffMin < 60) return `${diffMin}分钟前`;
+    const full = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    if (diffMin < 60) return { short: `${diffMin}分钟前`, full };
     const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour}小时前`;
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    if (diffHour < 24) return { short: `${diffHour}小时前`, full };
+    return { short: `${d.getMonth() + 1}月${d.getDate()}日`, full };
   };
 
-  // Build inference chain from matched stocks + industries
-  const inferenceSteps: string[] = [];
-  if (impact.matched_stocks.length > 0) {
-    impact.matched_stocks.slice(0, 3).forEach(st => {
-      inferenceSteps.push(st.name || st.code);
-    });
-  }
+  const time = formatTime(impact.first_seen_at);
+
+  const aiVerdict =
+    impact.sentiment === "positive"
+      ? "可能推动上涨"
+      : impact.sentiment === "negative"
+      ? "关注下行风险"
+      : "影响有限，持续观察";
 
   return (
     <div
       style={{
         background: "#ffffff",
-        border: "1px solid #e5edf5",
-        borderLeft: `3px solid ${s.color}`,
-        borderRadius: 8,
-        padding: "14px 18px",
+        borderRadius: 16,
+        padding: "16px 20px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)",
         cursor: "pointer",
-        transition: "all 0.25s",
-        marginBottom: 8,
+        transition: "all 0.25s ease",
+        display: "flex",
+        gap: 16,
       }}
+      onClick={() => onViewDetail(impact.id)}
       onMouseEnter={(e) => {
         const el = e.currentTarget as HTMLDivElement;
-        el.style.borderColor = "#cbd5e1";
-        el.style.boxShadow = `0 2px 12px rgba(0,0,0,0.06)`;
-        el.style.transform = "translateY(-1px)";
+        el.style.transform = "translateY(-2px)";
+        el.style.boxShadow = "0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)";
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget as HTMLDivElement;
-        el.style.borderColor = "#e5edf5";
-        el.style.boxShadow = "none";
         el.style.transform = "none";
+        el.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)";
       }}
     >
-      {/* Header tags */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: p.bg, color: p.color }}>
-          {p.label}
-        </span>
-        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: s.tagBg, color: s.color, border: `1px solid ${s.tagBorder}` }}>
-          {s.label}
-        </span>
-        {impact.source_count >= 3 && (
-          <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: "#fff7ed", color: "#ea580c" }}>
-            热点
-          </span>
-        )}
-        {impact.has_related_analysis && (
-          <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, background: "#f0f0ff", color: "#6366f1", display: "inline-flex", alignItems: "center", gap: 3 }}>
-            <CheckCircleOutlined style={{ fontSize: 10 }} /> 已分析
-          </span>
-        )}
-        <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>
-          {formatTime(impact.first_seen_at)}
-        </span>
-      </div>
-
-      {/* Title */}
-      <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", lineHeight: 1.5, marginBottom: 8 }}>
-        {impact.title}
-      </div>
-
-      {/* AI Inference Chain */}
-      {inferenceSteps.length > 0 && (
-        <div style={{
-          background: "linear-gradient(135deg, #f8faff, #f5f3ff)",
-          border: "1px solid #e0e7ff",
-          borderRadius: 6,
-          padding: "10px 14px",
-          marginBottom: 10,
-        }}>
-          <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 600, marginBottom: 6, letterSpacing: "0.5px" }}>
-            AI 影响路径
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            {inferenceSteps.map((step, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <span style={{ color: "#a5b4fc", fontSize: 12 }}>→</span>}
-                <span style={{
-                  fontSize: 13, color: "#4338ca", background: "#ffffff",
-                  padding: "3px 10px", borderRadius: 4, border: "1px solid #e0e7ff",
-                }}>
-                  {step}
+      {/* 左侧：主内容 */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* 第一行：股票 + 标签 + 时间 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          {primaryStock && (
+            <span style={{ fontWeight: 600, fontSize: 14, color: "#0f172a", whiteSpace: "nowrap" }}>
+              {primaryName}{" "}
+              {primaryStock.name && (
+                <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: 12 }}>{primaryStock.code}</span>
+              )}
+              {impact.matched_stocks.length > 1 && (
+                <span style={{ fontWeight: 400, color: "#2A6DFF", fontSize: 12, marginLeft: 4 }}>
+                  +{impact.matched_stocks.length - 1}
                 </span>
-              </React.Fragment>
-            ))}
+              )}
+            </span>
+          )}
+          <span
+            style={{
+              padding: "2px 10px",
+              borderRadius: 12,
+              fontSize: 12,
+              fontWeight: 500,
+              background: s.bg,
+              color: s.color,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {s.label}
+          </span>
+          {impact.has_related_analysis && (
+            <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 500, background: "rgba(42,109,255,0.08)", color: "#2A6DFF", whiteSpace: "nowrap" }}>
+              已分析
+            </span>
+          )}
+          <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+            <Tooltip title={time.full}>
+              <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap", cursor: "default" }}>
+                {time.short}
+              </span>
+            </Tooltip>
+          </span>
+        </div>
+
+        {/* 第二行：标题（单行截断，悬浮显示全文） */}
+        <Tooltip title={impact.title.length > 40 ? impact.title : undefined}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: "#0f172a",
+              lineHeight: 1.5,
+              marginBottom: impact.summary ? 4 : 8,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {impact.title}
           </div>
-        </div>
-      )}
+        </Tooltip>
 
-      {/* Matched stocks */}
-      {impact.matched_stocks.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>关联个股</span>
-          {impact.matched_stocks.slice(0, 4).map((stock) => (
-            <span
-              key={stock.code}
-              style={{
-                padding: "2px 10px", borderRadius: 4, fontSize: 12, fontWeight: 500, cursor: "pointer",
-                background: stock.direction === "negative" ? "#fef2f2" : "#f0fdf4",
-                color: stock.direction === "negative" ? "#dc2626" : "#16a34a",
-                border: `1px solid ${stock.direction === "negative" ? "#fecaca" : "#bbf7d0"}`,
-              }}
-            >
-              {stock.name || stock.code}
-              {stock.direction === "positive" ? " ▲" : stock.direction === "negative" ? " ▼" : ""}
-            </span>
-          ))}
-        </div>
-      )}
+        {/* 第二行b：摘要 */}
+        {impact.summary && (
+          <div
+            style={{
+              fontSize: 13,
+              color: "#64748b",
+              lineHeight: 1.5,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              marginBottom: 8,
+            }}
+          >
+            {impact.summary}
+          </div>
+        )}
 
-      {/* Matched industries */}
-      {impact.matched_industries && impact.matched_industries.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>关联板块</span>
-          {impact.matched_industries.map((ind, i) => (
-            <span
-              key={i}
-              style={{
-                padding: "2px 10px", borderRadius: 4, fontSize: 12, fontWeight: 500,
-                background: "#f0f0ff", color: "#6366f1", border: "1px solid #e0e7ff",
-              }}
-            >
-              {ind.name}
-            </span>
-          ))}
+        {/* 第三行：AI 判断 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: s.color, fontWeight: 500 }}>{aiVerdict}</span>
         </div>
-      )}
-
-      {/* AI Judgment */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12 }}>
-        <span style={{ color: "#6366f1", fontSize: 14 }}>◆</span>
-        <span style={{ color: "#94a3b8" }}>AI 判断：</span>
-        <span style={{ color: s.color, fontWeight: 600 }}>
-          {s.label === "利好" ? "可能推动上涨" : s.label === "利空" ? "关注下行风险" : "影响有限，持续观察"}
-        </span>
       </div>
 
-      {/* Actions */}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 4 }}>
-        <Button size="small" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); onViewDetail(impact.id); }}>
-          查看详情
-        </Button>
-        <Button size="small" type="primary" icon={<ThunderboltOutlined />} onClick={(e) => { e.stopPropagation(); handleQuickAnalysis(); }}>
-          一键分析
+      {/* 右侧：操作按钮 */}
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", flexShrink: 0 }}>
+        <Button
+          type="primary"
+          size="small"
+          icon={<ThunderboltOutlined />}
+          onClick={(e) => { e.stopPropagation(); handleQuickAnalysis(); }}
+          style={{ borderRadius: 8, background: "#2A6DFF", borderColor: "#2A6DFF", fontSize: 12 }}
+        >
+          深度分析
         </Button>
       </div>
     </div>

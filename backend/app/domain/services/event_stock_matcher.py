@@ -67,14 +67,16 @@ def match_all(text: str) -> dict:
     # 第二级：名称
     name_stocks = match_by_name(text)
 
-    # 合并去重（以 code 为准）
-    seen_codes = set()
-    all_stocks = []
+    # 合并去重（以 code 为准，优先保留有名称的匹配）
+    stock_by_code: dict[str, dict] = {}
     for s in code_stocks + name_stocks:
         code = s.get("code", "")
-        if code and code not in seen_codes:
-            seen_codes.add(code)
-            all_stocks.append(s)
+        if not code:
+            continue
+        existing = stock_by_code.get(code)
+        if existing is None or (not existing.get("name") and s.get("name")):
+            stock_by_code[code] = s
+    all_stocks = list(stock_by_code.values())
 
     # 第三级：行业
     industries = match_by_industry(text)
