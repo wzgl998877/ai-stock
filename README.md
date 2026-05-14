@@ -234,6 +234,51 @@ ai-stock/
 
 ---
 
+## 服务器部署
+
+### 前置条件
+
+- 本地安装 Python 3 + `paramiko`（`pip install paramiko`）
+- 服务器已安装 Python 3、pip3
+- 服务器防火墙/安全组已放行 8000 端口
+
+### 一键部署
+
+```bash
+# 1. 复制并编辑配置文件
+cp deploy.conf.example deploy.conf
+# 修改 REMOTE（服务器地址）、DEPLOY_DIR（部署目录）、SSH_PASSWORD（密码，留空则用密钥）
+
+# 2. 执行部署
+python upload.py
+```
+
+脚本会自动完成：前端构建 → 打包 → 上传 → 远程安装依赖 → 启动 systemd 服务。
+
+部署完成后访问 `http://<服务器IP>:8000`，前后端同端口，无需 Nginx。
+
+### 常用运维命令
+
+```bash
+# 查看服务状态
+systemctl status ai-stock
+
+# 查看实时日志
+journalctl -u ai-stock -f
+
+# 重启服务
+systemctl restart ai-stock
+
+# 停止服务
+systemctl stop ai-stock
+```
+
+### 更新部署
+
+修改代码后再次执行 `python upload.py` 即可，会自动覆盖并重启服务。
+
+---
+
 ## 已知限制与注意事项
 
 1. **AI API Key 必填**：核心分析功能依赖大模型 API，无 Key 无法使用
