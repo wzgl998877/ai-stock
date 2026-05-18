@@ -55,6 +55,7 @@
       <workItem from="1774916482180" duration="1268000" />
       <workItem from="1776426217043" duration="704000" />
       <workItem from="1777086658066" duration="650000" />
+      <workItem from="1779114137134" duration="712000" />
     </task>
     <task id="LOCAL-00001" summary="feat: 新增md文档">
       <created>1776352079122</created>
@@ -84,7 +85,14 @@
       <option name="project" value="LOCAL" />
       <updated>1777086705913</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="feat: 引入前端skill">
+      <created>1779114226564</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1779114226564</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

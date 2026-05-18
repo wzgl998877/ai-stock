@@ -32,23 +32,26 @@ class EventRadarUseCase:
         self.impact_repo = impact_repo
         self.ai_service = ai_service
 
-    async def get_user_impacts(self, user_id: str, status: str = "all", d: Optional[date] = None):
+    async def get_user_impacts(self, user_id: str, status: str = "all",
+                                start_date: Optional[date] = None, end_date: Optional[date] = None,
+                                sentiment: Optional[str] = None,
+                                limit: int = 20, offset: int = 0):
         """获取用户影响事件列表"""
-        d = d or date.today()
-        active = []
-        archived = []
+        impacts = await self.impact_repo.list_by_user(
+            user_id,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            sentiment=sentiment,
+            limit=limit,
+            offset=offset,
+        )
 
-        if status in ("active", "all"):
-            active = await self.impact_repo.list_active_by_user(user_id)
-
-        if status in ("archived", "all"):
-            archived = await self.impact_repo.list_archived_by_user(user_id, d)
-
-        stats = await self.impact_repo.get_stats(user_id, d)
+        sd = start_date or date.today()
+        stats = await self.impact_repo.get_stats(user_id, sd)
 
         # Enrich with event details
-        all_impacts = active + archived
-        event_ids = list(set(imp.event_id for imp in all_impacts))
+        event_ids = list(set(imp.event_id for imp in impacts))
         events_map = {}
         if event_ids:
             events = await self.event_repo.get_by_ids(event_ids)
@@ -56,7 +59,7 @@ class EventRadarUseCase:
 
         # Count affected stocks
         all_stock_codes = set()
-        for imp in all_impacts:
+        for imp in impacts:
             for s in (imp.matched_stocks or []):
                 code = s.get("code", "")
                 if code:
@@ -65,8 +68,7 @@ class EventRadarUseCase:
         stats["affected_stocks_count"] = len(all_stock_codes)
 
         return {
-            "active_impacts": active,
-            "archived_impacts": archived,
+            "impacts": impacts,
             "stats": stats,
             "events_map": events_map,
         }

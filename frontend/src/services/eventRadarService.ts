@@ -6,7 +6,14 @@ const BASE = "/api/v1/event-radar";
 
 export const eventRadarService = {
   /** 获取影响事件列表 */
-  getImpacts: async (params?: { status?: string; date?: string }) => {
+  getImpacts: async (params?: {
+    status?: string;
+    start_date?: string;
+    end_date?: string;
+    sentiment?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
     const res = await api.get(`${BASE}/impacts`, { params });
     return res.data;
   },

@@ -43,6 +43,21 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
         except Exception as e:
             logger.error("事件采集任务失败: %s", e, exc_info=True)
 
+    async def archive_events():
+        """归档超过 24 小时未更新的活跃事件（将 is_active 置为 0）"""
+        logger.info("事件归档任务开始")
+        try:
+            from app.infrastructure.repositories.mysql_impact_event_repo import MySQLImpactEventRepository
+
+            async with session_factory() as session:
+                event_repo = MySQLImpactEventRepository(session)
+                count = await event_repo.archive_old_events(hours=24)
+                await session.commit()
+                logger.info("事件归档完成: %d 条事件已归档", count)
+
+        except Exception as e:
+            logger.error("事件归档任务失败: %s", e, exc_info=True)
+
     async def generate_morning_briefing():
         """为所有有自选股的用户生成晨报"""
         logger.info("晨报生成任务开始")
@@ -88,6 +103,22 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
         crawl_and_process,
         CronTrigger(hour="*/1", minute=7),
         id="crawl_off_hours",
+        replace_existing=True,
+    )
+
+    # 工作日 15:30 收盘后归档事件
+    scheduler.add_job(
+        archive_events,
+        CronTrigger(day_of_week="mon-fri", hour=15, minute=30),
+        id="archive_events_close",
+        replace_existing=True,
+    )
+
+    # 每天凌晨 3:00 兜底归档
+    scheduler.add_job(
+        archive_events,
+        CronTrigger(hour=3, minute=0),
+        id="archive_events_night",
         replace_existing=True,
     )
 

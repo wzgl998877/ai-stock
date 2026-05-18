@@ -59,33 +59,38 @@ def _impact_to_dict(imp, event=None, has_related_analysis=False):
 @router.get("/impacts")
 async def get_impacts(
     status: str = "all",
-    d: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    limit = min(limit, 100)
+    offset = max(offset, 0)
     uc = EventRadarUseCase(
         event_repo=MySQLImpactEventRepository(db),
         article_repo=MySQLImpactArticleRepository(db),
         impact_repo=MySQLUserImpactRepository(db),
     )
-    query_date = date.fromisoformat(d) if d else date.today()
-    result = await uc.get_user_impacts(current_user.user_id, status, query_date)
+    sd = date.fromisoformat(start_date) if start_date else None
+    ed = date.fromisoformat(end_date) if end_date else None
+    result = await uc.get_user_impacts(
+        current_user.user_id, status, sd, ed,
+        sentiment=sentiment, limit=limit, offset=offset,
+    )
     await db.commit()
 
     events_map = result["events_map"]
 
-    active = [
+    impacts = [
         _impact_to_dict(imp, events_map.get(imp.event_id))
-        for imp in result["active_impacts"]
-    ]
-    archived = [
-        _impact_to_dict(imp, events_map.get(imp.event_id))
-        for imp in result["archived_impacts"]
+        for imp in result["impacts"]
     ]
 
     return {
-        "active_impacts": active,
-        "archived_impacts": archived,
+        "impacts": impacts,
         "stats": result["stats"],
         "last_scan_at": None,
     }

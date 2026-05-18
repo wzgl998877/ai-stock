@@ -14,7 +14,7 @@ interface MatchedIndustry {
   direction: string;
 }
 
-interface ImpactItem {
+export interface ImpactItem {
   id: number;
   event_id: number;
   title: string;
@@ -69,9 +69,17 @@ interface StockImpact {
   recent_impacts: any[];
 }
 
+export type StatusFilter = "all" | "active" | "archived";
+export type SentimentFilter = "all" | "positive" | "negative" | "neutral";
+
+interface Pagination {
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 interface EventRadarState {
-  activeImpacts: ImpactItem[];
-  archivedImpacts: ImpactItem[];
+  impacts: ImpactItem[];
   stats: ImpactStats | null;
   currentDetail: any | null;
   alerts: AlertItem[];
@@ -79,10 +87,15 @@ interface EventRadarState {
   config: RadarConfig | null;
   stockImpacts: StockImpact[];
   loading: boolean;
+  loadingMore: boolean;
   error: string | null;
+  statusFilter: StatusFilter;
+  sentimentFilter: SentimentFilter;
+  dateRange: [string, string] | null;
+  pagination: Pagination;
 
-  setActiveImpacts: (impacts: ImpactItem[]) => void;
-  setArchivedImpacts: (impacts: ImpactItem[]) => void;
+  setImpacts: (impacts: ImpactItem[]) => void;
+  appendImpacts: (impacts: ImpactItem[]) => void;
   setStats: (stats: ImpactStats) => void;
   setCurrentDetail: (detail: any) => void;
   setAlerts: (alerts: AlertItem[]) => void;
@@ -90,13 +103,19 @@ interface EventRadarState {
   setConfig: (config: RadarConfig) => void;
   setStockImpacts: (impacts: StockImpact[]) => void;
   setLoading: (loading: boolean) => void;
+  setLoadingMore: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setStatusFilter: (filter: StatusFilter) => void;
+  setSentimentFilter: (filter: SentimentFilter) => void;
+  setDateRange: (range: [string, string] | null) => void;
+  setPagination: (pagination: Partial<Pagination>) => void;
   reset: () => void;
 }
 
+export const PAGE_SIZE = 20;
+
 const initialState = {
-  activeImpacts: [],
-  archivedImpacts: [],
+  impacts: [],
   stats: null,
   currentDetail: null,
   alerts: [],
@@ -104,14 +123,30 @@ const initialState = {
   config: null,
   stockImpacts: [],
   loading: false,
+  loadingMore: false,
   error: null,
+  statusFilter: "all" as StatusFilter,
+  sentimentFilter: "all" as SentimentFilter,
+  dateRange: null,
+  pagination: { limit: PAGE_SIZE, offset: 0, hasMore: true },
 };
 
 export const useEventRadarStore = create<EventRadarState>((set) => ({
   ...initialState,
 
-  setActiveImpacts: (impacts) => set({ activeImpacts: impacts }),
-  setArchivedImpacts: (impacts) => set({ archivedImpacts: impacts }),
+  setImpacts: (impacts) => set({ impacts }),
+  appendImpacts: (newImpacts) =>
+    set((state) => {
+      const existingIds = new Set(state.impacts.map((i) => i.id));
+      const deduped = newImpacts.filter((i) => !existingIds.has(i.id));
+      return {
+        impacts: [...state.impacts, ...deduped],
+        pagination: {
+          ...state.pagination,
+          hasMore: newImpacts.length >= state.pagination.limit,
+        },
+      };
+    }),
   setStats: (stats) => set({ stats }),
   setCurrentDetail: (detail) => set({ currentDetail: detail }),
   setAlerts: (alerts) => set({ alerts }),
@@ -119,6 +154,15 @@ export const useEventRadarStore = create<EventRadarState>((set) => ({
   setConfig: (config) => set({ config }),
   setStockImpacts: (impacts) => set({ stockImpacts: impacts }),
   setLoading: (loading) => set({ loading }),
+  setLoadingMore: (loadingMore) => set({ loadingMore }),
   setError: (error) => set({ error }),
+  setStatusFilter: (statusFilter) =>
+    set({ statusFilter, impacts: [], pagination: { limit: PAGE_SIZE, offset: 0, hasMore: true } }),
+  setSentimentFilter: (sentimentFilter) =>
+    set({ sentimentFilter, impacts: [], pagination: { limit: PAGE_SIZE, offset: 0, hasMore: true } }),
+  setDateRange: (dateRange) =>
+    set({ dateRange, impacts: [], pagination: { limit: PAGE_SIZE, offset: 0, hasMore: true } }),
+  setPagination: (partial) =>
+    set((state) => ({ pagination: { ...state.pagination, ...partial } })),
   reset: () => set(initialState),
 }));

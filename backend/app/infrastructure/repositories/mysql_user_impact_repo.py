@@ -58,7 +58,7 @@ class MySQLUserImpactRepository(UserImpactRepository):
         model = result.scalar_one_or_none()
         return _to_entity(model) if model else None
 
-    async def list_active_by_user(self, user_id: str) -> List[UserImpact]:
+    async def list_active_by_user(self, user_id: str, limit: int = 20, offset: int = 0) -> List[UserImpact]:
         stmt = (
             select(UserImpactModel)
             .join(ImpactEventModel, UserImpactModel.event_id == ImpactEventModel.event_id)
@@ -67,23 +67,44 @@ class MySQLUserImpactRepository(UserImpactRepository):
                 ImpactEventModel.is_active == 1,
             )
             .order_by(UserImpactModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         result = await self.session.execute(stmt)
         return [_to_entity(m) for m in result.scalars().all()]
 
-    async def list_archived_by_user(self, user_id: str, d: date) -> List[UserImpact]:
-        start = datetime.combine(d, datetime.min.time())
-        end = datetime.combine(d + timedelta(days=1), datetime.min.time())
+    async def list_by_user(self, user_id: str, *,
+                           status: str = "all",
+                           start_date: Optional[date] = None,
+                           end_date: Optional[date] = None,
+                           sentiment: Optional[str] = None,
+                           limit: int = 20,
+                           offset: int = 0) -> List[UserImpact]:
+        conditions = [UserImpactModel.user_id == user_id]
+
+        # status 过滤
+        if status == "active":
+            conditions.append(ImpactEventModel.is_active == 1)
+        elif status == "archived":
+            conditions.append(ImpactEventModel.is_active == 0)
+
+        # 日期范围过滤
+        if start_date:
+            conditions.append(UserImpactModel.created_at >= datetime.combine(start_date, datetime.min.time()))
+        if end_date:
+            conditions.append(UserImpactModel.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+
+        # 情绪过滤
+        if sentiment:
+            conditions.append(ImpactEventModel.sentiment == sentiment)
+
         stmt = (
             select(UserImpactModel)
             .join(ImpactEventModel, UserImpactModel.event_id == ImpactEventModel.event_id)
-            .where(
-                UserImpactModel.user_id == user_id,
-                ImpactEventModel.is_active == 0,
-                UserImpactModel.created_at >= start,
-                UserImpactModel.created_at < end,
-            )
+            .where(*conditions)
             .order_by(UserImpactModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
         result = await self.session.execute(stmt)
         return [_to_entity(m) for m in result.scalars().all()]
