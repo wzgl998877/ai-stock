@@ -151,7 +151,7 @@ class TestRAGPipeline:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_session_factory = MagicMock(return_value=mock_session)
 
-        with patch("app.infrastructure.workflow.nodes.retrieve.MySQLSearchRepository") as MockSearchRepo:
+        with patch("app.infrastructure.repositories.mysql_search_repo.MySQLSearchRepository") as MockSearchRepo:
             mock_search_instance = MagicMock()
             mock_search_instance.search = AsyncMock(return_value=([], 0))
             MockSearchRepo.return_value = mock_search_instance

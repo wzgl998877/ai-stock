@@ -68,7 +68,7 @@ class TestRetrieveNodeVector:
         mock_article.event_type = "policy"
         mock_article.create_time = None
 
-        with patch("app.infrastructure.workflow.nodes.retrieve.MySQLSearchRepository") as MockSearchRepo:
+        with patch("app.infrastructure.repositories.mysql_search_repo.MySQLSearchRepository") as MockSearchRepo:
             mock_search_instance = MagicMock()
             mock_search_instance.search = AsyncMock(return_value=([mock_article], 1))
             MockSearchRepo.return_value = mock_search_instance
@@ -95,7 +95,7 @@ class TestRetrieveNodeVector:
         mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_session_factory = MagicMock(return_value=mock_session)
 
-        with patch("app.infrastructure.workflow.nodes.retrieve.MySQLSearchRepository") as MockSearchRepo:
+        with patch("app.infrastructure.repositories.mysql_search_repo.MySQLSearchRepository") as MockSearchRepo:
             mock_search_instance = MagicMock()
             mock_search_instance.search = AsyncMock(return_value=([], 0))
             MockSearchRepo.return_value = mock_search_instance
@@ -153,3 +153,77 @@ class TestRetrieveNodeVector:
         assert "content" in item
         assert "event_type" in item
         assert "thinking_done_msg" in result
+
+    @pytest.mark.asyncio
+    async def test_query_rewrite_called_when_ai_service_available(self):
+        """有 ai_service 时调用 Query Rewrite"""
+        mock_ai_svc = MagicMock()
+        mock_ai_svc.generate_title_and_summary = AsyncMock(
+            return_value=("光伏产业链分析", "光伏产业链分析 德业股份定位")
+        )
+
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.is_ready.return_value = True
+        mock_embedding_svc.embed = AsyncMock(return_value=[0.1] * 1024)
+
+        mock_vector_repo = MagicMock()
+        mock_vector_repo.search = AsyncMock(return_value=[
+            VectorSearchResult(
+                doc_id="article_1",
+                score=0.85,
+                metadata={"title": "光伏分析", "event_type": "industry"},
+                document="光伏产业链分析报告",
+            ),
+        ])
+
+        node = create_retrieve_node(
+            session_factory=MagicMock(),
+            vector_search_repo=mock_vector_repo,
+            embedding_service=mock_embedding_svc,
+            ai_service=mock_ai_svc,
+        )
+
+        result = await node(_make_state(raw_text="光伏行业未来前景如何，德业股份在其中是产业链中的哪一环"))
+
+        # Query Rewrite 被调用
+        mock_ai_svc.generate_title_and_summary.assert_called_once()
+        # embed 使用的是改写后的查询词
+        embed_arg = mock_embedding_svc.embed.call_args[0][0]
+        assert "光伏产业链分析" in embed_arg
+        assert len(result["search_results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_query_rewrite_failure_falls_back_to_raw_text(self):
+        """Query Rewrite 失败时回退到原始文本"""
+        mock_ai_svc = MagicMock()
+        mock_ai_svc.generate_title_and_summary = AsyncMock(side_effect=RuntimeError("LLM error"))
+
+        mock_embedding_svc = MagicMock()
+        mock_embedding_svc.is_ready.return_value = True
+        mock_embedding_svc.embed = AsyncMock(return_value=[0.1] * 1024)
+
+        mock_vector_repo = MagicMock()
+        mock_vector_repo.search = AsyncMock(return_value=[])
+
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session_factory = MagicMock(return_value=mock_session)
+
+        with patch("app.infrastructure.repositories.mysql_search_repo.MySQLSearchRepository") as MockSearchRepo:
+            mock_search_instance = MagicMock()
+            mock_search_instance.search = AsyncMock(return_value=([], 0))
+            MockSearchRepo.return_value = mock_search_instance
+
+            node = create_retrieve_node(
+                session_factory=mock_session_factory,
+                vector_search_repo=mock_vector_repo,
+                embedding_service=mock_embedding_svc,
+                ai_service=mock_ai_svc,
+            )
+
+            result = await node(_make_state(raw_text="光伏行业前景分析"))
+
+            # embed 使用的是原始文本（截断）
+            embed_arg = mock_embedding_svc.embed.call_args[0][0]
+            assert "光伏行业前景分析" in embed_arg

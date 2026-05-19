@@ -88,7 +88,7 @@ def build_analysis_graph(session_factory=None, ai_service=None, search_service=N
     has_retrieve = False
     if session_factory:
         from app.infrastructure.workflow.nodes.retrieve import create_retrieve_node
-        graph.add_node("retrieve", create_retrieve_node(session_factory, vector_search_repo, embedding_service))
+        graph.add_node("retrieve", create_retrieve_node(session_factory, vector_search_repo, embedding_service, ai_service))
         has_retrieve = True
 
     # summarize_context 节点（需要 ai_service 做总结）
