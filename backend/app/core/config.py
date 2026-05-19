@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # === 数据源加密 ===
     datasource_encryption_key: str = ""
 
+    # === RAG 语义检索 ===
+    rag_enabled: bool = True                                      # RAG 全局开关
+    rag_embedding_model: str = "BAAI/bge-large-zh-v1.5"          # Embedding 模型
+    rag_vector_db_path: str = "./data/vector_db"                 # ChromaDB 持久化目录
+    rag_similarity_threshold: float = 0.6                        # 语义检索阈值（中文语义建议 0.5-0.65）
+    rag_dedup_threshold: float = 0.85                             # 去重引擎阈值
+    rag_max_context_length: int = 2000                            # Agent 注入上下文最大字数
+
     # === 邮件 (SMTP) ===
     smtp_host: str = "smtp.qq.com"
     smtp_port: int = 465

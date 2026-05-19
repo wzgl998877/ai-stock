@@ -20,8 +20,17 @@ _PRE_SEARCH_CONTEXT_TEMPLATE = """
 请结合以上新闻数据进行分析。如果还需要更多信息，可以调用 get_stock_news 工具获取额外数据。
 """
 
+_KNOWLEDGE_CONTEXT_TEMPLATE = """
+以下是知识库中与该股票相关的历史分析摘要（通过语义检索获得），供你深入分析参考：
+---
+{knowledge_context}
+---
+请结合以上历史分析摘要进行更深入的分析。这些是过往的投研记录，可作为背景参考。
+"""
 
-def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service=None):
+
+def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service=None,
+                             vector_search_repo=None, embedding_service=None):
     """
     闭包工厂：创建新闻分析师节点。
 
@@ -29,6 +38,8 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service
         ai_service: AIService 实例
         max_tool_calls: 最大工具调用次数（防止死循环），默认3次
         search_service: 统一搜索服务实例（可选），可用时预搜新闻注入上下文
+        vector_search_repo: 向量检索仓储（可选），启用 RAG 时传入
+        embedding_service: Embedding 服务（可选），启用 RAG 时传入
     """
 
     async def news_analyst_node(state: dict) -> dict:
@@ -60,8 +71,58 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service
         if pre_search_context:
             user_content = user_content + "\n" + pre_search_context
 
+        # RAG 知识库上下文注入（vector_search_repo + embedding_service 可用时）
+        knowledge_context = ""
+        if vector_search_repo and embedding_service and embedding_service.is_ready():
+            try:
+                from app.core.config import settings
+
+                # 用股票名称 + 分析关键词生成 embedding
+                query_text = f"{stock_name} 新闻分析"
+                query_embedding = await embedding_service.embed(query_text)
+
+                vector_results = await vector_search_repo.search(
+                    query_embedding=query_embedding,
+                    top_k=3,
+                    threshold=settings.rag_similarity_threshold,
+                    collection="knowledge_articles",
+                )
+
+                if vector_results:
+                    # 拼接摘要，截断到配置的最大长度
+                    max_len = settings.rag_max_context_length
+                    summaries = []
+                    total_len = 0
+                    for r in vector_results:
+                        summary = f"[{r.metadata.get('title', '未知标题')}] {r.document}"
+                        if total_len + len(summary) > max_len:
+                            # 截断最后一条以适应最大长度
+                            remaining = max_len - total_len
+                            if remaining > 0:
+                                summaries.append(summary[:remaining])
+                            break
+                        summaries.append(summary)
+                        total_len += len(summary)
+
+                    knowledge_context = _KNOWLEDGE_CONTEXT_TEMPLATE.format(
+                        knowledge_context="\n\n".join(summaries)
+                    )
+                    logger.info(
+                        "[news_analyst] RAG 注入知识库上下文: %d 篇, %d 字",
+                        len(summaries), total_len,
+                    )
+                else:
+                    logger.info("[news_analyst] RAG 未检索到相关知识库文章，跳过注入")
+            except Exception as e:
+                logger.warning("[news_analyst] RAG 知识库上下文注入失败: %s", e)
+
+        # 构建消息列表
+        system_prompt = SYSTEM_PROMPT
+        if knowledge_context:
+            user_content = user_content + "\n" + knowledge_context
+
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
 

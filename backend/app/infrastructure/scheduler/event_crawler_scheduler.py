@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 _scheduler = None
 
 
-def setup_scheduler(session_factory, ai_service=None, search_service=None):
+def setup_scheduler(session_factory, ai_service=None, search_service=None,
+                    vector_search_repo=None, embedding_service=None):
     """初始化并返回 APScheduler 实例（不自动启动）"""
     global _scheduler
 
@@ -35,6 +36,8 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None):
                     event_repo=MySQLImpactEventRepository(session),
                     article_repo=MySQLImpactArticleRepository(session),
                     impact_repo=MySQLUserImpactRepository(session),
+                    vector_search_repo=vector_search_repo,
+                    embedding_service=embedding_service,
                 )
                 result = await uc.crawl_and_process()
                 await session.commit()

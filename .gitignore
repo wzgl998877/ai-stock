@@ -41,6 +41,9 @@ deploy.conf
 *.sqlite3
 *.db
 
+# === Vector DB (ChromaDB) ===
+data/vector_db/
+
 # === Coverage ===
 coverage/
 htmlcov/

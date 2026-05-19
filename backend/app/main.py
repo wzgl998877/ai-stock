@@ -37,6 +37,30 @@ async def lifespan(app: FastAPI):
         logger.warning("搜索服务初始化失败: %s", e)
         app.state.search_service = None
 
+    # 初始化 RAG 语义检索服务（Embedding + ChromaDB）
+    _embedding_svc = None
+    _vector_search_repo = None
+    try:
+        from app.core.database import async_session as _async_session  # noqa: F811
+
+        if settings.rag_enabled:
+            from app.infrastructure.vector.embedding_client import LocalEmbeddingService
+            from app.infrastructure.vector.chroma_store import ChromaVectorStore
+            from app.infrastructure.repositories.chroma_vector_search_repo import ChromaVectorSearchRepo
+
+            _embedding_svc = LocalEmbeddingService(model_name=settings.rag_embedding_model)
+            _chroma_store = ChromaVectorStore(persist_dir=settings.rag_vector_db_path)
+            _vector_search_repo = ChromaVectorSearchRepo(_chroma_store)
+            logger.info("RAG 初始化完成: model=%s, db=%s", settings.rag_embedding_model, settings.rag_vector_db_path)
+        else:
+            logger.info("RAG 已禁用 (rag_enabled=false)")
+    except Exception as e:
+        logger.warning("RAG 初始化失败，将降级运行: %s", e)
+        _embedding_svc = None
+        _vector_search_repo = None
+    app.state.embedding_service = _embedding_svc
+    app.state.vector_search_repo = _vector_search_repo
+
     # 初始化 LangGraph 分析工作流
     try:
         from app.infrastructure.workflow.graph.analysis_graph import build_analysis_graph
@@ -46,6 +70,8 @@ async def lifespan(app: FastAPI):
             session_factory=async_session,
             ai_service=app.state.ai_service,
             search_service=_search_svc,
+            vector_search_repo=_vector_search_repo,
+            embedding_service=_embedding_svc,
         )
         app.state.analysis_graph = analysis_graph
         logger.info("LangGraph 分析工作流初始化成功")
@@ -60,6 +86,8 @@ async def lifespan(app: FastAPI):
         stock_graph = build_stock_analysis_graph(
             ai_service=app.state.ai_service,
             search_service=_search_svc,
+            vector_search_repo=_vector_search_repo,
+            embedding_service=_embedding_svc,
         )
         app.state.stock_analysis_graph = stock_graph
         logger.info("LangGraph 个股分析工作流初始化成功")
@@ -106,6 +134,8 @@ async def lifespan(app: FastAPI):
             session_factory=async_session,
             ai_service=app.state.ai_service,
             search_service=_search_svc,
+            vector_search_repo=_vector_search_repo,
+            embedding_service=_embedding_svc,
         )
         if _event_scheduler:
             _event_scheduler.start()

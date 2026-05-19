@@ -110,3 +110,255 @@ retrieve_node(state):
 - 两者都是纯 Python 包，与现有 Python 3.x + FastAPI 环境兼容
 - chromadb 依赖 onnxruntime，CPU 推理自动使用 ONNX 后端，无需手动配置
 - 模型文件首次自动下载到 `~/.cache/huggingface/`，后续本地缓存
+
+## R9: 数据灌入向量库的完整流程
+
+**Decision**: 在 3 个入口点（文章保存、事件入库、文章更新）生成 embedding 并写入 ChromaDB，通过 Application 层用例编排调用链。
+
+### 9.1 文章保存时写入向量库
+
+**调用链**（改造 `SaveArticleUseCase` + `analysis.py` 路由）：
+
+```
+Router (analysis.py)
+  │
+  │  从 request.app.state 获取 embedding_service / vector_search_repo
+  │
+  ▼
+SaveArticleUseCase.__init__(article_repo, industry_repo, vector_search_repo=None, embedding_service=None)
+  │
+  ▼
+SaveArticleUseCase.execute(title, summary, content, ...)
+  │
+  ├─ 1. [现有] 验证 content 非空，降级 summary
+  ├─ 2. [现有] 解析 industry_codes → resolved_codes
+  ├─ 3. [现有] 构建 Article 实体
+  ├─ 4. [现有] article_repo.save(article) → MySQL INSERT → 返回 saved（含 article_id）
+  │
+  ├─ 5. [新增] 生成 embedding 并写入 ChromaDB（仅当 vector_search_repo 和 embedding_service 可用时）
+  │     │
+  │     ├─ if not embedding_service.is_ready(): 跳过，日志告警
+  │     │
+  │     ├─ 构建嵌入文本: embed_text = f"{title}\n{summary}"
+  │     │
+  │     ├─ embedding = await embedding_service.embed(embed_text)
+  │     │
+  │     ├─ 构建元数据:
+  │     │   metadata = {
+  │     │     "user_id": saved.user_id,
+  │     │     "title": saved.title,
+  │     │     "stock_codes": ",".join(s.stock_code for s in saved.stocks),
+  │     │     "industries": ",".join(i.industry_code for i in saved.industries),
+  │     │     "event_type": saved.event_type,
+  │     │   }
+  │     │
+  │     ├─ await vector_search_repo.add(
+  │     │     collection="knowledge_articles",
+  │     │     doc_id=f"article_{saved.article_id}",
+  │     │     embedding=embedding,
+  │     │     metadata=metadata,
+  │     │     document=embed_text,
+  │     │   )
+  │     │
+  │     └─ try-except 包裹：失败时 logger.warning，不阻塞返回 saved
+  │
+  └─ 6. 返回 saved（无论 embedding 是否成功）
+```
+
+**关键设计**：
+- embedding 生成在 `article_repo.save()` **之后**，因为需要 `saved.article_id`
+- 标题+摘要拼接用 `\n` 分隔，与检索时 query 的编码方式一致
+- metadata 中 stock_codes/industries 用逗号分隔字符串，支持 ChromaDB metadata 过滤
+- 整个 embedding + 写入 ChromaDB 步骤在 try-except 中，失败不影响文章保存
+
+### 9.2 事件入库时写入向量库
+
+**调用链**（改造 `EventRadarUseCase.crawl_and_process()`）：
+
+```
+EventRadarUseCase.__init__(..., vector_search_repo=None, embedding_service=None)
+  │
+  ▼
+crawl_and_process()
+  │
+  ├─ 1. [现有] ClsProvider().fetch_latest(limit=50)
+  ├─ 2. [现有] 遍历 articles，对每条执行 assess_event()（去重 + 影响判断）
+  │
+  │  对于通过去重的新事件：
+  │
+  ├─ 3. [现有] event = ImpactEvent(...)
+  ├─ 4. [现有] event = await event_repo.create(event)  → MySQL INSERT → 返回含 event_id
+  │
+  ├─ 5. [新增] 生成事件 embedding 并写入 ChromaDB
+  │     │
+  │     ├─ if embedding_service and embedding_service.is_ready():
+  │     │
+  │     ├─ embed_text = f"{event.title}\n{event.summary or ''}"
+  │     │
+  │     ├─ embedding = await embedding_service.embed(embed_text)
+  │     │
+  │     ├─ metadata = {
+  │     │     "title": event.title,
+  │     │     "affected_stocks": ",".join(s.get("code","") for s in (event.affected_stocks or [])),
+  │     │     "affected_industries": ",".join(i.get("code","") for i in (event.affected_industries or [])),
+  │     │     "sentiment": event.sentiment or "neutral",
+  │     │   }
+  │     │
+  │     ├─ await vector_search_repo.add(
+  │     │     collection="impact_events",
+  │     │     doc_id=f"event_{event.event_id}",
+  │     │     embedding=embedding,
+  │     │     metadata=metadata,
+  │     │     document=embed_text,
+  │     │   )
+  │     │
+  │     └─ try-except：失败时 logger.warning，不阻塞采集流程
+  │
+  ├─ 6. [现有] article_repo.create(impact_article)
+  ├─ 7. [现有] _match_users_for_events(new_events)
+  │
+  └─ 8. 返回 {"crawled": N, "new_events": M}
+```
+
+**关键设计**：
+- embedding 在 `event_repo.create()` 之后生成（需要 event_id）
+- 事件标题+摘要是核心嵌入文本，与文章一致
+- 事件采集是定时批量任务，每条约增加 50-100ms（embedding 生成），50 条约 2.5-5s 增量
+- 失败不阻塞采集流程，日志记录后继续处理下一条
+
+### 9.3 文章更新时覆盖向量
+
+**调用链**（需在 `SaveArticleUseCase` 或独立 `UpdateArticleUseCase` 中处理）：
+
+当前代码没有显式的"更新文章"用例（文章保存后不修改），但 FR-011 要求支持更新场景。
+
+**方案**：在 `SaveArticleUseCase` 中增加 `update` 方法，或在 Router 层检测重复 article_id 时调用 update：
+
+```
+SaveArticleUseCase.update(article_id, title, summary, ...)
+  │
+  ├─ 1. article_repo.update(article) → MySQL UPDATE
+  │
+  ├─ 2. if embedding_service.is_ready():
+  │     ├─ embed_text = f"{title}\n{summary}"
+  │     ├─ new_embedding = await embedding_service.embed(embed_text)
+  │     ├─ await vector_search_repo.update(
+  │     │     collection="knowledge_articles",
+  │     │     doc_id=f"article_{article_id}",
+  │     │     embedding=new_embedding,
+  │     │     metadata=new_metadata,
+  │     │   )
+  │     └─ try-except: 失败日志告警
+  │
+  └─ 3. 返回 updated article
+```
+
+**注意**：MVP 阶段文章保存后不修改，此流程可在 P4 之后实现。FR-011 要求覆盖能力存在，但 FR-010 保证保存优先。
+
+### 9.4 文章删除时清理向量
+
+**调用链**（改造 `DeleteArticleUseCase`）：
+
+```
+DeleteArticleUseCase.execute(article_id)
+  │
+  ├─ 1. [现有] article_repo.delete(article_id) → MySQL 软删除
+  │
+  ├─ 2. [新增] if vector_search_repo:
+  │     ├─ await vector_search_repo.delete(
+  │     │     collection="knowledge_articles",
+  │     │     doc_id=f"article_{article_id}",
+  │     │   )
+  │     └─ try-except: 失败日志告警（向量残留不影响业务，可通过重建脚本修复）
+  │
+  └─ 3. 返回 True
+```
+
+### 9.5 服务初始化（main.py lifespan 改造）
+
+**调用链**（改造 `main.py` 的 `lifespan()` 函数）：
+
+```
+lifespan(app):
+  │
+  ├─ [现有] AIService 初始化
+  ├─ [现有] SearchService 初始化
+  │
+  ├─ [新增] Embedding 服务初始化
+  │     │
+  │     ├─ from app.infrastructure.vector.embedding_client import LocalEmbeddingService
+  │     ├─ from app.infrastructure.vector.chroma_store import ChromaVectorStore
+  │     ├─ from app.infrastructure.repositories.chroma_vector_search_repo import ChromaVectorSearchRepo
+  │     │
+  │     ├─ if settings.RAG_ENABLED:
+  │     │     embedding_service = LocalEmbeddingService(model_name=settings.RAG_EMBEDDING_MODEL)
+  │     │     chroma_store = ChromaVectorStore(persist_dir=settings.RAG_VECTOR_DB_PATH)
+  │     │     vector_search_repo = ChromaVectorSearchRepo(chroma_store)
+  │     │     logger.info("RAG 初始化完成: model=%s, db=%s", settings.RAG_EMBEDDING_MODEL, settings.RAG_VECTOR_DB_PATH)
+  │     │ else:
+  │     │     embedding_service = None
+  │     │     vector_search_repo = None
+  │     │
+  │     └─ app.state.embedding_service = embedding_service
+  │        app.state.vector_search_repo = vector_search_repo
+  │
+  ├─ [改造] build_analysis_graph() 注入 vector_search_repo + embedding_service
+  │     analysis_graph = build_analysis_graph(
+  │         session_factory=async_session,
+  │         ai_service=app.state.ai_service,
+  │         search_service=_search_svc,
+  │         vector_search_repo=vector_search_repo,    # 新增
+  │         embedding_service=embedding_service,      # 新增
+  │     )
+  │
+  ├─ [改造] 事件采集调度器注入 vector_search_repo + embedding_service
+  │     _event_scheduler = setup_scheduler(
+  │         session_factory=async_session,
+  │         ai_service=app.state.ai_service,
+  │         search_service=_search_svc,
+  │         vector_search_repo=vector_search_repo,    # 新增
+  │         embedding_service=embedding_service,      # 新增
+  │     )
+  │
+  └─ [现有] 个股分析图、残留任务清理、股票名称映射等...
+```
+
+### 9.6 路由层注入方式
+
+**改造 `analysis.py` Router**：
+
+```python
+# 现有
+article_repo = MySQLArticleRepository(db)
+industry_repo = MySQLIndustryRepository(db)
+use_case = SaveArticleUseCase(article_repo, industry_repo)
+
+# 改造后
+article_repo = MySQLArticleRepository(db)
+industry_repo = MySQLIndustryRepository(db)
+embedding_svc = request.app.state.embedding_service   # 从 app.state 获取
+vector_repo = request.app.state.vector_search_repo    # 从 app.state 获取
+use_case = SaveArticleUseCase(article_repo, industry_repo, vector_repo, embedding_svc)
+```
+
+### 9.7 向量重建脚本（运维工具）
+
+提供 CLI 脚本从 MySQL 全量重建 ChromaDB 索引（应对数据损坏）：
+
+```
+scripts/rebuild_vector_index.py
+  │
+  ├─ 遍历 t_analysis_article（status='completed', deleted='0'）
+  │     → 批量 embed(title + summary) → 写入 knowledge_articles
+  │
+  ├─ 遍历 t_impact_event
+  │     → 批量 embed(title + summary) → 写入 impact_events
+  │
+  └─ 使用 embed_batch() 批量处理，每批 32 条
+```
+
+**Rationale**:
+- 完整的数据灌入流程覆盖了 FR-001（文章 embedding）、FR-002（事件 embedding）、FR-010（不阻塞保存）、FR-011（覆盖更新）
+- Application 层用例编排调用链，符合 Router → Application → Domain → Infrastructure 分层
+- 通过 `app.state` 在 lifespan 中初始化并注入，与现有 `ai_service`、`search_service` 模式一致
+- 所有 embedding 操作包裹在 try-except 中，保证主流程不中断

@@ -26,11 +26,15 @@ class EventRadarUseCase:
         article_repo: ImpactArticleRepository,
         impact_repo: UserImpactRepository,
         ai_service=None,
+        vector_search_repo=None,
+        embedding_service=None,
     ):
         self.event_repo = event_repo
         self.article_repo = article_repo
         self.impact_repo = impact_repo
         self.ai_service = ai_service
+        self.vector_search_repo = vector_search_repo
+        self.embedding_service = embedding_service
 
     async def get_user_impacts(self, user_id: str, status: str = "all",
                                 start_date: Optional[date] = None, end_date: Optional[date] = None,
@@ -161,12 +165,14 @@ class EventRadarUseCase:
         new_count = 0
         new_events: list[ImpactEvent] = []
         for article in articles:
-            result = assess_event(
+            result = await assess_event(
                 title=article.title,
                 content=article.content,
                 source_url=article.url,
                 existing_url_hashes=existing_hashes,
                 existing_titles=existing_titles,
+                embedding_service=self.embedding_service,
+                vector_search_repo=self.vector_search_repo,
             )
             if not result:
                 continue
@@ -183,6 +189,31 @@ class EventRadarUseCase:
                 last_seen_at=datetime.now(),
             )
             event = await self.event_repo.create(event)
+
+            # 生成事件 embedding 写入向量数据库
+            if self.vector_search_repo and self.embedding_service and self.embedding_service.is_ready():
+                try:
+                    embed_text = f"{event.title}\n{event.summary or ''}"
+                    event_embedding = await self.embedding_service.embed(embed_text)
+                    event_metadata = {
+                        "title": event.title,
+                        "affected_stocks": ",".join(
+                            s.get("code", "") for s in (event.affected_stocks or [])
+                        ),
+                        "affected_industries": ",".join(
+                            i.get("code", "") for i in (event.affected_industries or [])
+                        ),
+                        "sentiment": event.sentiment or "neutral",
+                    }
+                    await self.vector_search_repo.add(
+                        collection="impact_events",
+                        doc_id=f"event_{event.event_id}",
+                        embedding=event_embedding,
+                        metadata=event_metadata,
+                        document=embed_text,
+                    )
+                except Exception as e:
+                    logger.warning("事件 embedding 写入失败(event_id=%s): %s", event.event_id, e)
 
             impact_article = ImpactArticle(
                 event_id=event.event_id,
@@ -300,14 +331,45 @@ class EventRadarUseCase:
             logger.warning("预警创建失败: %s", e)
 
     async def _find_related_analyses(self, event: ImpactEvent) -> list[dict]:
-        """根据事件的 affected_stocks / affected_industries 查询知识库中的历史分析文章。
+        """查询知识库中的历史分析文章。
 
-        查询逻辑：
-        1. 从 affected_stocks 提取 stock_code 列表 → 通过 t_article_stock 关联表找到 article_id
-        2. 从 affected_industries 提取行业代码列表 → 通过 t_article_industry 关联表找到 article_id
-        3. 合并去重后从 t_analysis_article 取文章详情，按创建时间倒序，最多 5 条
-        4. 任何异常均静默处理，返回空列表
+        优先使用语义向量检索，无结果时回退到行业+股票交集匹配。
         """
+        # 1. 尝试语义向量检索
+        if self.vector_search_repo and self.embedding_service and self.embedding_service.is_ready():
+            try:
+                from app.core.config import settings
+
+                embed_text = f"{event.title}\n{event.summary or ''}"
+                event_embedding = await self.embedding_service.embed(embed_text)
+                vector_results = await self.vector_search_repo.search(
+                    query_embedding=event_embedding,
+                    top_k=3,
+                    threshold=settings.rag_similarity_threshold,
+                    collection="knowledge_articles",
+                )
+
+                if vector_results:
+                    analyses = []
+                    for r in vector_results:
+                        # 从 doc_id 提取 article_id
+                        article_id = r.doc_id.replace("article_", "") if r.doc_id.startswith("article_") else r.doc_id
+                        analyses.append({
+                            "article_id": article_id,
+                            "title": r.metadata.get("title", ""),
+                            "analyzed_at": None,
+                            "summary": r.document,
+                            "similarity_score": round(r.score * 100, 1),
+                        })
+                    return analyses
+            except Exception as e:
+                logger.warning("语义检索关联分析失败，回退到交集匹配: %s", e)
+
+        # 2. 回退到行业+股票交集匹配
+        return await self._find_related_analyses_by_intersection(event)
+
+    async def _find_related_analyses_by_intersection(self, event: ImpactEvent) -> list[dict]:
+        """基于行业+股票交集匹配的关联分析查询（原有逻辑）"""
         try:
             session = self.impact_repo.session
 

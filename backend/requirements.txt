@@ -44,3 +44,7 @@ pandas>=2.0,<3.0
 
 # 加密工具
 cryptography>=41.0,<45.0
+
+# RAG 语义检索
+sentence-transformers>=2.2.0,<3.0
+chromadb>=1.0.0,<2.0

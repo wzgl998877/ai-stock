@@ -1,35 +1,65 @@
 """影响判断引擎 — 编排去重、匹配、情感分析、用户影响计算"""
 
+import logging
 from datetime import datetime
 from typing import Optional
 
 from app.domain.entities.impact_event import ImpactEvent
 from app.domain.entities.user_impact import UserImpact
 from app.domain.services.sentiment_rule_engine import analyze as sentiment_analyze
-from app.domain.services.event_dedup import is_duplicate_url, is_duplicate_title, url_hash
+from app.domain.services.event_dedup import (
+    is_duplicate_url,
+    is_duplicate_title,
+    is_semantic_duplicate,
+    url_hash,
+)
 from app.domain.services.event_stock_matcher import match_all, set_stock_name_map
 
+logger = logging.getLogger(__name__)
 
-def assess_event(
+
+async def assess_event(
     title: str,
     content: str = "",
     source_url: str = "",
     existing_url_hashes: Optional[set] = None,
     existing_titles: Optional[list] = None,
+    embedding_service=None,
+    vector_search_repo=None,
 ) -> Optional[dict]:
     """评估单条新闻/事件是否值得创建为影响事件
+
+    去重三层过滤：
+    1. URL MD5 精确去重
+    2. Jaccard 标题相似度去重
+    3. 语义 embedding 相似度去重（前两层均未命中时才执行）
 
     Returns: None（重复/无效）或 {event_data, is_new}
     """
     if not title:
         return None
 
-    # 去重检查
+    # 第一层：URL MD5 精确去重
     if existing_url_hashes and source_url and is_duplicate_url(source_url, existing_url_hashes):
         return None
 
+    # 第二层：Jaccard 标题相似度去重
     if existing_titles and is_duplicate_title(title, existing_titles):
         return None
+
+    # 第三层：语义 embedding 相似度去重（前两层均未命中时才执行）
+    if embedding_service and vector_search_repo:
+        try:
+            if embedding_service.is_ready():
+                is_dup = await is_semantic_duplicate(
+                    new_title=title,
+                    embedding_service=embedding_service,
+                    vector_search_repo=vector_search_repo,
+                )
+                if is_dup:
+                    return None
+        except Exception as e:
+            logger.warning("语义去重层异常，跳过: %s", e)
 
     # 情感分析
     sentiment_result = sentiment_analyze(title, content)

@@ -6,6 +6,8 @@ from typing import List, Optional, Tuple
 from app.domain.entities.article import Article, IndustryRef, StockRef
 from app.domain.repositories.article_repo import ArticleRepository
 from app.domain.repositories.industry_repo import IndustryRepository
+from app.domain.repositories.vector_search_repo import VectorSearchRepository
+from app.domain.services.embedding_service import EmbeddingService
 from app.core.exceptions import EmptyContentError, NoIndustryTagError
 
 logger = logging.getLogger(__name__)
@@ -14,9 +16,17 @@ logger = logging.getLogger(__name__)
 class SaveArticleUseCase:
     """保存分析结果到知识库"""
 
-    def __init__(self, article_repo: ArticleRepository, industry_repo: IndustryRepository):
+    def __init__(
+        self,
+        article_repo: ArticleRepository,
+        industry_repo: IndustryRepository,
+        vector_search_repo: Optional[VectorSearchRepository] = None,
+        embedding_service: Optional[EmbeddingService] = None,
+    ):
         self.article_repo = article_repo
         self.industry_repo = industry_repo
+        self.vector_search_repo = vector_search_repo
+        self.embedding_service = embedding_service
 
     async def execute(
         self,
@@ -85,6 +95,30 @@ class SaveArticleUseCase:
 
         saved = await self.article_repo.save(article)
         logger.info("文章已保存: id=%s, title=%s, industries=%d", saved.article_id, title, len(resolved_codes))
+
+        # 生成 embedding 并写入向量数据库（不阻塞主流程）
+        if self.vector_search_repo and self.embedding_service and self.embedding_service.is_ready():
+            try:
+                embed_text = f"{saved.title}\n{saved.summary}"
+                embedding = await self.embedding_service.embed(embed_text)
+                metadata = {
+                    "user_id": saved.user_id,
+                    "title": saved.title,
+                    "stock_codes": ",".join(s.stock_code for s in saved.stocks),
+                    "industries": ",".join(i.industry_code for i in saved.industries),
+                    "event_type": saved.event_type,
+                }
+                await self.vector_search_repo.add(
+                    collection="knowledge_articles",
+                    doc_id=f"article_{saved.article_id}",
+                    embedding=embedding,
+                    metadata=metadata,
+                    document=embed_text,
+                )
+                logger.info("文章 embedding 写入成功: article_id=%s", saved.article_id)
+            except Exception as e:
+                logger.warning("文章 embedding 写入失败(article_id=%s): %s", saved.article_id, e)
+
         return saved
 
 
@@ -132,8 +166,20 @@ class GetArticleDetailUseCase:
 class DeleteArticleUseCase:
     """软删除文章"""
 
-    def __init__(self, article_repo: ArticleRepository):
+    def __init__(self, article_repo: ArticleRepository, vector_search_repo: Optional[VectorSearchRepository] = None):
         self.article_repo = article_repo
+        self.vector_search_repo = vector_search_repo
 
     async def execute(self, article_id: str) -> bool:
-        return await self.article_repo.delete(article_id)
+        result = await self.article_repo.delete(article_id)
+        # 同步删除向量数据（不阻塞主流程）
+        if self.vector_search_repo and result:
+            try:
+                await self.vector_search_repo.delete(
+                    collection="knowledge_articles",
+                    doc_id=f"article_{article_id}",
+                )
+                logger.info("文章向量删除成功: article_id=%s", article_id)
+            except Exception as e:
+                logger.warning("文章向量删除失败(article_id=%s): %s", article_id, e)
+        return result

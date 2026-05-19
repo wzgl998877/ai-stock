@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,10 +160,11 @@ async def get_article_detail(article_id: str, db: AsyncSession = Depends(get_db)
 
 
 @router.delete("/articles/{article_id}", status_code=204)
-async def delete_article(article_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_article(article_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """软删除文章"""
     repo = MySQLArticleRepository(db)
-    use_case = DeleteArticleUseCase(repo)
+    vector_repo = getattr(request.app.state, "vector_search_repo", None)
+    use_case = DeleteArticleUseCase(repo, vector_repo)
     deleted = await use_case.execute(article_id)
     if not deleted:
         return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "文章不存在"})

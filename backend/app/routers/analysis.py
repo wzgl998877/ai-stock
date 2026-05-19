@@ -192,6 +192,7 @@ async def stream_analysis(body: AnalysisRequestDTO, request: Request):
 @router.post("/articles", status_code=201, response_model=SaveArticleResponseDTO)
 async def save_article(
     body: SaveArticleDTO,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -201,7 +202,9 @@ async def save_article(
 
     article_repo = MySQLArticleRepository(db)
     industry_repo = MySQLIndustryRepository(db)
-    use_case = SaveArticleUseCase(article_repo, industry_repo)
+    embedding_svc = getattr(request.app.state, "embedding_service", None)
+    vector_repo = getattr(request.app.state, "vector_search_repo", None)
+    use_case = SaveArticleUseCase(article_repo, industry_repo, vector_repo, embedding_svc)
     article = await use_case.execute(
         title=body.title,
         summary=body.summary,

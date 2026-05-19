@@ -49,7 +49,8 @@ def _route_after_classify(state: AnalysisState) -> str:
     return "load"
 
 
-def build_analysis_graph(session_factory=None, ai_service=None, search_service=None):
+def build_analysis_graph(session_factory=None, ai_service=None, search_service=None,
+                         vector_search_repo=None, embedding_service=None):
     """
     构建分析预处理工作流:
         agent_classify → (条件) → web_search → load → retrieve → summarize_context → END
@@ -61,6 +62,8 @@ def build_analysis_graph(session_factory=None, ai_service=None, search_service=N
         ai_service: AIService 实例，用于 agent_classify 节点和 summarize_context 节点的 LLM 调用。
                     不传则降级使用规则判断的 classify_node。
         search_service: 统一搜索服务实例（可选），用于 web_search 节点。
+        vector_search_repo: 向量检索仓储（可选），用于 retrieve 节点的语义检索。
+        embedding_service: Embedding 服务（可选），用于 retrieve 节点的 query embedding。
     """
     graph = StateGraph(AnalysisState)
 
@@ -85,7 +88,7 @@ def build_analysis_graph(session_factory=None, ai_service=None, search_service=N
     has_retrieve = False
     if session_factory:
         from app.infrastructure.workflow.nodes.retrieve import create_retrieve_node
-        graph.add_node("retrieve", create_retrieve_node(session_factory))
+        graph.add_node("retrieve", create_retrieve_node(session_factory, vector_search_repo, embedding_service))
         has_retrieve = True
 
     # summarize_context 节点（需要 ai_service 做总结）
