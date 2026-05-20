@@ -1,4 +1,4 @@
-"""金融数据工具集 — 数据库优先 + Tushare 降级 + BaoStock 保底"""
+"""金融数据工具集 — 数据库优先 + 新浪财经降级"""
 
 import json
 import logging
@@ -98,6 +98,69 @@ def _to_ts_code(code: str) -> str:
     elif first in ("4", "8"):
         return f"{code}.BJ"
     return code
+
+
+def _prefix_code_sina(code: str) -> str:
+    """将纯数字代码转为新浪格式，如 600519 -> sh600519。"""
+    if code.startswith(("sh", "sz")):
+        return code
+    if code.startswith("6"):
+        return f"sh{code}"
+    return f"sz{code}"
+
+
+def _sina_history(code: str, days: int = 60) -> Optional[List[dict]]:
+    """通过新浪财经获取历史日K线数据（同步 HTTP 调用）。"""
+    try:
+        import re as _re
+        import httpx
+
+        prefixed = _prefix_code_sina(code)
+        url = (
+            f"https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20data"
+            f"/CN_MarketDataService.getKLineData"
+            f"?symbol={prefixed}&scale=240&datalen={days}"
+        )
+        headers = {"Referer": "https://finance.sina.com"}
+
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, headers=headers)
+            resp.raise_for_status()
+            text = resp.text
+
+        # JSONP 解析
+        text = _re.sub(r"^/\*<script>.*?</script>\*/", "", text.strip(), flags=_re.DOTALL)
+        match = _re.search(r"\((\[.*\])\)", text, _re.DOTALL)
+        if not match:
+            logger.warning("[新浪K线] JSONP解析失败 code=%s", code)
+            return None
+
+        items = json.loads(match.group(1))
+        if not isinstance(items, list) or not items:
+            return None
+
+        result = []
+        for item in items:
+            day_str = item.get("day", "")
+            trade_date = day_str.split(" ")[0] if " " in day_str else day_str
+            result.append({
+                "日期": trade_date,
+                "开盘": str(item.get("open", "")),
+                "最高": str(item.get("high", "")),
+                "最低": str(item.get("low", "")),
+                "收盘": str(item.get("close", "")),
+                "前收盘": "",
+                "成交量": str(item.get("volume", "")),
+                "成交额": str(item.get("amount", "")) if item.get("amount") else "",
+                "涨跌幅": "",
+                "data_source": "sina",
+            })
+
+        logger.info("[新浪K线] 获取成功 code=%s count=%d", code, len(result))
+        return result
+    except Exception as e:
+        logger.warning("[新浪K线] 获取失败 code=%s: %s", code, e)
+        return None
 
 
 def _query_db_quote(code: str) -> Optional[dict]:
@@ -475,7 +538,7 @@ def _fetch_stock_quote(stock_code: str) -> str:
 
 
 def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60) -> str:
-    """获取股票历史K线数据（数据库优先 + Tushare 降级）"""
+    """获取股票历史K线数据（数据库优先 + 新浪财经降级）"""
     t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
@@ -486,16 +549,16 @@ def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60)
                      stock_code, len(db_data), db_data[0].get("data_source"))
         return json.dumps(db_data, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_history] 数据库无数据，尝试 Tushare: code=%s", stock_code)
+    logger.info("[fetch_stock_history] 数据库无数据，尝试新浪财经: code=%s", stock_code)
 
-    # === 2. Tushare 查询 ===
-    tushare_data = _tushare_history(stock_code, days)
-    if tushare_data:
-        logger.info("[耗时] _fetch_stock_history(Tushare): %.3fs, code=%s", time.time() - t0, stock_code)
-        return json.dumps(tushare_data, ensure_ascii=False, indent=2)
+    # === 2. 新浪财经查询 ===
+    sina_data = _sina_history(stock_code, days)
+    if sina_data:
+        logger.info("[耗时] _fetch_stock_history(新浪): %.3fs, code=%s", time.time() - t0, stock_code)
+        return json.dumps(sina_data, ensure_ascii=False, indent=2)
 
     # === 3. 都不可用 ===
-    return f"未找到股票代码 {stock_code} 的历史数据（数据库和Tushare均无数据，请确认已同步数据）"
+    return f"未找到股票代码 {stock_code} 的历史数据（数据库和新浪均无数据，请确认已同步数据）"
 
 
 def _fetch_stock_financial(stock_code: str) -> str:

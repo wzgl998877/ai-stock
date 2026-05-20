@@ -29,6 +29,7 @@ const SOURCE_LABELS: Record<string, string> = {
   tushare: "Tushare",
   akshare: "AKShare",
   baostock: "BaoStock",
+  sina: "新浪财经",
 };
 
 const DataSourceSelector: React.FC<DataSourceSelectorProps> = ({

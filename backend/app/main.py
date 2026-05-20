@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.trace_context import new_trace_id, set_trace_id, clear_trace_id, push_span, pop_span
 from app.infrastructure.ai.ai_service import AIService
 from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry, auth, search, event_radar
 
@@ -173,59 +174,64 @@ access_logger = logging.getLogger("app.access")
 @app.middleware("http")
 async def log_requests(request: Request, call_next) -> Response:
     """HTTP 请求日志中间件：记录请求参数、响应状态码、返回报文、耗时。"""
-    start_time = time.time()
-
-    method = request.method
-    path = request.url.path
-    query_params = dict(request.query_params) if request.query_params else {}
-
-    if query_params:
-        logger.info("[%s] %s | query=%s", method, path, query_params)
-    else:
-        logger.info("[%s] %s", method, path)
+    # 链路追踪：从上游请求头读取或生成 traceId
+    trace_id = request.headers.get("x-trace-id", "").strip() or new_trace_id()
+    set_trace_id(trace_id)
+    push_span("http")
 
     try:
-        response = await call_next(request)
-        status_code = response.status_code
-    except Exception as e:
-        elapsed = time.time() - start_time
-        logger.error("[%s] %s | 异常=%s | 耗时=%.3fs", method, path, e, elapsed)
-        raise
+        start_time = time.time()
 
-    elapsed = time.time() - start_time
+        method = request.method
+        path = request.url.path
+        query_params = dict(request.query_params) if request.query_params else {}
 
-    # 尝试读取返回 body（仅非流式响应）
-    resp_body = None
-    if hasattr(response, "body"):
+        if query_params:
+            logger.info("[%s] %s | query=%s", method, path, query_params)
+        else:
+            logger.info("[%s] %s", method, path)
+
         try:
-            resp_body = response.body.decode("utf-8")
-            # 截断过长的 body，避免日志爆炸
-            if len(resp_body) > 2000:
-                resp_body = resp_body[:2000] + "...[truncated]"
-        except Exception:
-            pass
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error("[%s] %s | 异常=%s | 耗时=%.3fs", method, path, e, elapsed)
+            raise
 
-    log_kwargs = {"method": method, "path": path, "status": status_code, "elapsed": elapsed}
-    if resp_body:
-        log_kwargs["body"] = resp_body
+        elapsed = time.time() - start_time
 
-    if status_code >= 500:
-        if resp_body:
-            access_logger.error("[%s] %s | status=%d | 耗时=%.3fs | 返回=%s", method, path, status_code, elapsed, resp_body)
-        else:
-            access_logger.error("[%s] %s | status=%d | 耗时=%.3fs", method, path, status_code, elapsed)
-    elif status_code >= 400:
-        if resp_body:
-            logger.warning("[%s] %s | status=%d | 耗时=%.3fs | 返回=%s", method, path, status_code, elapsed, resp_body)
-        else:
-            logger.warning("[%s] %s | status=%d | 耗时=%.3fs", method, path, status_code, elapsed)
-    else:
-        if resp_body:
-            logger.info("[%s] %s | status=%d | 耗时=%.3fs | 返回=%s", method, path, status_code, elapsed, resp_body)
-        else:
-            logger.info("[%s] %s | status=%d | 耗时=%.3fs", method, path, status_code, elapsed)
+        # 尝试读取返回 body（仅非流式响应）
+        resp_body = None
+        if hasattr(response, "body"):
+            try:
+                resp_body = response.body.decode("utf-8")
+                if len(resp_body) > 2000:
+                    resp_body = resp_body[:2000] + "...[truncated]"
+            except Exception:
+                pass
 
-    return response
+        if status_code >= 500:
+            if resp_body:
+                access_logger.error("[%s] %s | status=%d | 耗时=%.3fs | 返回=%s", method, path, status_code, elapsed, resp_body)
+            else:
+                access_logger.error("[%s] %s | status=%d | 耗时=%.3fs", method, path, status_code, elapsed)
+        elif status_code >= 400:
+            if resp_body:
+                logger.warning("[%s] %s | status=%d | 耗时=%.3fs | 返回=%s", method, path, status_code, elapsed, resp_body)
+            else:
+                logger.warning("[%s] %s | status=%d | 耗时=%.3fs", method, path, status_code, elapsed)
+        else:
+            if resp_body:
+                logger.info("[%s] %s | status=%d | 耗时=%.3fs | 返回=%s", method, path, status_code, elapsed, resp_body)
+            else:
+                logger.info("[%s] %s | status=%d | 耗时=%.3fs", method, path, status_code, elapsed)
+
+        response.headers["X-Trace-ID"] = trace_id
+        return response
+    finally:
+        pop_span()
+        clear_trace_id()
 
 app.include_router(auth.router)
 app.include_router(analysis.router)

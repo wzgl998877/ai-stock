@@ -439,6 +439,9 @@ class SyncExecutor:
         elif source_type == SourceType.BAOSTOCK:
             from app.application.sync.baostock_client import BaoStockClient
             client = BaoStockClient()
+        elif source_type == SourceType.SINA:
+            from app.application.sync.sina_sync_client import SinaSyncClient
+            client = SinaSyncClient()
         else:
             raise ValueError(f"Unknown source type: {source_type}")
 
@@ -538,6 +541,22 @@ class SyncExecutor:
             raw_list = client.fetch_daily_quote(
                 code=symbol, start_date=start_date, end_date=end_date, period=period,
             )
+
+            # AKShare 空数据时降级到新浪
+            if not raw_list and source_type == SourceType.AKSHARE:
+                logger.info("[降级] AKShare 无数据，尝试新浪财经: code=%s", symbol)
+                try:
+                    from app.application.sync.sina_sync_client import SinaSyncClient
+                    fallback_client = SinaSyncClient()
+                    raw_list = fallback_client.fetch_daily_quote(
+                        code=symbol, start_date=start_date, end_date=end_date, period=period,
+                    )
+                    if raw_list:
+                        source_str = "sina"
+                        logger.info("[降级] 新浪财经成功: code=%s count=%d", symbol, len(raw_list))
+                except Exception as fb_err:
+                    logger.warning("[降级] 新浪财经也失败: %s", fb_err)
+
             total = len(raw_list)
 
             yield_progress = self._make_progress_yielder(task.task_id, source_str, data_type.value, total)
