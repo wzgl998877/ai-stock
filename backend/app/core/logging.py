@@ -1,10 +1,11 @@
-"""日志配置 — 控制台 + RotatingFileHandler 动态切分"""
+"""日志配置 — 控制台 + RotatingFileHandler 动态切分 + 链路追踪"""
 
 import os
 import logging
 from logging.handlers import RotatingFileHandler
 
 from app.core.config import settings
+from app.core.trace_logging import TraceFilter, TraceFormatter
 
 
 def get_log_config() -> dict:
@@ -20,6 +21,12 @@ def get_log_config() -> dict:
     return {
         "version": 1,
         "disable_existing_loggers": False,
+        "filters": {
+            "trace_filter": {
+                "()": "app.core.trace_logging.TraceFilter",
+                "app_name": settings.app_name,
+            },
+        },
         "formatters": {
             "default": {
                 "()": "uvicorn.logging.DefaultFormatter",
@@ -38,6 +45,7 @@ def get_log_config() -> dict:
                 "formatter": "default",
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
+                "filters": ["trace_filter"],
             },
             "file": {
                 "formatter": "default",
@@ -46,6 +54,7 @@ def get_log_config() -> dict:
                 "maxBytes": settings.log_max_bytes,
                 "backupCount": settings.log_backup_count,
                 "encoding": "utf-8",
+                "filters": ["trace_filter"],
             },
             "access_file": {
                 "formatter": "access",
@@ -77,7 +86,7 @@ def get_log_config() -> dict:
 
 
 def setup_logging() -> None:
-    """初始化全局日志：控制台 + 文件（按大小自动切分）
+    """初始化全局日志：控制台 + 文件（按大小自动切分）+ 链路追踪格式
 
     注意：uvicorn 的日志通过 get_log_config() 在启动时配置，
     本函数只负责给 root logger 添加 handler（捕获应用层日志）。
@@ -87,11 +96,8 @@ def setup_logging() -> None:
 
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
-    # 全局格式
-    fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    trace_filter = TraceFilter(app_name=settings.app_name)
+    fmt = TraceFormatter()
 
     # root logger
     root = logging.getLogger()
@@ -108,6 +114,7 @@ def setup_logging() -> None:
     console = logging.StreamHandler()
     console.setLevel(log_level)
     console.setFormatter(fmt)
+    console.addFilter(trace_filter)
     root.addHandler(console)
 
     # 主日志文件（按大小切分）
@@ -119,6 +126,7 @@ def setup_logging() -> None:
     )
     main_file.setLevel(log_level)
     main_file.setFormatter(fmt)
+    main_file.addFilter(trace_filter)
     root.addHandler(main_file)
 
     # AI 调用单独日志（方便排查 AI 问题）
@@ -130,6 +138,7 @@ def setup_logging() -> None:
     )
     ai_file.setLevel(logging.DEBUG)
     ai_file.setFormatter(fmt)
+    ai_file.addFilter(trace_filter)
     ai_logger = logging.getLogger("app.infrastructure.ai")
     ai_logger.addHandler(ai_file)
 
@@ -146,7 +155,6 @@ def _sanitize_filter(record: logging.LogRecord) -> bool:
     msg = record.getMessage().lower()
     for key in sensitive_keys:
         if key in msg:
-            # 将整个 record 的 msg 替换为脱敏版本
             original = record.getMessage()
             record.msg = _redact(original)
             record.args = ()
@@ -157,8 +165,6 @@ def _sanitize_filter(record: logging.LogRecord) -> bool:
 def _redact(text: str) -> str:
     """将可能包含 key 的值脱敏"""
     import re
-    # 匹配 Bearer xxx / sk-xxx / key=xxx 等
     text = re.sub(r"(Bearer\s+)\S+", r"\1***", text)
     text = re.sub(r"(sk-)\w{4}\w+", r"\1****", text)
     return text
-

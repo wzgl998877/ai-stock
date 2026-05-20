@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # === 应用 ===
+    app_name: str = "ai-stock"
     cors_origins: List[str] = ["http://localhost:5173"]
     analysis_timeout: int = 120
 
