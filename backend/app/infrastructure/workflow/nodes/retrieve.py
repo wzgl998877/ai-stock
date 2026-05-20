@@ -2,6 +2,7 @@
 
 import logging
 
+from app.domain.services.search_result_merger import merge_chunk_results
 from app.infrastructure.workflow.state.analysis_state import AnalysisState
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,11 @@ def create_retrieve_node(session_factory, vector_search_repo=None, embedding_ser
     """
 
     async def retrieve_node(state: AnalysisState) -> dict:
+        # 检查用户是否关闭了知识库检索
+        if not state.get("use_knowledge_base", True):
+            logger.info("[retrieve] 用户关闭了知识库检索，跳过")
+            return {"search_results": [], "thinking_done_msg": "已跳过知识库检索"}
+
         raw_text = state.get("raw_text", "")
 
         if not raw_text or len(raw_text) < 5:
@@ -77,22 +83,23 @@ def create_retrieve_node(session_factory, vector_search_repo=None, embedding_ser
 
                 vector_results = await vector_search_repo.search(
                     query_embedding=query_embedding,
-                    top_k=3,
+                    top_k=6,
                     filters={"user_id": user_id},
                     threshold=settings.rag_similarity_threshold,
                     collection="knowledge_articles",
                 )
 
                 if vector_results:
+                    merged = merge_chunk_results(vector_results, max_articles=3)
                     results = []
-                    for r in vector_results:
+                    for item in merged:
                         results.append({
-                            "title": r.metadata.get("title", ""),
-                            "summary": r.document,
-                            "content": r.document,
-                            "event_type": r.metadata.get("event_type", ""),
+                            "title": item["title"],
+                            "summary": item["summary"],
+                            "content": item["content"],
+                            "event_type": "",
                             "created_at": "",
-                            "score": r.score,
+                            "score": item["score"],
                         })
                     logger.info("[retrieve] 向量检索到 %d 篇相关文章 (query=%s)", len(results), query_text)
                     count = len(results)

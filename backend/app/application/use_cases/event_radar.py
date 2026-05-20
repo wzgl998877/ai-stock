@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import text
 
 from app.domain.entities.impact_event import ImpactEvent
+from app.domain.services.search_result_merger import merge_chunk_results
 from app.domain.entities.user_impact import UserImpact
 from app.domain.entities.impact_article import ImpactArticle
 from app.domain.repositories.impact_event_repo import ImpactEventRepository
@@ -344,22 +345,24 @@ class EventRadarUseCase:
                 event_embedding = await self.embedding_service.embed(embed_text)
                 vector_results = await self.vector_search_repo.search(
                     query_embedding=event_embedding,
-                    top_k=3,
+                    top_k=6,
                     threshold=settings.rag_similarity_threshold,
                     collection="knowledge_articles",
                 )
 
                 if vector_results:
+                    merged = merge_chunk_results(vector_results, max_articles=3)
                     analyses = []
-                    for r in vector_results:
-                        # 从 doc_id 提取 article_id
-                        article_id = r.doc_id.replace("article_", "") if r.doc_id.startswith("article_") else r.doc_id
+                    for item in merged:
+                        # 从 article_id 提取纯数字 ID
+                        raw_id = item["article_id"]
+                        article_id = raw_id.replace("article_", "") if raw_id.startswith("article_") else raw_id
                         analyses.append({
                             "article_id": article_id,
-                            "title": r.metadata.get("title", ""),
+                            "title": item["title"],
                             "analyzed_at": None,
-                            "summary": r.document,
-                            "similarity_score": round(r.score * 100, 1),
+                            "summary": item["summary"],
+                            "similarity_score": round(item["score"] * 100, 1),
                         })
                     return analyses
             except Exception as e:

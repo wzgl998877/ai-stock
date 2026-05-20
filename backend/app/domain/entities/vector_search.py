@@ -14,6 +14,15 @@ class VectorSearchResult:
 
 
 @dataclass
+class Chunk:
+    """文章切分块"""
+
+    index: int       # 块序号，0 = 标题摘要块
+    content: str     # 块文本
+    chunk_type: str  # "summary" | "content"
+
+
+@dataclass
 class EmbeddingData:
     """待写入的 embedding 数据"""
 

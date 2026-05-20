@@ -52,6 +52,15 @@ class VectorSearchRepository(ABC):
         ...
 
     @abstractmethod
+    async def delete_by_filter(
+        self,
+        collection: str,
+        filters: dict,
+    ) -> int:
+        """按 metadata 条件批量删除文档，返回删除数量。"""
+        ...
+
+    @abstractmethod
     async def update(
         self,
         collection: str,

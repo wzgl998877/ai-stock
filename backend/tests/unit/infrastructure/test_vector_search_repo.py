@@ -120,3 +120,35 @@ class TestChromaVectorSearchRepo:
             top_k=5,
             where={"user_id": "u1"},
         )
+
+    @pytest.mark.asyncio
+    async def test_delete_by_filter_success(self, repo):
+        """按 article_id 过滤删除，返回删除数量"""
+        search_repo, mock_store = repo
+
+        mock_store.delete_by_filter.return_value = 3
+
+        deleted = await search_repo.delete_by_filter(
+            collection="knowledge_articles",
+            filters={"article_id": "123"},
+        )
+
+        assert deleted == 3
+        mock_store.delete_by_filter.assert_called_once_with(
+            collection_name="knowledge_articles",
+            where={"article_id": "123"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_delete_by_filter_no_match(self, repo):
+        """过滤条件无匹配，返回 0"""
+        search_repo, mock_store = repo
+
+        mock_store.delete_by_filter.return_value = 0
+
+        deleted = await search_repo.delete_by_filter(
+            collection="knowledge_articles",
+            filters={"article_id": "nonexistent"},
+        )
+
+        assert deleted == 0

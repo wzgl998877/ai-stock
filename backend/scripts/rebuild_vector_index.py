@@ -30,10 +30,11 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 32
 
 
-async def rebuild_knowledge_articles(embedding_svc, vector_repo, dry_run: bool = False):
-    """重建 knowledge_articles 集合"""
+async def rebuild_knowledge_articles(embedding_svc, vector_repo, chroma_store, dry_run: bool = False):
+    """重建 knowledge_articles 集合（chunk 化写入）"""
     from sqlalchemy import text
     from app.core.database import async_session
+    from app.domain.services.text_chunker import chunk_article
 
     async with async_session() as session:
         # 统计总数
@@ -46,13 +47,18 @@ async def rebuild_knowledge_articles(embedding_svc, vector_repo, dry_run: bool =
         if dry_run:
             return total
 
+        # 清除旧集合再重建
+        chroma_store.delete_collection("knowledge_articles")
+        logger.info("已清除旧 knowledge_articles 集合")
+
         # 分批查询
         offset = 0
-        rebuilt = 0
+        rebuilt_chunks = 0
+        rebuilt_articles = 0
         while offset < total:
             result = await session.execute(
                 text(
-                    "SELECT article_id, title, summary, user_id, event_type "
+                    "SELECT article_id, title, summary, content, user_id, event_type "
                     "FROM t_analysis_article "
                     "WHERE status='completed' AND deleted='0' "
                     "ORDER BY article_id LIMIT :limit OFFSET :offset"
@@ -63,20 +69,9 @@ async def rebuild_knowledge_articles(embedding_svc, vector_repo, dry_run: bool =
             if not rows:
                 break
 
-            # 准备批量数据
-            texts = []
             for row in rows:
-                article_id, title, summary, user_id, event_type = row
-                texts.append(f"{title}\n{summary or ''}")
+                article_id, title, summary, content, user_id, event_type = row
 
-            # 批量生成 embedding
-            embeddings = await embedding_svc.embed_batch(texts)
-
-            # 逐条写入
-            from app.infrastructure.vector.chroma_store import ChromaVectorStore
-
-            for i, row in enumerate(rows):
-                article_id, title, summary, user_id, event_type = row
                 # 获取关联股票和行业
                 stock_result = await session.execute(
                     text("SELECT stock_code FROM t_article_stock WHERE article_id = :aid AND deleted = '0'"),
@@ -90,7 +85,18 @@ async def rebuild_knowledge_articles(embedding_svc, vector_repo, dry_run: bool =
                 )
                 industries = ",".join(r[0] for r in ind_result.fetchall())
 
-                metadata = {
+                # 切分为 chunks
+                chunks = chunk_article(title, summary or "", content or "")
+                texts = [c.content for c in chunks]
+
+                # 批量生成 embedding
+                try:
+                    embeddings = await embedding_svc.embed_batch(texts)
+                except Exception as e:
+                    logger.warning("embedding 生成失败(article_id=%s): %s", article_id, e)
+                    continue
+
+                base_metadata = {
                     "user_id": user_id or "default",
                     "title": title,
                     "stock_codes": stock_codes,
@@ -98,22 +104,32 @@ async def rebuild_knowledge_articles(embedding_svc, vector_repo, dry_run: bool =
                     "event_type": event_type or "other",
                 }
 
-                try:
-                    await vector_repo.add(
-                        collection="knowledge_articles",
-                        doc_id=f"article_{article_id}",
-                        embedding=embeddings[i],
-                        metadata=metadata,
-                        document=texts[i],
-                    )
-                    rebuilt += 1
-                except Exception as e:
-                    logger.warning("写入失败(article_id=%s): %s", article_id, e)
+                for chunk, embedding in zip(chunks, embeddings):
+                    chunk_metadata = {
+                        **base_metadata,
+                        "article_id": str(article_id),
+                        "chunk_index": chunk.index,
+                        "chunk_type": chunk.chunk_type,
+                    }
+                    try:
+                        await vector_repo.add(
+                            collection="knowledge_articles",
+                            doc_id=f"article_{article_id}_chunk_{chunk.index}",
+                            embedding=embedding,
+                            metadata=chunk_metadata,
+                            document=chunk.content,
+                        )
+                        rebuilt_chunks += 1
+                    except Exception as e:
+                        logger.warning("写入失败(article_id=%s, chunk=%d): %s", article_id, chunk.index, e)
+
+                rebuilt_articles += 1
 
             offset += BATCH_SIZE
-            logger.info("知识库重建进度: %d/%d", rebuilt, total)
+            logger.info("知识库重建进度: %d/%d 文章, %d chunks", rebuilt_articles, total, rebuilt_chunks)
 
-    return rebuilt
+    logger.info("知识库重建完成: %d 文章, %d chunks", rebuilt_articles, rebuilt_chunks)
+    return rebuilt_articles
 
 
 async def rebuild_impact_events(embedding_svc, vector_repo, dry_run: bool = False):
@@ -227,7 +243,7 @@ async def main():
 
     results = {}
     if not args.collection or args.collection == "knowledge_articles":
-        count = await rebuild_knowledge_articles(embedding_svc, vector_repo, dry_run=args.dry_run)
+        count = await rebuild_knowledge_articles(embedding_svc, vector_repo, chroma_store, dry_run=args.dry_run)
         results["knowledge_articles"] = count
 
     if not args.collection or args.collection == "impact_events":

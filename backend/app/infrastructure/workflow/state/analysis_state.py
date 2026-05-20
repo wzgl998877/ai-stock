@@ -16,6 +16,7 @@ class AnalysisState(TypedDict, total=False):
     source: str                          # 用户原始输入（URL / 文件路径 / 文本）
     event_type: str                      # 事件类型
     user_id: str                         # 当前用户 ID
+    use_knowledge_base: bool             # 是否启用知识库检索（用户前端开关）
 
     # === Working ===
     input_type: Literal["url", "file", "text"]  # classify 节点判断结果

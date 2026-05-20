@@ -8,6 +8,7 @@ from app.domain.repositories.article_repo import ArticleRepository
 from app.domain.repositories.industry_repo import IndustryRepository
 from app.domain.repositories.vector_search_repo import VectorSearchRepository
 from app.domain.services.embedding_service import EmbeddingService
+from app.domain.services.text_chunker import chunk_article
 from app.core.exceptions import EmptyContentError, NoIndustryTagError
 
 logger = logging.getLogger(__name__)
@@ -99,23 +100,33 @@ class SaveArticleUseCase:
         # 生成 embedding 并写入向量数据库（不阻塞主流程）
         if self.vector_search_repo and self.embedding_service and self.embedding_service.is_ready():
             try:
-                embed_text = f"{saved.title}\n{saved.summary}"
-                embedding = await self.embedding_service.embed(embed_text)
-                metadata = {
+                chunks = chunk_article(saved.title, saved.summary or "", saved.content or "")
+                texts = [c.content for c in chunks]
+                embeddings = await self.embedding_service.embed_batch(texts)
+
+                base_metadata = {
                     "user_id": saved.user_id,
                     "title": saved.title,
                     "stock_codes": ",".join(s.stock_code for s in saved.stocks),
                     "industries": ",".join(i.industry_code for i in saved.industries),
                     "event_type": saved.event_type,
                 }
-                await self.vector_search_repo.add(
-                    collection="knowledge_articles",
-                    doc_id=f"article_{saved.article_id}",
-                    embedding=embedding,
-                    metadata=metadata,
-                    document=embed_text,
-                )
-                logger.info("文章 embedding 写入成功: article_id=%s", saved.article_id)
+
+                for chunk, embedding in zip(chunks, embeddings):
+                    chunk_metadata = {
+                        **base_metadata,
+                        "article_id": str(saved.article_id),
+                        "chunk_index": chunk.index,
+                        "chunk_type": chunk.chunk_type,
+                    }
+                    await self.vector_search_repo.add(
+                        collection="knowledge_articles",
+                        doc_id=f"article_{saved.article_id}_chunk_{chunk.index}",
+                        embedding=embedding,
+                        metadata=chunk_metadata,
+                        document=chunk.content,
+                    )
+                logger.info("文章 embedding 写入成功: article_id=%s, chunks=%d", saved.article_id, len(chunks))
             except Exception as e:
                 logger.warning("文章 embedding 写入失败(article_id=%s): %s", saved.article_id, e)
 
@@ -175,11 +186,23 @@ class DeleteArticleUseCase:
         # 同步删除向量数据（不阻塞主流程）
         if self.vector_search_repo and result:
             try:
-                await self.vector_search_repo.delete(
+                # 按过滤条件删除所有 chunk
+                deleted = await self.vector_search_repo.delete_by_filter(
                     collection="knowledge_articles",
-                    doc_id=f"article_{article_id}",
+                    filters={"article_id": str(article_id)},
                 )
-                logger.info("文章向量删除成功: article_id=%s", article_id)
+                if deleted > 0:
+                    logger.info("文章向量删除成功: article_id=%s, chunks=%d", article_id, deleted)
+                else:
+                    # 兼容旧数据：旧格式 doc_id 无 article_id metadata
+                    try:
+                        await self.vector_search_repo.delete(
+                            collection="knowledge_articles",
+                            doc_id=f"article_{article_id}",
+                        )
+                        logger.info("文章向量删除成功(旧格式): article_id=%s", article_id)
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("文章向量删除失败(article_id=%s): %s", article_id, e)
         return result

@@ -28,6 +28,7 @@ class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=2, max_length=5000)
     event_type: Optional[str] = None  # 事件类型或 stock_analysis
     config: Optional[dict] = None  # 个股分析配置参数
+    use_knowledge_base: bool = True  # 是否启用知识库检索（默认开启）
 
 
 class MessageResponse(BaseModel):

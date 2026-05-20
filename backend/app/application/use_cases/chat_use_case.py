@@ -67,7 +67,7 @@ class ChatUseCase:
 
     async def stream_chat(
         self, session_id: str, content: str, event_type: str | None = None,
-        config: dict | None = None,
+        config: dict | None = None, use_knowledge_base: bool = True,
     ) -> AsyncGenerator[dict, None]:
         """
         在指定会话中发送消息，SSE 流式返回。
@@ -164,11 +164,15 @@ class ChatUseCase:
                 ]
 
                 async for update in self.analysis_graph.astream(
-                    {"source": content, "event_type": effective_event_type, "user_id": session.user_id},
+                    {"source": content, "event_type": effective_event_type, "user_id": session.user_id, "use_knowledge_base": use_knowledge_base},
                     stream_mode="updates",
                 ):
                     for node_name, state_update in update.items():
                         accumulated.update(state_update)
+
+                        # 如果用户关闭了知识库检索，跳过 retrieve 节点的 thinking 事件
+                        if node_name == "retrieve" and not use_knowledge_base:
+                            continue
 
                         # done 事件：优先使用节点返回的 thinking_done_msg
                         done_msg = state_update.get("thinking_done_msg")
@@ -189,7 +193,7 @@ class ChatUseCase:
                         elif node_name == "web_search":
                             next_node = "load"
                         elif node_name == "load":
-                            if "retrieve" in all_nodes:
+                            if "retrieve" in all_nodes and use_knowledge_base:
                                 next_node = "retrieve"
 
                         # 发出下一个节点的 running 事件

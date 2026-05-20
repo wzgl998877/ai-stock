@@ -102,3 +102,39 @@ class ChromaVectorStore:
             kwargs["metadatas"] = [metadata]
         collection.update(**kwargs)
         logger.debug("ChromaDB 更新 %s in %s", doc_id, collection_name)
+
+    def get_by_filter(
+        self,
+        collection_name: str,
+        where: dict,
+    ) -> list[dict]:
+        """按 metadata 条件查询文档，返回 [{"id": ..., "metadata": ...}, ...]"""
+        collection = self.get_or_create_collection(collection_name)
+        results = collection.get(where=where)
+        return [
+            {"id": id_, "metadata": meta}
+            for id_, meta in zip(results["ids"], results["metadatas"] or [])
+        ]
+
+    def delete_by_filter(
+        self,
+        collection_name: str,
+        where: dict,
+    ) -> int:
+        """按 metadata 条件批量删除文档，返回删除数量"""
+        records = self.get_by_filter(collection_name, where)
+        if not records:
+            return 0
+        ids = [r["id"] for r in records]
+        self.delete(collection_name, ids=ids)
+        return len(ids)
+
+    def delete_collection(self, collection_name: str) -> bool:
+        """删除整个集合，返回是否成功"""
+        try:
+            self._client.delete_collection(collection_name)
+            logger.info("ChromaDB 集合已删除: %s", collection_name)
+            return True
+        except Exception as e:
+            logger.warning("ChromaDB 删除集合失败(%s): %s", collection_name, e)
+            return False

@@ -94,3 +94,11 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
             embedding=embedding,
             metadata=metadata,
         )
+
+    async def delete_by_filter(
+        self,
+        collection: str,
+        filters: dict,
+    ) -> int:
+        """按 metadata 条件批量删除文档，返回删除数量"""
+        return self._store.delete_by_filter(collection_name=collection, where=filters)

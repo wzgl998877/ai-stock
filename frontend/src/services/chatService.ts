@@ -61,13 +61,14 @@ export async function streamMessage(
   content: string,
   eventType: string | null,
   onEvent: (event: SSEEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  useKnowledgeBase: boolean = true
 ): Promise<void> {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "";
   const response = await fetch(`${baseURL}${BASE}/sessions/${sessionId}/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify({ content, event_type: eventType }),
+    body: JSON.stringify({ content, event_type: eventType, use_knowledge_base: useKnowledgeBase }),
     signal,
   });
 

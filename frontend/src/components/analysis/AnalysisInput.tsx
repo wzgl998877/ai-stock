@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Input, Typography } from "antd";
-import { ArrowUpOutlined } from "@ant-design/icons";
+import { ArrowUpOutlined, BookOutlined } from "@ant-design/icons";
 import { useDraft } from "../../hooks/useDraft";
 import { EventType } from "../../domain/types";
 import SimilarPrompt from "./SimilarPrompt";
@@ -17,9 +17,20 @@ interface Props {
   onSubmit: (question: string) => void;
   /** 外部强制清空（用于分析完成后重置） */
   forceClear?: boolean;
+  /** 是否启用知识库检索 */
+  useKnowledgeBase?: boolean;
+  /** 知识库开关切换回调 */
+  onKnowledgeBaseChange?: (val: boolean) => void;
 }
 
-const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit, forceClear }) => {
+const AnalysisInput: React.FC<Props> = ({
+  eventType,
+  disabled,
+  onSubmit,
+  forceClear,
+  useKnowledgeBase = true,
+  onKnowledgeBaseChange,
+}) => {
   const { saveDraft, clearDraft } = useDraft(eventType ?? "default");
   const [input, setInput] = useState("");
   const [hint, setHint] = useState<string>("");
@@ -109,8 +120,30 @@ const AnalysisInput: React.FC<Props> = ({ eventType, disabled, onSubmit, forceCl
             flex: 1,
           }}
         />
-        {/* 底部操作栏：发送按钮右对齐 */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+        {/* 底部操作栏：左侧知识库开关 + 右侧发送按钮 */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+          <button
+            onClick={() => onKnowledgeBaseChange?.(!useKnowledgeBase)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 12px",
+              borderRadius: 20,
+              border: `1px solid ${useKnowledgeBase ? "#c4b5fd" : "#e5edf5"}`,
+              background: useKnowledgeBase ? "#f3f0ff" : "#ffffff",
+              color: useKnowledgeBase ? "#533afd" : "#94a3b8",
+              cursor: "pointer",
+              fontSize: 13,
+              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+              fontFeatureSettings: "'ss01' on",
+              transition: "all 0.15s ease",
+              lineHeight: "20px",
+            }}
+          >
+            <BookOutlined style={{ fontSize: 13 }} />
+            知识库
+          </button>
           <button
             onClick={handleSubmit}
             disabled={disabled || !canSend}

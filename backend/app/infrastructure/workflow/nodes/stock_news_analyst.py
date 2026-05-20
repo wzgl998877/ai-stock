@@ -4,6 +4,7 @@ import json
 import logging
 import time
 
+from app.domain.services.search_result_merger import merge_chunk_results
 from app.infrastructure.workflow.prompts.stock_analysis.news_analyst import SYSTEM_PROMPT, USER_TEMPLATE
 from app.infrastructure.workflow.tools.stock_data_toolkit import (
     TOOL_FUNCTION_MAP,
@@ -83,20 +84,20 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service
 
                 vector_results = await vector_search_repo.search(
                     query_embedding=query_embedding,
-                    top_k=3,
+                    top_k=6,
                     threshold=settings.rag_similarity_threshold,
                     collection="knowledge_articles",
                 )
 
                 if vector_results:
-                    # 拼接摘要，截断到配置的最大长度
+                    merged = merge_chunk_results(vector_results, max_articles=3)
+                    # 拼接摘要和内容，截断到配置的最大长度
                     max_len = settings.rag_max_context_length
                     summaries = []
                     total_len = 0
-                    for r in vector_results:
-                        summary = f"[{r.metadata.get('title', '未知标题')}] {r.document}"
+                    for item in merged:
+                        summary = f"[{item['title']}] {item['summary']}\n{item['content']}"
                         if total_len + len(summary) > max_len:
-                            # 截断最后一条以适应最大长度
                             remaining = max_len - total_len
                             if remaining > 0:
                                 summaries.append(summary[:remaining])

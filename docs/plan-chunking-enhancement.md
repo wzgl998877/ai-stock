@@ -37,12 +37,44 @@
 
 **文件**: `backend/app/domain/services/text_chunker.py`（新建）
 
-### 切分策略——段落级递归切分
+### 背景：content 的实际格式
 
-1. **chunk_0**：`title + summary`，始终作为第一个 chunk（保留标题级匹配能力）
-2. 正文按 `\n\n` 分段
-3. 短段落（< `min_size` 字）与下一段合并
-4. 长段落（> `max_size` 字）按中文句号/问号/感叹号断开
+文章 content 由 LLM 流式生成，存储为 **Markdown 格式**，使用 `##` 二级标题划分章节。
+典型结构：
+
+```markdown
+## 事件背景
+正文内容...
+
+## 影响逻辑
+正文内容...
+
+## 受益行业
+正文内容...
+
+## 受损行业
+正文内容...
+
+## 推荐关注股票
+正文内容...
+
+## 风险提示
+正文内容...
+```
+
+> 参见 `backend/app/infrastructure/ai/prompts/policy.py` 等 prompt 模板，
+> LLM 被指示按 `##` 章节输出分析报告。
+
+### 切分策略——Markdown 章节级切分
+
+以 `##` 标题为边界进行切分，每个章节（含标题 + 正文 + 表格）作为独立 chunk。
+
+**为什么不按 `\n\n` 分段？**
+
+`content.split("\n\n")` 会把 `## 事件背景`（6 字）和它下面的正文拆散，
+导致标题变成"短段落"触发合并逻辑，不同章节的内容被混在一起。
+Markdown 表格（`| ... |` 多行）也会被 `\n\n` 切碎。
+按 `##` 章节切分天然保证语义完整性。
 
 ### 数据结构
 
@@ -59,14 +91,26 @@ class Chunk:
 ### 函数签名
 
 ```python
+import re
+
 def chunk_article(
     title: str,
     summary: str,
     content: str,
-    min_size: int = 200,
-    max_size: int = 800,
+    max_size: int = 1500,
 ) -> list[Chunk]:
-    """将文章切分为语义 chunk 列表。
+    """将文章按 Markdown ## 章节切分为语义 chunk 列表。
+
+    切分规则：
+        - chunk_0 始终是 title + summary（保留标题级匹配能力）
+        - content 按 ## 标题分段，每个章节作为一个独立 chunk
+        - 超过 max_size 的章节按 \\n\\n 段落二次拆分
+
+    Args:
+        title: 文章标题
+        summary: 文章摘要
+        content: Markdown 格式正文（由 LLM 生成，含 ## 章节结构）
+        max_size: 单个 chunk 最大字符数，默认 1500
 
     Returns:
         始终返回至少一个 Chunk（chunk_0 = title + summary）。
@@ -74,14 +118,101 @@ def chunk_article(
     """
 ```
 
-### 处理细节
+### 算法伪代码
 
-- `content` 为 `None` 或纯空白时，只返回 `[Chunk(0, f"{title}\n{summary}", "summary")]`
-- 正文分段后，逐段判断长度：
-  - `len(paragraph) < min_size`：与下一段合并（累加到 buffer）
-  - `len(paragraph) > max_size`：按 `re.split(r'[。？！]', paragraph)` 断开，每段 ≤ max_size
-  - 正常段落直接作为一个 chunk
-- 合并后的 buffer 在遇到正常段落或最后一段时 flush
+```
+输入: title, summary, content, max_size=1500
+输出: list[Chunk]
+
+━━━ 第一步：生成 chunk_0（标题 + 摘要块）━━━
+
+chunks = [Chunk(index=0, content=f"{title}\n{summary}", chunk_type="summary")]
+
+如果 content 为 None 或去除空白后为空:
+    直接返回 chunks
+
+━━━ 第二步：按 ## 标题分段 ━━━
+
+sections = re.split(r'(?=^## )', content, flags=re.MULTILINE)
+# 结果示例：
+# ["", "## 事件背景\n正文...", "## 影响逻辑\n正文...", "## 风险提示\n正文..."]
+sections = [s.strip() for s in sections if s.strip()]
+
+chunk_index = 1
+
+for section in sections:
+    如果 len(section) <= max_size:
+        # 章节长度合适，直接作为一个 chunk
+        chunks.append(Chunk(index=chunk_index, content=section, chunk_type="content"))
+        chunk_index += 1
+
+    否则:
+        # 章节超长（如含大型 Markdown 表格），按段落二次拆分
+        paragraphs = section.split("\n\n")
+        buffer = ""
+
+        for para in paragraphs:
+            merged = buffer + "\n\n" + para if buffer else para
+
+            如果 len(merged) <= max_size:
+                buffer = merged
+            否则:
+                如果 buffer:
+                    chunks.append(Chunk(index=chunk_index, content=buffer, chunk_type="content"))
+                    chunk_index += 1
+                buffer = para
+
+        如果 buffer:
+            chunks.append(Chunk(index=chunk_index, content=buffer, chunk_type="content"))
+            chunk_index += 1
+
+返回 chunks
+```
+
+### max_size 参数说明
+
+| 参数 | 值 | 理由 |
+|------|-----|------|
+| `max_size` | 1500 | bge-large-zh-v1.5 最大 512 tokens，1500 字中文约 500-700 tokens，在模型窗口内且留有余量 |
+| 不设 `min_size` | - | `##` 章节级切分已保证语义完整性，不需要短段合并 |
+
+### 切分结果示例
+
+输入（3544 字的真实文章）：
+
+> **title**: 光储融合与技术迭代驱动的产业链传导
+>
+> **summary**: 传导起于电力设备，光储融合与新技术迭代主要受益电力设备及机械设备，受损煤炭。最大风险为海外贸易壁垒及产能过剩导致价格战。
+>
+> **content**: *(含 7 个 ## 章节的 Markdown)*
+
+执行 `chunk_article(title, summary, content)` 后输出 **8 个 Chunk**：
+
+| Chunk | chunk_type | 内容 | 长度 |
+|-------|-----------|------|------|
+| 0 | summary | `title + "\n" + summary` | ~75 字 |
+| 1 | content | `## 事件背景` + 正文 | ~130 字 |
+| 2 | content | `## 影响逻辑` + 正文 | ~130 字 |
+| 3 | content | `## 产业链传导表` + Markdown 表格 | ~530 字 |
+| 4 | content | `## 受益行业` + 正文 | ~150 字 |
+| 5 | content | `## 受损行业` + 正文 | ~80 字 |
+| 6 | content | `## 推荐关注股票` + 列表 | ~130 字 |
+| 7 | content | `## 风险提示` + 正文 | ~160 字 |
+
+每个 chunk 是一个语义完整的章节，包含标题 + 正文 + 表格。
+对于超长章节（如某篇文章的"新闻分析"章节含 5000+ 字数据表格），
+触发二次拆分，在该章节内部按 `\n\n` 分段合并，确保每个子 chunk ≤ max_size。
+
+### 与原方案的核心区别
+
+| 维度 | 原方案（按 `\n\n` 分段） | 新方案（按 `##` 章节） |
+|------|--------------------------|----------------------|
+| 切分边界 | 双换行符 | Markdown `##` 标题 |
+| 语义完整性 | 差，标题和正文会被拆散 | 好，每个 chunk 是完整章节 |
+| 短段合并 | 需要复杂的 min_size/buffer 逻辑 | 不需要，章节已保证完整 |
+| 表格处理 | 差，Markdown 表格被切碎 | 好，表格属于章节内部不会被拆 |
+| 参数复杂度 | min_size + max_size + buffer | 只需 max_size |
+| 平均 chunk 数 | 难以预估 | 与章节数一致，~6-8 个 |
 
 ### 配套测试
 
@@ -90,12 +221,14 @@ def chunk_article(
 | 测试用例 | 说明 |
 |----------|------|
 | `test_empty_content` | content 为空/None，只返回 chunk_0 |
-| `test_title_summary_chunk` | chunk_0 始终是 title + summary |
-| `test_short_paragraphs_merge` | 多个短段落合并为一个 chunk |
-| `test_long_paragraph_split` | 超长段落按句号断开 |
-| `test_normal_paragraphs` | 正常段落各自成为 chunk |
-| `test_mixed_paragraphs` | 短+长+正常混合 |
-| `test_chunk_index_sequential` | chunk index 连续递增 |
+| `test_title_summary_chunk` | chunk_0 始终是 `title + "\n" + summary`，chunk_type="summary" |
+| `test_single_section` | 只有一个 `##` 章节，返回 chunk_0 + chunk_1 |
+| `test_multiple_sections` | 多个 `##` 章节各自成为独立 chunk |
+| `test_section_with_table` | 包含 Markdown 表格的章节不被拆散 |
+| `test_oversized_section_split` | 超过 max_size 的章节按段落二次拆分 |
+| `test_content_without_headers` | content 无 `##` 标题但有正文，整体作为一个 chunk |
+| `test_chunk_index_sequential` | chunk index 从 0 开始连续递增 |
+| `test_mixed_h2_h3` | `##` 和 `###` 混合时只按 `##` 切分，`###` 保留在章节内 |
 
 ---
 
@@ -458,7 +591,7 @@ related = [
 
 | 测试文件 | 用例数 | 覆盖范围 |
 |----------|--------|----------|
-| `tests/unit/domain/test_text_chunker.py` | 7 | 空内容、标题摘要块、短段落合并、长段落拆分、正常段落、混合场景、index 连续性 |
+| `tests/unit/domain/test_text_chunker.py` | 9 | 空内容、标题摘要块、单章节、多章节、含表格、超长章节二次拆分、无标题正文、index 连续性、h2/h3 混合 |
 | `tests/unit/domain/test_search_result_merger.py` | 8 | 空结果、单条、同文章多 chunk、多文章排序、数量限制、内容截断、旧格式兼容、summary 提取 |
 | `tests/unit/test_vector_search_repo.py`（扩展） | 2 | delete_by_filter 成功/无匹配 |
 
@@ -496,7 +629,7 @@ python -m scripts.query_vector_db search "德业股份"
 
 | 风险 | 影响 | 应对 |
 |------|------|------|
-| ChromaDB 文档数膨胀（1 篇文章 → ~5 个 chunk） | 存储和检索略增 | ChromaDB 嵌入式设计支持万级文档，数百文章 × 5 chunk 仍远低于阈值 |
+| ChromaDB 文档数膨胀（1 篇文章 → ~6-8 个 chunk） | 存储和检索略增 | ChromaDB 嵌入式设计支持万级文档，数百文章 × 7 chunk 仍远低于阈值 |
 | 批量 embed 性能 | 首次重建耗时增加 | 已有 `embed_batch` 批量接口，每批 32 条 |
 | 旧数据残留 | 重建前旧格式 doc_id 未清理 | 重建脚本先删集合再写入 |
 | 检索 top_k 增大后延迟 | 从 3 → 6，延迟微增 | ChromaDB HNSW 索引在万级数据下差异可忽略 |

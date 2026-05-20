@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, Input, Typography, message, Tag } from "antd";
+import { ArrowDownOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import MessageList from "../components/chat/MessageList";
 import AnalysisInput from "../components/analysis/AnalysisInput";
@@ -21,6 +22,9 @@ const AnalysisPage: React.FC = () => {
   const prefillRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const [inputClearFlag, setInputClearFlag] = useState(false);
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const scrollBottomRef = useRef<(() => void) | null>(null);
 
   // chatStore
   const {
@@ -154,7 +158,8 @@ const AnalysisPage: React.FC = () => {
                 break;
             }
           },
-          controller.signal
+          controller.signal,
+          useKnowledgeBase
         );
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
@@ -162,7 +167,7 @@ const AnalysisPage: React.FC = () => {
         doneStreaming();
       }
     },
-    [currentSessionId, eventType]
+    [currentSessionId, eventType, useKnowledgeBase]
   );
 
   // === 停止 ===
@@ -285,6 +290,8 @@ const AnalysisPage: React.FC = () => {
               disabled={false}
               onSubmit={handleSubmit}
               forceClear={inputClearFlag}
+              useKnowledgeBase={useKnowledgeBase}
+              onKnowledgeBaseChange={setUseKnowledgeBase}
             />
             <EventTypeSelector
               value={eventType}
@@ -299,6 +306,8 @@ const AnalysisPage: React.FC = () => {
         <MessageList
           onNewChat={handleNewChat}
           onSaveToKnowledge={handleOpenSaveModal}
+          onScrollFarFromBottom={setShowScrollBottom}
+          scrollBottomRef={scrollBottomRef}
         />
         </>
       )}
@@ -313,14 +322,44 @@ const AnalysisPage: React.FC = () => {
             background: "#ffffff",
             display: "flex",
             justifyContent: "center",
+            position: "relative",
           }}
         >
+          {/* 回到底部按钮 — 分隔线右上角，文章右边缘外侧 */}
+          {showScrollBottom && (
+            <button
+              onClick={() => scrollBottomRef.current?.()}
+              style={{
+                position: "absolute",
+                top: -40,
+                right: `calc(50% - 390px - 44px)`,
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                border: "1px solid #e5edf5",
+                background: "#ffffff",
+                color: "#533afd",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                boxShadow: "rgba(23,23,23,0.08) 0px 1px 4px",
+                transition: "opacity 0.2s",
+                zIndex: 10,
+              }}
+            >
+              <ArrowDownOutlined />
+            </button>
+          )}
           <div style={{ width: 780 }}>
             <AnalysisInput
               eventType={eventType}
               disabled={isStreaming}
               onSubmit={handleSubmit}
               forceClear={inputClearFlag}
+              useKnowledgeBase={useKnowledgeBase}
+              onKnowledgeBaseChange={setUseKnowledgeBase}
             />
             <EventTypeSelector
               value={eventType}

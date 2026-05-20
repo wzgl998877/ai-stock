@@ -147,7 +147,7 @@ async def stream_message(session_id: str, body: SendMessageRequest, request: Req
     config = getattr(body, 'config', None)
 
     return StreamingResponse(
-        _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type, config), db),
+        _sse_stream(use_case.stream_chat(session_id, body.content, body.event_type, config, body.use_knowledge_base), db),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
