@@ -21,7 +21,7 @@ const SyncPanel: React.FC = () => {
     loadHistory,
   } = useSyncStore();
 
-  const [availableSources] = useState<string[]>(["tushare", "akshare", "baostock"]);
+  const [availableSources] = useState<string[]>(["tushare", "akshare", "baostock", "sina"]);
   const abortRef = useRef<AbortController | null>(null);
 
   const handleSync = useCallback(

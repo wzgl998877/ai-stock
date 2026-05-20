@@ -158,6 +158,10 @@ class MySQLDataSourceRepository(DataSourceRepository):
         return True
 
     async def is_configured(self, source_type: SourceType) -> bool:
+        # 无需认证的数据源，即使无数据库记录也直接返回 True
+        if source_type in (SourceType.AKSHARE, SourceType.SINA):
+            return True
+
         stmt = select(DataSourceConfigModel).where(
             DataSourceConfigModel.source_type == source_type.value,
             DataSourceConfigModel.is_enabled == True,  # noqa: E712

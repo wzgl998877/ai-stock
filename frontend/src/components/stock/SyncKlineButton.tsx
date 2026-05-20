@@ -40,62 +40,79 @@ const SyncKlineButton: React.FC<SyncKlineButtonProps> = ({ code, period, onSucce
     if (syncing) return;
     setSyncing(true);
 
+    const { startDate, endDate } = getDateRange(period);
+
+    // 按优先级尝试数据源：AKShare → 新浪财经
+    const sources = ['akshare', 'sina'] as const;
+
     try {
-      const { startDate, endDate } = getDateRange(period);
-      const params = new URLSearchParams({
-        source_type: 'akshare',
-        data_type: 'daily_quote',
-        symbol: code,
-        start_date: startDate,
-        end_date: endDate,
-        period: period,
-      });
+      let lastError: string = '';
 
-      const url = `/api/v1/sync/execute?${params.toString()}`;
+      for (const source of sources) {
+        try {
+          const params = new URLSearchParams({
+            source_type: source,
+            data_type: 'daily_quote',
+            symbol: code,
+            start_date: startDate,
+            end_date: endDate,
+            period: period,
+          });
 
-      // 使用 EventSource 解析 SSE
-      await new Promise<void>((resolve, reject) => {
-        const evtSource = new EventSource(url);
+          const url = `/api/v1/sync/execute?${params.toString()}`;
 
-        evtSource.addEventListener('sync_completed', () => {
-          evtSource.close();
-          resolve();
-        });
+          await new Promise<void>((resolve, reject) => {
+            const evtSource = new EventSource(url);
 
-        evtSource.addEventListener('sync_failed', (e) => {
-          evtSource.close();
-          reject(new Error(e.data || '同步失败'));
-        });
+            evtSource.addEventListener('sync_completed', () => {
+              evtSource.close();
+              resolve();
+            });
 
-        evtSource.addEventListener('sync_error', (e) => {
-          evtSource.close();
-          reject(new Error(e.data || '同步错误'));
-        });
+            evtSource.addEventListener('sync_failed', (e) => {
+              evtSource.close();
+              reject(new Error(e.data || '同步失败'));
+            });
 
-        evtSource.onerror = () => {
-          evtSource.close();
-          reject(new Error('同步连接中断'));
-        };
+            evtSource.addEventListener('sync_error', (e) => {
+              evtSource.close();
+              reject(new Error(e.data || '同步错误'));
+            });
 
-        // 超时保护: 60秒
-        setTimeout(() => {
-          evtSource.close();
-          reject(new Error('同步超时'));
-        }, 60000);
-      });
+            evtSource.onerror = () => {
+              evtSource.close();
+              reject(new Error('同步连接中断'));
+            };
 
-      message.success('K线数据同步成功');
-      onSuccess?.();
-    } catch (err: any) {
-      // 解析SSE data中的错误信息
-      let errMsg = '同步失败';
-      try {
-        const parsed = JSON.parse(err.message);
-        errMsg = parsed.message || errMsg;
-      } catch {
-        errMsg = err.message || errMsg;
+            // 超时保护: 60秒
+            setTimeout(() => {
+              evtSource.close();
+              reject(new Error('同步超时'));
+            }, 60000);
+          });
+
+          // 同步成功
+          message.success(`K线数据同步成功（${source === 'akshare' ? 'AKShare' : '新浪财经'}）`);
+          onSuccess?.();
+          return;
+        } catch (err: any) {
+          let errMsg = '同步失败';
+          try {
+            const parsed = JSON.parse(err.message);
+            errMsg = parsed.message || errMsg;
+          } catch {
+            errMsg = err.message || errMsg;
+          }
+          lastError = errMsg;
+          // AKShare 失败，尝试下一个数据源
+          if (source !== sources[sources.length - 1]) {
+            message.warning(`${source === 'akshare' ? 'AKShare' : '新浪'}同步失败，尝试备用数据源...`);
+          }
+        }
       }
-      message.error(errMsg);
+
+      // 所有数据源都失败
+      message.error(lastError || '所有数据源同步失败');
     } finally {
       setSyncing(false);
     }

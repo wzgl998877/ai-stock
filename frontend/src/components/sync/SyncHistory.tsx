@@ -23,6 +23,7 @@ const SOURCE_TAG_COLORS: Record<string, string> = {
   tushare: "blue",
   akshare: "green",
   baostock: "orange",
+  sina: "red",
 };
 
 const DATA_TYPE_LABELS: Record<string, string> = {

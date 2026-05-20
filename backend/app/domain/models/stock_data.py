@@ -15,6 +15,7 @@ class SourceType(str, Enum):
     TUSHARE = "tushare"
     AKSHARE = "akshare"
     BAOSTOCK = "baostock"
+    SINA = "sina"
 
 
 class DataType(str, Enum):
@@ -50,6 +51,8 @@ class DataSourceConfig:
         """Whether this datasource has valid credentials."""
         if self.source_type == SourceType.AKSHARE:
             return True  # AKShare doesn't need API key
+        if self.source_type == SourceType.SINA:
+            return True  # 新浪财经无需认证
         if self.source_type == SourceType.BAOSTOCK:
             return self.is_enabled  # BaoStock uses login, not key
         return bool(self.api_key)
