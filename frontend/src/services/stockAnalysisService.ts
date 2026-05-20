@@ -112,7 +112,7 @@ export async function listAnalysisRecords(params?: {
   const res = await api.get(`${ANALYSIS_BASE}/records`, {
     params: {
       page: params?.page || 1,
-      page_size: params?.pageSize || 20,
+      page_size: params?.pageSize || 50,
       status: params?.status,
       stock_code: params?.stockCode,
     },
