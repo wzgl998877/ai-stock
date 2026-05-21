@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pypinyin import lazy_pinyin, Style
 
 from app.application.dtos.analysis_dto import (
     AnalysisRequestDTO,
@@ -289,6 +290,7 @@ async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
         return {"valid": False, "message": "请输入股票代码或名称"}
 
     keyword = keyword.strip()
+    q_lower = keyword.lower()
     # 转义正则特殊字符
     safe_keyword = re.escape(keyword)
     pattern = re.compile(safe_keyword, re.IGNORECASE)
@@ -309,10 +311,15 @@ async def validate_stock(keyword: str, db: AsyncSession = Depends(get_db)):
         }
 
     # 模糊匹配：代码前缀或名称包含
+    is_alpha = bool(re.fullmatch(r'[a-zA-Z]+', keyword))
     matches = []
     for s in stocks:
         if pattern.search(s["code"]) or pattern.search(s["name"]):
             matches.append(s)
+        elif is_alpha:
+            initials = ''.join(lazy_pinyin(s["name"], style=Style.FIRST_LETTER))
+            if q_lower in initials.lower():
+                matches.append(s)
         if len(matches) >= 10:
             break
 
@@ -392,13 +399,19 @@ def _search_akshare(keyword: str) -> list[dict]:
         _akshare_stock_cache_time = now
         logger.info("AKShare 股票列表缓存刷新（网络），共 %d 条", len(all_stocks))
 
-    # 正则模糊匹配
+    # 正则模糊匹配 + 拼音首字母匹配
     safe_kw = re.escape(keyword)
     pattern = re.compile(safe_kw, re.IGNORECASE)
+    is_alpha = bool(re.fullmatch(r'[a-zA-Z]+', keyword))
+    q_lower = keyword.lower()
     matches = []
     for s in all_stocks:
         if pattern.search(s["code"]) or pattern.search(s["name"]):
             matches.append(s)
+        elif is_alpha:
+            initials = ''.join(lazy_pinyin(s["name"], style=Style.FIRST_LETTER))
+            if q_lower in initials.lower():
+                matches.append(s)
         if len(matches) >= 10:
             break
     return matches

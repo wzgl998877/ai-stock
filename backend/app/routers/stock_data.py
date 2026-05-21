@@ -11,10 +11,12 @@ All endpoints check Redis cache first, fall back to MySQL on cache miss.
 
 import json
 import logging
+import re
 from typing import Optional
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from pypinyin import lazy_pinyin, Style
 
 from app.core.database import get_db
 from app.domain.repositories.stock_data_repo import StockDataRepository
@@ -42,14 +44,20 @@ async def search_stocks(
     limit: int = Query(20, description="最大返回数量"),
     repo: StockDataRepository = Depends(_get_repo),
 ):
-    """模糊搜索股票（代码/名称匹配）。"""
+    """模糊搜索股票（代码/名称/拼音首字母匹配）。"""
     all_stocks = await repo.get_all_stocks()
     q_lower = q.lower()
+    is_alpha = bool(re.fullmatch(r'[a-zA-Z]+', q))
 
-    matched = [
-        s for s in all_stocks
-        if q_lower in s.code.lower() or q_lower in s.name.lower()
-    ][:limit]
+    matched = []
+    for s in all_stocks:
+        if q_lower in s.code.lower() or q_lower in s.name.lower():
+            matched.append(s)
+        elif is_alpha:
+            initials = ''.join(lazy_pinyin(s.name, style=Style.FIRST_LETTER))
+            if q_lower in initials.lower():
+                matched.append(s)
+    matched = matched[:limit]
 
     items = [
         {"code": s.code, "name": s.name, "industry": getattr(s, "industry", "") or ""}
