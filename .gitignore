@@ -42,7 +42,7 @@ deploy.conf
 *.db
 
 # === Vector DB (ChromaDB) ===
-data/vector_db/
+backend/data/vector_db/
 
 # === Coverage ===
 coverage/

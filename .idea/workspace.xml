@@ -3,8 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 引入前端skill">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/data/vector_db/3d14f75d-7162-4a65-8560-fc1ccc7ad9dd/data_level0.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data/vector_db/3d14f75d-7162-4a65-8560-fc1ccc7ad9dd/data_level0.bin" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/data/vector_db/3d14f75d-7162-4a65-8560-fc1ccc7ad9dd/length.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data/vector_db/3d14f75d-7162-4a65-8560-fc1ccc7ad9dd/length.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/data_level0.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/data_level0.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/length.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/length.bin" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -59,7 +59,7 @@
       <workItem from="1774916482180" duration="1268000" />
       <workItem from="1776426217043" duration="704000" />
       <workItem from="1777086658066" duration="650000" />
-      <workItem from="1779114137134" duration="1929000" />
+      <workItem from="1779114137134" duration="3369000" />
     </task>
     <task id="LOCAL-00001" summary="feat: 新增md文档">
       <created>1776352079122</created>
