@@ -151,6 +151,7 @@ class EventRadarUseCase:
 
     async def crawl_and_process(self):
         """采集并处理财经新闻"""
+        import asyncio
         from app.infrastructure.crawler.cls_provider import ClsProvider
 
         provider = ClsProvider()
@@ -166,15 +167,22 @@ class EventRadarUseCase:
         new_count = 0
         new_events: list[ImpactEvent] = []
         for article in articles:
-            result = await assess_event(
-                title=article.title,
-                content=article.content,
-                source_url=article.url,
-                existing_url_hashes=existing_hashes,
-                existing_titles=existing_titles,
-                embedding_service=self.embedding_service,
-                vector_search_repo=self.vector_search_repo,
-            )
+            try:
+                result = await asyncio.wait_for(
+                    assess_event(
+                        title=article.title,
+                        content=article.content,
+                        source_url=article.url,
+                        existing_url_hashes=existing_hashes,
+                        existing_titles=existing_titles,
+                        embedding_service=self.embedding_service,
+                        vector_search_repo=self.vector_search_repo,
+                    ),
+                    timeout=30,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("单条文章评估超时，跳过: %s", article.title[:50])
+                continue
             if not result:
                 continue
 

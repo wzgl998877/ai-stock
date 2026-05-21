@@ -24,6 +24,8 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None,
 
     async def crawl_and_process():
         """采集并处理财经新闻（委托给 EventRadarUseCase）"""
+        import asyncio
+
         logger.info("事件采集任务开始")
         try:
             from app.infrastructure.repositories.mysql_impact_event_repo import MySQLImpactEventRepository
@@ -39,10 +41,14 @@ def setup_scheduler(session_factory, ai_service=None, search_service=None,
                     vector_search_repo=vector_search_repo,
                     embedding_service=embedding_service,
                 )
-                result = await uc.crawl_and_process()
+                result = await asyncio.wait_for(
+                    uc.crawl_and_process(), timeout=300,
+                )
                 await session.commit()
                 logger.info("事件采集完成: 采集 %d 条，新增 %d 条", result.get("crawled", 0), result.get("new_events", 0))
 
+        except asyncio.TimeoutError:
+            logger.warning("事件采集任务超时（>300s），已取消")
         except Exception as e:
             logger.error("事件采集任务失败: %s", e, exc_info=True)
 

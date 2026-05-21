@@ -1,5 +1,6 @@
 """影响判断引擎 — 编排去重、匹配、情感分析、用户影响计算"""
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
@@ -64,8 +65,8 @@ async def assess_event(
     # 情感分析
     sentiment_result = sentiment_analyze(title, content)
 
-    # 股票/行业匹配
-    match_result = match_all(f"{title} {content}")
+    # 股票/行业匹配（match_by_name 遍历 8533 条股票名，必须放到线程池避免阻塞事件循环）
+    match_result = await asyncio.to_thread(match_all, f"{title} {content}")
 
     # 只有匹配到股票或行业才值得创建事件
     if not match_result["stocks"] and not match_result["industries"]:

@@ -21,6 +21,9 @@ class LocalEmbeddingService(EmbeddingService):
     def _load_model(self) -> None:
         """加载 sentence-transformers 模型"""
         try:
+            import os
+            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
             from sentence_transformers import SentenceTransformer
 
             self._model = SentenceTransformer(self._model_name)
