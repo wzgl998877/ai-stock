@@ -55,7 +55,8 @@ const AppContent: React.FC = () => {
         {/* 模块二：行情数据 */}
         <Route path="/market/stock/:code" element={<StockDetailPage />} />
         <Route path="/market/watchlist" element={<WatchlistPage />} />
-        <Route path="/market/industry" element={<IndustryPage />} />
+        {/* 行业对比 — 即将推出 */}
+        {/* <Route path="/market/industry" element={<IndustryPage />} /> */}
         {/* 模块四：事件影响雷达 */}
         <Route path="/event-radar" element={<EventRadarPage />} />
         <Route path="*" element={<Navigate to="/analysis" replace />} />
