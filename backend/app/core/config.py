@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     rag_dedup_threshold: float = 0.85                             # 去重引擎阈值
     rag_max_context_length: int = 2000                            # Agent 注入上下文最大字数
 
+    # === 事件采集 ===
+    event_crawl_enabled: bool = True                              # 事件采集调度器开关（本地开发可关闭）
+
     # === 邮件 (SMTP) ===
     smtp_host: str = "smtp.qq.com"
     smtp_port: int = 465

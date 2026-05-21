@@ -129,20 +129,23 @@ async def lifespan(app: FastAPI):
 
     # 初始化事件采集调度器（APScheduler）
     _event_scheduler = None
-    try:
-        from app.infrastructure.scheduler.event_crawler_scheduler import setup_scheduler
-        _event_scheduler = setup_scheduler(
-            session_factory=async_session,
-            ai_service=app.state.ai_service,
-            search_service=_search_svc,
-            vector_search_repo=_vector_search_repo,
-            embedding_service=_embedding_svc,
-        )
-        if _event_scheduler:
-            _event_scheduler.start()
-            logger.info("事件采集调度器已启动")
-    except Exception as e:
-        logger.warning("事件采集调度器初始化失败（非致命）: %s", e)
+    if not settings.event_crawl_enabled:
+        logger.info("事件采集调度器已禁用 (event_crawl_enabled=false)")
+    else:
+        try:
+            from app.infrastructure.scheduler.event_crawler_scheduler import setup_scheduler
+            _event_scheduler = setup_scheduler(
+                session_factory=async_session,
+                ai_service=app.state.ai_service,
+                search_service=_search_svc,
+                vector_search_repo=_vector_search_repo,
+                embedding_service=_embedding_svc,
+            )
+            if _event_scheduler:
+                _event_scheduler.start()
+                logger.info("事件采集调度器已启动")
+        except Exception as e:
+            logger.warning("事件采集调度器初始化失败（非致命）: %s", e)
 
     yield
     # Shutdown
