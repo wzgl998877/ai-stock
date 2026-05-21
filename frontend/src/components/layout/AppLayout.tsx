@@ -231,14 +231,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       label: "知识库",
     },
     {
-      key: "tools-group",
-      icon: <SyncOutlined />,
-      label: "数据与工具",
-      children: [
-        { key: "/sync", label: "数据同步" },
-      ],
-    },
-    {
       key: "market-group",
       icon: <BarChartOutlined />,
       label: "行情数据",
@@ -255,6 +247,14 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           ),
           disabled: true,
         },
+      ],
+    },
+    {
+      key: "tools-group",
+      icon: <SyncOutlined />,
+      label: "数据与工具",
+      children: [
+        { key: "/sync", label: "数据同步" },
       ],
     },
   ];

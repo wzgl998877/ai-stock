@@ -4,7 +4,7 @@ import logging
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -444,13 +444,19 @@ async def get_stock_impacts(
 
 @router.post("/admin/crawl")
 async def trigger_crawl(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    embedding_service = request.app.state.embedding_service
+    vector_search_repo = request.app.state.vector_search_repo
+
     uc = EventRadarUseCase(
         event_repo=MySQLImpactEventRepository(db),
         article_repo=MySQLImpactArticleRepository(db),
         impact_repo=MySQLUserImpactRepository(db),
+        vector_search_repo=vector_search_repo,
+        embedding_service=embedding_service,
     )
     result = await uc.crawl_and_process()
     await db.commit()
