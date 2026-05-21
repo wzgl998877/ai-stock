@@ -63,7 +63,7 @@ async def get_all_stocks(
     repo: StockDataRepository = Depends(_get_repo),
 ):
     """获取所有活跃股票列表。"""
-    cached = redis_cache.get("stock:all")
+    cached = await redis_cache.get("stock:all")
     if cached:
         return {"data": cached}
 
@@ -73,7 +73,8 @@ async def get_all_stocks(
         for s in stocks if s.is_active
     ]
     result = {"total": len(items), "items": items}
-    redis_cache.set("stock:all", result, ttl=86400)
+    await redis_cache.set("stock:all", result, ttl=86400)
+
     return {"data": result}
 
 
@@ -143,7 +144,7 @@ async def get_stock_basic(
 ):
     """Get stock basic information (highest priority source)."""
     # Check cache
-    cached = redis_cache.get(f"stock:basic:{code}")
+    cached = await redis_cache.get(f"stock:basic:{code}")
     if cached:
         return {"data": cached}
 
@@ -162,7 +163,7 @@ async def get_stock_basic(
     }
 
     # Cache for 24 hours
-    redis_cache.set(f"stock:basic:{code}", result, ttl=86400)
+    await redis_cache.set(f"stock:basic:{code}", result, ttl=86400)
 
     return {"data": result}
 
@@ -174,7 +175,7 @@ async def get_stock_quote(
 ):
     """Get latest market quote for a stock."""
     # Check cache
-    cached = redis_cache.get(f"stock:quote:{code}")
+    cached = await redis_cache.get(f"stock:quote:{code}")
     if cached:
         return {"data": cached}
 
@@ -200,7 +201,7 @@ async def get_stock_quote(
     }
 
     # Cache for 5 minutes
-    redis_cache.set(f"stock:quote:{code}", result, ttl=300)
+    await redis_cache.set(f"stock:quote:{code}", result, ttl=300)
 
     return {"data": result}
 
@@ -216,7 +217,7 @@ async def get_stock_daily(
     """Get historical K-line data."""
     # Build cache key
     cache_key = f"stock:daily:{code}:{start_date}:{end_date}:{period}"
-    cached = redis_cache.get(cache_key)
+    cached = await redis_cache.get(cache_key)
     if cached:
         return {"data": cached}
 
@@ -272,7 +273,7 @@ async def get_stock_daily(
     # 仅有数据时才缓存，避免同步前的空结果阻塞后续查询
     if items:
         ttl = 3600 if period in ("weekly", "monthly") else 86400
-        redis_cache.set(cache_key, result, ttl=ttl)
+        await redis_cache.set(cache_key, result, ttl=ttl)
 
     return {"data": result}
 
@@ -283,7 +284,7 @@ async def get_stock_financial(
     repo: StockDataRepository = Depends(_get_repo),
 ):
     """Get financial data for a stock."""
-    cached = redis_cache.get(f"stock:financial:{code}")
+    cached = await redis_cache.get(f"stock:financial:{code}")
     if cached:
         return {"data": cached}
 
@@ -308,7 +309,7 @@ async def get_stock_financial(
     }
 
     # Cache for 24 hours
-    redis_cache.set(f"stock:financial:{code}", result, ttl=86400)
+    await redis_cache.set(f"stock:financial:{code}", result, ttl=86400)
 
     return {"data": result}
 
@@ -356,7 +357,7 @@ async def get_stock_indicators(
 ):
     """获取技术指标数据。"""
     cache_key = f"stock:indicators:{code}:{period}:{start_date}:{end_date}"
-    cached = redis_cache.get(cache_key)
+    cached = await redis_cache.get(cache_key)
     if cached:
         return {"data": cached}
 
@@ -390,7 +391,7 @@ async def get_stock_indicators(
         items.append(item)
 
     result = {"code": code, "period": period, "items": items}
-    redis_cache.set(cache_key, result, ttl=86400)
+    await redis_cache.set(cache_key, result, ttl=86400)
     return {"data": result}
 
 
@@ -400,7 +401,7 @@ async def get_stock_detail(
     db: AsyncSession = Depends(get_db),
 ):
     """获取个股详情聚合数据（基础信息+实时行情+最新财务）。"""
-    cached = redis_cache.get(f"stock:detail:{code}")
+    cached = await redis_cache.get(f"stock:detail:{code}")
     if cached:
         return {"data": cached}
 
@@ -443,7 +444,7 @@ async def get_stock_detail(
         "related_articles": detail.related_articles,
     }
 
-    redis_cache.set(f"stock:detail:{code}", result, ttl=300)
+    await redis_cache.set(f"stock:detail:{code}", result, ttl=300)
     return {"data": result}
 
 
@@ -455,7 +456,7 @@ async def get_related_articles(
 ):
     """获取与该股票相关的分析文章。"""
     cache_key = f"stock:related:{code}:{limit}"
-    cached = redis_cache.get(cache_key)
+    cached = await redis_cache.get(cache_key)
     if cached:
         return {"data": cached}
 
@@ -472,5 +473,5 @@ async def get_related_articles(
         })
 
     result = {"code": code, "total": len(items), "items": items}
-    redis_cache.set(cache_key, result, ttl=300)
+    await redis_cache.set(cache_key, result, ttl=300)
     return {"data": result}

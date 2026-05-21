@@ -62,17 +62,13 @@ def _sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _clear_kline_cache(code: str, period: str) -> None:
-    """清除指定股票+周期的 K线 Redis 缓存。
-
-    缓存 key 格式: stock:daily:{code}:{start_date}:{end_date}:{period}
-    start_date/end_date 可能为 None 或具体日期，需 scan 通配清除。
-    """
+async def _clear_kline_cache(code: str, period: str) -> None:
+    """清除指定股票+周期的 K线 Redis 缓存。"""
     try:
         from app.infrastructure.cache.redis_cache import redis_cache as _cache
         if not _cache._available:
             return
-        client = _cache._ensure_client()
+        client = await _cache._ensure_client()
         if client is None:
             return
 
@@ -80,9 +76,9 @@ def _clear_kline_cache(code: str, period: str) -> None:
         cursor = 0
         deleted = 0
         while True:
-            cursor, keys = client.scan(cursor, match=pattern, count=100)
+            cursor, keys = await client.scan(cursor, match=pattern, count=100)
             if keys:
-                client.delete(*keys)
+                await client.delete(*keys)
                 deleted += len(keys)
             if cursor == 0:
                 break
@@ -316,7 +312,7 @@ class SyncExecutor:
 
                     # 清除该股票+周期的 Redis 缓存，确保下次查询读到最新数据
                     if data_type == DataType.DAILY_QUOTE and symbol:
-                        _clear_kline_cache(symbol, period)
+                        await _clear_kline_cache(symbol, period)
 
                     progress_queue.put_nowait({
                         "_done": True,
@@ -451,7 +447,7 @@ class SyncExecutor:
         total = 0
 
         if data_type == DataType.BASIC_INFO:
-            raw_list = client.fetch_basic_info()
+            raw_list = await asyncio.to_thread(client.fetch_basic_info)
 
             # 如果指定了股票代码，只同步该股票
             if symbol:
@@ -490,7 +486,7 @@ class SyncExecutor:
             return
 
         elif data_type == DataType.MARKET_QUOTE:
-            raw_list = client.fetch_quote()
+            raw_list = await asyncio.to_thread(client.fetch_quote)
 
             # 如果指定了股票代码，只同步该股票
             if symbol:
@@ -538,7 +534,8 @@ class SyncExecutor:
             if not start_date or not end_date:
                 raise ValueError("daily_quote sync requires start_date and end_date parameters")
 
-            raw_list = client.fetch_daily_quote(
+            raw_list = await asyncio.to_thread(
+                client.fetch_daily_quote,
                 code=symbol, start_date=start_date, end_date=end_date, period=period,
             )
 
@@ -548,7 +545,8 @@ class SyncExecutor:
                 try:
                     from app.application.sync.sina_sync_client import SinaSyncClient
                     fallback_client = SinaSyncClient()
-                    raw_list = fallback_client.fetch_daily_quote(
+                    raw_list = await asyncio.to_thread(
+                        fallback_client.fetch_daily_quote,
                         code=symbol, start_date=start_date, end_date=end_date, period=period,
                     )
                     if raw_list:
@@ -586,7 +584,7 @@ class SyncExecutor:
 
         elif data_type == DataType.FINANCIAL:
             if symbol:
-                raw_list = client.fetch_financial(code=symbol)
+                raw_list = await asyncio.to_thread(client.fetch_financial, code=symbol)
             else:
                 # For full market sync, we'd need to iterate all stocks first
                 # For MVP, require symbol

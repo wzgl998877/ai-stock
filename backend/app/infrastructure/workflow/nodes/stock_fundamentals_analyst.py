@@ -1,5 +1,6 @@
 """基本面分析师节点 — 通过工具调用获取财务数据，生成基本面分析报告"""
 
+import asyncio
 import json
 import logging
 import time
@@ -73,7 +74,7 @@ def create_fundamentals_analyst_node(ai_service, max_tool_calls: int = 3):
                 if tool_func:
                     try:
                         t0 = time.time()
-                        tool_result = tool_func(**func_args)
+                        tool_result = await asyncio.to_thread(tool_func, **func_args)
                         logger.info("[耗时] fundamentals_analyst 工具[%s]: %.3fs", func_name, time.time() - t0)
                     except Exception as e:
                         tool_result = f"工具执行失败: {e}"

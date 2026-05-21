@@ -1,5 +1,6 @@
 """本地 Embedding 客户端 — 基于 sentence-transformers 加载 bge-large-zh-v1.5"""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -44,10 +45,12 @@ class LocalEmbeddingService(EmbeddingService):
         if not self._ready or self._model is None:
             raise RuntimeError("Embedding 模型未就绪")
         if not text or not text.strip():
-            # 空文本返回零向量（避免报错）
             dim = self._model.get_sentence_embedding_dimension()
             return [0.0] * dim
-        embedding = self._model.encode(text, normalize_embeddings=True)
+        embedding = await asyncio.to_thread(
+            self._model.encode, text, normalize_embeddings=True,
+            show_progress_bar=False,
+        )
         return embedding.tolist()
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -55,9 +58,11 @@ class LocalEmbeddingService(EmbeddingService):
         if not self._ready or self._model is None:
             raise RuntimeError("Embedding 模型未就绪")
         dim = self._model.get_sentence_embedding_dimension()
-        # 处理空文本
         processed = [t if t and t.strip() else "" for t in texts]
-        embeddings = self._model.encode(processed, normalize_embeddings=True)
+        embeddings = await asyncio.to_thread(
+            self._model.encode, processed, normalize_embeddings=True,
+            show_progress_bar=False,
+        )
         result = []
         for i, emb in enumerate(embeddings):
             if processed[i] == "":

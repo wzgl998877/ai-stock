@@ -180,7 +180,7 @@ async def get_batch_quotes(codes: List[str]) -> Dict[str, LiveQuote]:
     result: Dict[str, LiveQuote] = {}
     missed: List[str] = []
     for code in codes:
-        cached = redis_cache.get(f"stock:live_quote:{code}")
+        cached = await redis_cache.get(f"stock:live_quote:{code}")
         if cached:
             result[code] = LiveQuote(**cached)
         else:
@@ -196,7 +196,7 @@ async def get_batch_quotes(codes: List[str]) -> Dict[str, LiveQuote]:
             if fetched:
                 logger.info("实时行情来源: %s (%d/%d)", name, len(fetched), len(missed))
                 for code, q in fetched.items():
-                    redis_cache.set(f"stock:live_quote:{code}", asdict(q), ttl=CACHE_TTL)
+                    await redis_cache.set(f"stock:live_quote:{code}", asdict(q), ttl=CACHE_TTL)
                 result.update(fetched)
                 break
         except Exception as e:

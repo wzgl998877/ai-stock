@@ -1,5 +1,6 @@
 """向量检索仓储实现 — 基于 ChromaDB"""
 
+import asyncio
 import logging
 
 from app.domain.entities.vector_search import VectorSearchResult
@@ -24,7 +25,8 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
         collection: str = "knowledge_articles",
     ) -> list[VectorSearchResult]:
         """语义向量检索，返回相似度 >= threshold 的结果"""
-        raw_results = self._store.query(
+        raw_results = await asyncio.to_thread(
+            self._store.query,
             collection_name=collection,
             query_embedding=query_embedding,
             top_k=top_k,
@@ -64,7 +66,8 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
         document: str,
     ) -> None:
         """新增文档向量"""
-        self._store.add_documents(
+        await asyncio.to_thread(
+            self._store.add_documents,
             collection_name=collection,
             ids=[doc_id],
             embeddings=[embedding],
@@ -78,7 +81,9 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
         doc_id: str,
     ) -> None:
         """删除文档向量"""
-        self._store.delete(collection_name=collection, ids=[doc_id])
+        await asyncio.to_thread(
+            self._store.delete, collection_name=collection, ids=[doc_id],
+        )
 
     async def update(
         self,
@@ -88,7 +93,8 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
         metadata: dict | None = None,
     ) -> None:
         """更新文档向量或元数据"""
-        self._store.update(
+        await asyncio.to_thread(
+            self._store.update,
             collection_name=collection,
             doc_id=doc_id,
             embedding=embedding,
@@ -101,4 +107,6 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
         filters: dict,
     ) -> int:
         """按 metadata 条件批量删除文档，返回删除数量"""
-        return self._store.delete_by_filter(collection_name=collection, where=filters)
+        return await asyncio.to_thread(
+            self._store.delete_by_filter, collection_name=collection, where=filters,
+        )

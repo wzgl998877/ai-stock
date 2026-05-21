@@ -32,7 +32,7 @@ class MinuteClient:
         cache_key = f"stock:minute:{code}"
 
         # 1. 查 Redis 缓存
-        cached = redis_cache.get(cache_key)
+        cached = await redis_cache.get(cache_key)
         if cached:
             logger.info("分时数据缓存命中: %s", code)
             return cached
@@ -50,7 +50,7 @@ class MinuteClient:
                 if data:
                     logger.info("分时数据来源: %s (%d 条)", name, len(data))
                     # 写入缓存（空数据不缓存）
-                    redis_cache.set(cache_key, data, ttl=settings.minute_cache_ttl)
+                    await redis_cache.set(cache_key, data, ttl=settings.minute_cache_ttl)
                     return data
             except Exception as exc:
                 logger.warning("分时数据源 %s 获取失败: %s", name, exc)

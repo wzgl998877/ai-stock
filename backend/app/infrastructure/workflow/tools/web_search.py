@@ -1,5 +1,6 @@
 """web_search tool — 封装 Tavily Search API，供 Agent 节点调用"""
 
+import asyncio
 import logging
 
 from app.core.config import settings
@@ -8,6 +9,32 @@ logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 5
 MAX_CONTENT_LENGTH = 8000
+
+
+def _sync_search(query: str, max_results: int, api_key: str) -> list[dict]:
+    """同步执行 Tavily 搜索（在线程池中运行）"""
+    from tavily import TavilyClient
+
+    client = TavilyClient(api_key=api_key)
+    response = client.search(
+        query,
+        max_results=max_results,
+        search_depth="advanced",
+        topic="news",
+        time_range="month",
+    )
+
+    results = []
+    for item in response.get("results", []):
+        content = item.get("content", "")
+        if len(content) > MAX_CONTENT_LENGTH:
+            content = content[:MAX_CONTENT_LENGTH] + "...(已截断)"
+        results.append({
+            "title": item.get("title", ""),
+            "url": item.get("url", ""),
+            "content": content,
+        })
+    return results
 
 
 async def web_search(query: str, max_results: int = MAX_RESULTS) -> list[dict]:
@@ -22,28 +49,7 @@ async def web_search(query: str, max_results: int = MAX_RESULTS) -> list[dict]:
         return []
 
     try:
-        from tavily import TavilyClient
-
-        client = TavilyClient(api_key=settings.tavily_api_key)
-        response = client.search(
-            query,
-            max_results=max_results,
-            search_depth="advanced",
-            topic="news",
-            time_range="month",
-        )
-
-        results = []
-        for item in response.get("results", []):
-            content = item.get("content", "")
-            if len(content) > MAX_CONTENT_LENGTH:
-                content = content[:MAX_CONTENT_LENGTH] + "...(已截断)"
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "content": content,
-            })
-
+        results = await asyncio.to_thread(_sync_search, query, max_results, settings.tavily_api_key)
         logger.info("[web_search] 搜索完成: query=%s, results=%d", query[:50], len(results))
         return results
 
