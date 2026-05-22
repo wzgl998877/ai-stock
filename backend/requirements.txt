@@ -3,8 +3,8 @@ fastapi>=0.110,<1.0
 uvicorn[standard]>=0.29,<1.0
 
 # ORM & 数据库
-sqlalchemy[asyncio]>=2.0,<3.0
-aiomysql>=0.2,<1.0
+sqlalchemy[asyncio]>=2.0,<2.0.37
+aiomysql==0.1.1
 pymysql>=1.1,<2.0
 alembic>=1.13,<2.0
 

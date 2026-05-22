@@ -6,7 +6,6 @@ from app.core.config import settings
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_pre_ping=True,       # 每次从池中取连接前先探测是否存活
     pool_recycle=1800,        # 每 30 分钟回收连接，避免 MySQL gone away
     pool_size=10,
     max_overflow=20,
