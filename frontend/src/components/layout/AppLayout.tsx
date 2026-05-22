@@ -236,7 +236,15 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       label: "行情数据",
       children: [
         { key: "/market/watchlist", label: "自选股" },
-        { key: "/market/industry", label: "行业对比" },
+        {
+          key: "/market/industry",
+          label: (
+            <Tooltip title="即将推出" placement="right">
+              <span>行业对比</span>
+            </Tooltip>
+          ),
+          disabled: true,
+        },
         {
           key: "/strategy",
           icon: <RadarChartOutlined />,
