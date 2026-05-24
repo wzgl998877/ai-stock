@@ -66,10 +66,6 @@ export function useKnowledge() {
       const data = await knowledgeService.getIndustries();
       const filtered = data.industries.filter(ind => ind.article_count > 0);
       setIndustries(filtered);
-      // 自动选中第一个
-      if (filtered.length > 0 && !useKnowledgeStore.getState().selectedIndustry) {
-        useKnowledgeStore.getState().setSelectedIndustry(filtered[0].code);
-      }
     } catch {
       // 静默处理
     }
@@ -80,10 +76,6 @@ export function useKnowledge() {
     try {
       const data = await knowledgeService.getWatchlistStocks();
       setStocks(data.stocks);
-      // 自动选中第一个
-      if (data.stocks.length > 0 && !useKnowledgeStore.getState().selectedStock) {
-        useKnowledgeStore.getState().setSelectedStock(data.stocks[0].code);
-      }
     } catch {
       // 静默处理
     }

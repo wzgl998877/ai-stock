@@ -171,10 +171,10 @@ class AnalysisArticle(AuditMixin, Base):
 
     # relationships
     article_industries = relationship(
-        "ArticleIndustry", backref="article", lazy="selectin"
+        "ArticleIndustry", backref="article", lazy="raise"
     )
     article_stocks = relationship(
-        "ArticleStock", backref="article", lazy="selectin"
+        "ArticleStock", backref="article", lazy="raise"
     )
 
     __table_args__ = (
@@ -196,6 +196,8 @@ class ArticleIndustry(AuditMixin, Base):
     )
     chain_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sentiment: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    industry = relationship("Industry", lazy="raise")
 
     __table_args__ = (
         UniqueConstraint("article_id", "industry_code", name="uk_article_industry"),

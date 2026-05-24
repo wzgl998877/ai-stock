@@ -7,7 +7,7 @@ import re
 import time
 from typing import AsyncGenerator, List
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -194,6 +194,7 @@ async def stream_analysis(body: AnalysisRequestDTO, request: Request):
 async def save_article(
     body: SaveArticleDTO,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -219,6 +220,9 @@ async def save_article(
         industry_sentiments=[{"name": item.name, "sentiment": item.sentiment} for item in (body.industry_sentiments or [])],
     )
     await db.commit()
+
+    # embedding 生成放入后台任务，不阻塞 API 响应
+    background_tasks.add_task(use_case.save_embeddings, article)
 
     return SaveArticleResponseDTO(
         id=article.article_id,

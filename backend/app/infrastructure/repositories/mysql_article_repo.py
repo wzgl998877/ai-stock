@@ -5,7 +5,7 @@ from typing import Optional, List, Tuple
 
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload, defer
+from sqlalchemy.orm import selectinload, defer, joinedload
 
 from app.domain.entities.article import Article, IndustryRef, StockRef
 from app.domain.repositories.article_repo import ArticleRepository
@@ -13,6 +13,7 @@ from app.infrastructure.db.models import (
     AnalysisArticle as ArticleModel,
     ArticleIndustry,
     ArticleStock,
+    Industry as IndustryModel,
 )
 
 
@@ -31,7 +32,12 @@ def _to_entity(model: ArticleModel) -> Article:
         analysis_data=getattr(model, 'analysis_data', None),
         status=getattr(model, 'status', 'completed'),
         industries=[
-            IndustryRef(industry_code=ai.industry_code, chain_level=ai.chain_level, sentiment=ai.sentiment)
+            IndustryRef(
+                industry_code=ai.industry_code,
+                chain_level=ai.chain_level,
+                sentiment=ai.sentiment,
+                industry_name=getattr(ai.industry, 'name', None),
+            )
             for ai in model.article_industries
         ],
         stocks=[
@@ -45,7 +51,7 @@ def _to_entity(model: ArticleModel) -> Article:
 
 
 def _to_list_entity(model: ArticleModel) -> Article:
-    """列表视图专用：跳过 content/raw_input 等大文本字段"""
+    """列表视图专用：跳过 content/raw_input/chain_table/analysis_data 等大字段"""
     return Article(
         article_id=model.article_id,
         title=model.title,
@@ -54,12 +60,17 @@ def _to_list_entity(model: ArticleModel) -> Article:
         event_type=model.event_type,
         raw_input=None,
         user_id=model.user_id,
-        chain_table=model.chain_table,
+        chain_table=None,
         article_type=getattr(model, 'article_type', 'event'),
-        analysis_data=getattr(model, 'analysis_data', None),
+        analysis_data=None,
         status=getattr(model, 'status', 'completed'),
         industries=[
-            IndustryRef(industry_code=ai.industry_code, chain_level=ai.chain_level, sentiment=ai.sentiment)
+            IndustryRef(
+                industry_code=ai.industry_code,
+                chain_level=ai.chain_level,
+                sentiment=ai.sentiment,
+                industry_name=getattr(ai.industry, 'name', None),
+            )
             for ai in model.article_industries
         ],
         stocks=[
@@ -72,10 +83,18 @@ def _to_list_entity(model: ArticleModel) -> Article:
     )
 
 
-# 列表查询公共 defer 选项：跳过大文本列
+# 列表查询公共 defer 选项：跳过大文本/大 JSON 列
 _LIST_DEFER_OPTIONS = (
     defer(ArticleModel.content),
     defer(ArticleModel.raw_input),
+    defer(ArticleModel.chain_table),
+    defer(ArticleModel.analysis_data),
+)
+
+# 列表查询公共 selectinload 选项：加载关联数据 + 嵌套加载行业名称
+_LIST_SELECTIN_OPTIONS = (
+    selectinload(ArticleModel.article_industries).selectinload(ArticleIndustry.industry),
+    selectinload(ArticleModel.article_stocks),
 )
 
 
@@ -134,7 +153,7 @@ class MySQLArticleRepository(ArticleRepository):
                 ArticleModel.article_id == article_id,
                 ArticleModel.deleted == "0",
             )
-            .options(selectinload(ArticleModel.article_industries))
+            .options(selectinload(ArticleModel.article_industries).selectinload(ArticleIndustry.industry))
             .options(selectinload(ArticleModel.article_stocks))
         )
         result = await self.session.execute(stmt)
@@ -165,8 +184,7 @@ class MySQLArticleRepository(ArticleRepository):
             .offset((page - 1) * page_size)
             .limit(page_size)
             .options(*_LIST_DEFER_OPTIONS)
-            .options(selectinload(ArticleModel.article_industries))
-            .options(selectinload(ArticleModel.article_stocks))
+            .options(*_LIST_SELECTIN_OPTIONS)
         )
         if event_type:
             stmt = stmt.where(ArticleModel.event_type == event_type)
@@ -199,8 +217,7 @@ class MySQLArticleRepository(ArticleRepository):
             .offset((page - 1) * page_size)
             .limit(page_size)
             .options(*_LIST_DEFER_OPTIONS)
-            .options(selectinload(ArticleModel.article_industries))
-            .options(selectinload(ArticleModel.article_stocks))
+            .options(*_LIST_SELECTIN_OPTIONS)
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()
@@ -230,8 +247,7 @@ class MySQLArticleRepository(ArticleRepository):
             .offset((page - 1) * page_size)
             .limit(page_size)
             .options(*_LIST_DEFER_OPTIONS)
-            .options(selectinload(ArticleModel.article_industries))
-            .options(selectinload(ArticleModel.article_stocks))
+            .options(*_LIST_SELECTIN_OPTIONS)
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()
@@ -311,8 +327,7 @@ class MySQLArticleRepository(ArticleRepository):
             .order_by(ArticleModel.update_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
-            .options(selectinload(ArticleModel.article_industries))
-            .options(selectinload(ArticleModel.article_stocks))
+            .options(*_LIST_SELECTIN_OPTIONS)
         )
         result = await self.session.execute(stmt)
         models = result.scalars().all()

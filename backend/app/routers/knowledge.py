@@ -91,27 +91,12 @@ async def list_articles(
         articles = [a for a in articles if getattr(a, 'article_type', 'event') == article_type]
         total = len(articles)
 
-    # 批量查行业名称（一次性查出所有需要的行业，避免 N+1）
-    all_codes = set()
-    for article in articles:
-        for ind in article.industries:
-            all_codes.add(ind.industry_code)
-
-    ind_map: dict = {}
-    if all_codes:
-        stmt = select(IndustryModel).where(
-            IndustryModel.industry_code.in_(all_codes),
-            IndustryModel.deleted == "0",
-        )
-        result = await db.execute(stmt)
-        ind_map = {m.industry_code: m.name for m in result.scalars().all()}
-
     items = []
     for article in articles:
         dto = _article_to_list_item(article)
         if article.industries:
             dto.industries = [
-                IndustryRefDTO(code=ind.industry_code, name=ind_map.get(ind.industry_code, ""), chain_level=ind.chain_level, sentiment=ind.sentiment)
+                IndustryRefDTO(code=ind.industry_code, name=ind.industry_name or "", chain_level=ind.chain_level, sentiment=ind.sentiment)
                 for ind in article.industries
             ]
         items.append(dto)
@@ -129,20 +114,10 @@ async def get_article_detail(article_id: str, db: AsyncSession = Depends(get_db)
     if not article:
         return JSONResponse(status_code=404, content={"code": "NOT_FOUND", "message": "文章不存在"})
 
-    # 查行业名称
-    industries = []
-    if article.industries:
-        codes = [ind.industry_code for ind in article.industries]
-        stmt = select(IndustryModel).where(
-            IndustryModel.industry_code.in_(codes),
-            IndustryModel.deleted == "0",
-        )
-        result = await db.execute(stmt)
-        ind_map = {m.industry_code: m.name for m in result.scalars().all()}
-        industries = [
-            IndustryRefDTO(code=ind.industry_code, name=ind_map.get(ind.industry_code, ""), chain_level=ind.chain_level, sentiment=ind.sentiment)
-            for ind in article.industries
-        ]
+    industries = [
+        IndustryRefDTO(code=ind.industry_code, name=ind.industry_name or "", chain_level=ind.chain_level, sentiment=ind.sentiment)
+        for ind in article.industries
+    ]
 
     return ArticleDetailDTO(
         id=article.article_id,

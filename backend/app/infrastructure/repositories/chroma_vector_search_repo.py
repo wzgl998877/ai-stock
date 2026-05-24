@@ -75,6 +75,24 @@ class ChromaVectorSearchRepo(VectorSearchRepository):
             documents=[document],
         )
 
+    async def add_batch(
+        self,
+        collection: str,
+        doc_ids: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict],
+        documents: list[str],
+    ) -> None:
+        """批量新增文档向量，一次写入减少 I/O 开销"""
+        await asyncio.to_thread(
+            self._store.add_documents,
+            collection_name=collection,
+            ids=doc_ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents,
+        )
+
     async def delete(
         self,
         collection: str,

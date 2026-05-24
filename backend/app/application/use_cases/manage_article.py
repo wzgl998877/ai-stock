@@ -97,40 +97,48 @@ class SaveArticleUseCase:
         saved = await self.article_repo.save(article)
         logger.info("文章已保存: id=%s, title=%s, industries=%d", saved.article_id, title, len(resolved_codes))
 
-        # 生成 embedding 并写入向量数据库（不阻塞主流程）
-        if self.vector_search_repo and self.embedding_service and self.embedding_service.is_ready():
-            try:
-                chunks = chunk_article(saved.title, saved.summary or "", saved.content or "")
-                texts = [c.content for c in chunks]
-                embeddings = await self.embedding_service.embed_batch(texts)
-
-                base_metadata = {
-                    "user_id": saved.user_id,
-                    "title": saved.title,
-                    "stock_codes": ",".join(s.stock_code for s in saved.stocks),
-                    "industries": ",".join(i.industry_code for i in saved.industries),
-                    "event_type": saved.event_type,
-                }
-
-                for chunk, embedding in zip(chunks, embeddings):
-                    chunk_metadata = {
-                        **base_metadata,
-                        "article_id": str(saved.article_id),
-                        "chunk_index": chunk.index,
-                        "chunk_type": chunk.chunk_type,
-                    }
-                    await self.vector_search_repo.add(
-                        collection="knowledge_articles",
-                        doc_id=f"article_{saved.article_id}_chunk_{chunk.index}",
-                        embedding=embedding,
-                        metadata=chunk_metadata,
-                        document=chunk.content,
-                    )
-                logger.info("文章 embedding 写入成功: article_id=%s, chunks=%d", saved.article_id, len(chunks))
-            except Exception as e:
-                logger.warning("文章 embedding 写入失败(article_id=%s): %s", saved.article_id, e)
-
         return saved
+
+    async def save_embeddings(self, article: Article) -> None:
+        """异步生成 embedding 并写入向量数据库（不阻塞主流程）"""
+        if not self.vector_search_repo or not self.embedding_service or not self.embedding_service.is_ready():
+            return
+        try:
+            chunks = chunk_article(article.title, article.summary or "", article.content or "")
+            texts = [c.content for c in chunks]
+            embeddings = await self.embedding_service.embed_batch(texts)
+
+            base_metadata = {
+                "user_id": article.user_id,
+                "title": article.title,
+                "stock_codes": ",".join(s.stock_code for s in article.stocks),
+                "industries": ",".join(i.industry_code for i in article.industries),
+                "event_type": article.event_type,
+            }
+
+            doc_ids = []
+            chunk_metadatas = []
+            chunk_documents = []
+            for chunk, embedding in zip(chunks, embeddings):
+                doc_ids.append(f"article_{article.article_id}_chunk_{chunk.index}")
+                chunk_metadatas.append({
+                    **base_metadata,
+                    "article_id": str(article.article_id),
+                    "chunk_index": chunk.index,
+                    "chunk_type": chunk.chunk_type,
+                })
+                chunk_documents.append(chunk.content)
+
+            await self.vector_search_repo.add_batch(
+                collection="knowledge_articles",
+                doc_ids=doc_ids,
+                embeddings=embeddings,
+                metadatas=chunk_metadatas,
+                documents=chunk_documents,
+            )
+            logger.info("文章 embedding 写入成功: article_id=%s, chunks=%d", article.article_id, len(chunks))
+        except Exception as e:
+            logger.warning("文章 embedding 写入失败(article_id=%s): %s", article.article_id, e)
 
 
 class ListArticlesUseCase:

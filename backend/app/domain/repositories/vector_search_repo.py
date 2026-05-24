@@ -43,6 +43,18 @@ class VectorSearchRepository(ABC):
         ...
 
     @abstractmethod
+    async def add_batch(
+        self,
+        collection: str,
+        doc_ids: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict],
+        documents: list[str],
+    ) -> None:
+        """批量新增文档向量。"""
+        ...
+
+    @abstractmethod
     async def delete(
         self,
         collection: str,

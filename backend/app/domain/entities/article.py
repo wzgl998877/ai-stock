@@ -9,6 +9,7 @@ class IndustryRef:
     industry_code: str
     chain_level: Optional[int] = None
     sentiment: Optional[str] = None
+    industry_name: Optional[str] = None
 
 
 @dataclass

@@ -1,18 +1,15 @@
 """MySQL Search Repository — FULLTEXT + ngram 搜索"""
 
 from typing import List, Tuple
-from sqlalchemy import select, func, and_, text
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.domain.entities.article import Article
 from app.domain.repositories.search_repo import SearchRepository
 from app.infrastructure.db.models import (
     AnalysisArticle as ArticleModel,
-    ArticleIndustry,
-    ArticleStock,
 )
-from app.infrastructure.repositories.mysql_article_repo import _to_entity
+from app.infrastructure.repositories.mysql_article_repo import _to_entity, _LIST_SELECTIN_OPTIONS
 
 
 class MySQLSearchRepository(SearchRepository):
@@ -47,8 +44,7 @@ class MySQLSearchRepository(SearchRepository):
             .order_by(ArticleModel.create_time.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
-            .options(selectinload(ArticleModel.article_industries))
-            .options(selectinload(ArticleModel.article_stocks))
+            .options(*_LIST_SELECTIN_OPTIONS)
         )
         result = await self.session.execute(stmt, {"q": query})
         models = result.scalars().all()
