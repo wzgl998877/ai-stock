@@ -21,6 +21,14 @@ export function extractRemainingText(text: string): string {
   return text.slice(first.length).trim();
 }
 
+/**
+ * 百分比值归一化：0-1 → 0-100；已经是 0-100 的不转换。
+ * 后端 AI 模型输出 0-100，但部分历史数据可能为 0-1，需自适应。
+ */
+export function toPercent(val: number): number {
+  return val > 1 ? val : val * 100;
+}
+
 /** 高亮数字：返回 React 节点数组 */
 export function highlightNumbers(text: string): React.ReactNode {
   if (!text) return text;

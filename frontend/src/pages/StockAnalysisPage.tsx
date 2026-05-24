@@ -41,6 +41,7 @@ import { useStockAnalysisStore } from "../store/stockAnalysisStore";
 import * as stockAnalysisService from "../services/stockAnalysisService";
 import { getAnalysisRecord } from "../services/stockAnalysisService";
 import { stockDataService } from "../services/stockDataService";
+import { toPercent } from "../utils/textUtils";
 import {
   ANALYSIS_PHASE_LABELS,
 } from "../domain/constants";
@@ -381,8 +382,7 @@ const StockAnalysisPage: React.FC = () => {
     });
   }, [store.analysisState, store.stockCode, store.decision?.target_price]);
 
-  // 辅助函数：统一百分比值（0-1 → 0-100）
-  const toPercent = (val: number) => (val > 1 ? val : val * 100);
+  // 预期收益计算
 
   // 预期收益计算
   const expectedReturn = (() => {
@@ -617,7 +617,7 @@ const StockAnalysisPage: React.FC = () => {
           summary: progress.summary || "",
           industries: progress.industries || [],
         });
-        if (progress.status === "done") {
+        if (progress.status === "done" || progress.status === "stopped") {
           // 获取完整报告内容 + agent fullReports
           getAnalysisRecord(pollRecordIdRef.current)
             .then((record) => {
@@ -662,7 +662,7 @@ const StockAnalysisPage: React.FC = () => {
             summary: progress.summary || "",
             industries: progress.industries || [],
           });
-          if (progress.status === "done") {
+          if (progress.status === "done" || progress.status === "stopped") {
             // 获取完整报告内容 + agent fullReports
             getAnalysisRecord(pollRecordIdRef.current)
               .then((record) => {
@@ -739,6 +739,10 @@ const StockAnalysisPage: React.FC = () => {
         (event: StockSSEEvent) => {
           const st = useStockAnalysisStore.getState();
           switch (event.type) {
+            case "analysis_id":
+              useStockAnalysisStore.setState({ viewRecordId: event.data as string });
+              pollRecordIdRef.current = event.data as string;
+              break;
             case "agent_status":
               st.updateAgentStatus(event.data as AgentStatusEvent);
               // 阶段完成时触发过渡
@@ -834,9 +838,18 @@ const StockAnalysisPage: React.FC = () => {
       content: "已生成部分将保留在分析记录中。",
       okText: "确认停止",
       cancelText: "继续分析",
-      onOk: () => {
+      onOk: async () => {
         abortRef.current?.abort();
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        // 通知后端停止分析任务
+        const recordId = useStockAnalysisStore.getState().viewRecordId;
+        if (recordId) {
+          try {
+            await stockAnalysisService.stopAnalysis(recordId);
+          } catch {
+            // 静默处理，后端可能已停止
+          }
+        }
         useStockAnalysisStore.setState({ analysisState: "done" });
       },
     });
@@ -1163,7 +1176,7 @@ const StockAnalysisPage: React.FC = () => {
           )}
         </div>
         <Space>
-          {isRunning && !isViewMode && (
+          {isRunning && (
             <Button onClick={handleStop} style={{ borderRadius: 4 }}>停止分析</Button>
           )}
           {(isDone || isError) && (

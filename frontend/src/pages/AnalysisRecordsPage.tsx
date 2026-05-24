@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
 import { listAnalysisRecords } from "../services/stockAnalysisService";
 import type { AnalysisRecordListItem } from "../domain/types";
+import { toPercent } from "../utils/textUtils";
 
 const RangePicker = DatePicker.RangePicker;
 
@@ -312,11 +313,11 @@ const AnalysisCard: React.FC<{ record: AnalysisRecordListItem; onClick: () => vo
   const normAction = normalizeAction(decision?.action);
 
   const verdict = normAction === "buy"
-    ? `建议买入，置信度 ${decision!.confidence}%`
+    ? `建议买入，置信度 ${Math.round(toPercent(decision!.confidence))}%`
     : normAction === "sell"
-    ? `建议卖出，置信度 ${decision!.confidence}%`
+    ? `建议卖出，置信度 ${Math.round(toPercent(decision!.confidence))}%`
     : normAction === "hold"
-    ? `建议观望，置信度 ${decision!.confidence}%`
+    ? `建议观望，置信度 ${Math.round(toPercent(decision!.confidence))}%`
     : record.status === "in_progress"
     ? `分析进行中 (${pct}%)`
     : "分析完成，等待决策";

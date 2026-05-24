@@ -239,23 +239,49 @@ ai-stock/
 ### 前置条件
 
 - 本地安装 Python 3 + `paramiko`（`pip install paramiko`）
+- 本地安装 Node.js >= 18（用于构建前端）
 - 服务器已安装 Python 3、pip3
-- 服务器防火墙/安全组已放行 8000 端口
+- 服务器防火墙/安全组已放行对应端口（默认 8000）
+
+### 配置文件准备
+
+部署前需要准备以下配置文件：
+
+| 文件 | 说明 |
+|------|------|
+| `deploy.conf` | SSH 连接与部署目录配置，从 `deploy.conf.example` 复制 |
+| `backend/.env.prod` | 后端生产环境变量（API Key、数据库、端口等） |
+| `frontend/.env.production` | 前端生产环境变量（Vite 构建时自动加载） |
+
+```bash
+# 1. 部署配置
+cp deploy.conf.example deploy.conf
+# 编辑 deploy.conf，设置 REMOTE（服务器地址）、DEPLOY_DIR（部署目录）、SSH_PASSWORD（密码，留空则用密钥）
+
+# 2. 后端生产环境变量
+# 参考 backend/.env.example，创建 backend/.env.prod
+# 必须包含：OPENAI_API_KEY、OPENAI_BASE_URL、LLM_MODEL、PORT 等
+# 其中 PORT 决定服务监听端口（默认 8000）
+
+# 3. 前端生产环境变量
+# 创建 frontend/.env.production
+# 设置 VITE_API_BASE_URL 等前端构建变量
+```
 
 ### 一键部署
 
 ```bash
-# 1. 复制并编辑配置文件
-cp deploy.conf.example deploy.conf
-# 修改 REMOTE（服务器地址）、DEPLOY_DIR（部署目录）、SSH_PASSWORD（密码，留空则用密钥）
-
-# 2. 执行部署
 python upload.py
 ```
 
-脚本会自动完成：前端构建 → 打包 → 上传 → 远程安装依赖 → 启动 systemd 服务。
+脚本会自动完成以下步骤：
 
-部署完成后访问 `http://<服务器IP>:8000`，前后端同端口，无需 Nginx。
+1. **前端构建**：以 `--mode prod` 执行 `vite build`（读取 `frontend/.env.production`）
+2. **打包**：将后端代码、`requirements.txt`、`backend/.env.prod`、前端 `dist` 打包为 tar.gz
+3. **上传**：通过 SFTP 上传到服务器 `/tmp`
+4. **远程部署**：解压 → 安装依赖 → 配置 systemd 服务 → 启动
+
+部署完成后访问 `http://<服务器IP>:<端口>`，前后端同端口，无需 Nginx。
 
 ### 常用运维命令
 
@@ -296,4 +322,4 @@ systemctl stop ai-stock
 
 ---
 
-*最后更新：2026-04-16*
+*最后更新：2026-05-24*

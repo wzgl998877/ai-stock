@@ -36,6 +36,7 @@ def main():
     remote = conf.get("REMOTE", "")
     deploy_dir = conf.get("DEPLOY_DIR", "/opt/ai-stock")
     password = conf.get("SSH_PASSWORD", "")
+    workers = conf.get("WORKERS", "1")
 
     if not remote:
         print("错误: 请在 deploy.conf 中配置 REMOTE")
@@ -70,6 +71,7 @@ def main():
     print("=" * 42)
     print(f"目标: {remote}:{deploy_dir}")
     print(f"端口: {app_port}")
+    print(f"Workers: {workers}")
     print(f"认证: {'密码' if password else 'SSH 密钥'}")
     print()
 
@@ -120,8 +122,8 @@ def main():
         "Type=simple\n"
         f"WorkingDirectory={deploy_dir}\n"
         f"ExecStart=/bin/bash -c '"
-        f"{deploy_dir}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port {app_port} "
-        f"|| uvicorn app.main:app --host 0.0.0.0 --port {app_port}'\n"
+        f"{deploy_dir}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port {app_port} --workers {workers} "
+        f"|| uvicorn app.main:app --host 0.0.0.0 --port {app_port} --workers {workers}'\n"
         "Restart=always\n"
         "RestartSec=5\n"
         "Environment=PYTHONUNBUFFERED=1\n"

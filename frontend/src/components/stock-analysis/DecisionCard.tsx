@@ -2,7 +2,7 @@ import React from "react";
 import { Card, Typography, Tag, Progress, Statistic, Row, Col, Alert } from "antd";
 import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from "@ant-design/icons";
 import type { DecisionEvent } from "../../domain/types";
-import { highlightNumbers } from "../../utils/textUtils";
+import { highlightNumbers, toPercent } from "../../utils/textUtils";
 
 const { Text, Paragraph } = Typography;
 
@@ -20,9 +20,6 @@ const getRiskColor = (score: number): string => {
   if (pct <= 80) return "#f97316";
   return "#ea2261";
 };
-
-/** 统一百分比值（0-1 → 0-100） */
-const toPercent = (val: number) => val > 1 ? val : val * 100;
 
 interface DecisionCardProps {
   decision: DecisionEvent;

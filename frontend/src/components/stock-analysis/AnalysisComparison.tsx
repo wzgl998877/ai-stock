@@ -2,6 +2,7 @@ import React from "react";
 import { Modal, Table, Typography, Tag } from "antd";
 import { SwapOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import { toPercent } from "../../utils/textUtils";
 
 const { Text } = Typography;
 
@@ -97,14 +98,14 @@ const AnalysisComparison: React.FC<AnalysisComparisonProps> = ({ open, onClose, 
     {
       key: "confidence",
       field: "置信度",
-      left: leftDecision.confidence ? `${Math.round(leftDecision.confidence * 100)}%` : "-",
-      right: rightDecision.confidence ? `${Math.round(rightDecision.confidence * 100)}%` : "-",
+      left: leftDecision.confidence ? `${Math.round(toPercent(leftDecision.confidence))}%` : "-",
+      right: rightDecision.confidence ? `${Math.round(toPercent(rightDecision.confidence))}%` : "-",
     },
     {
       key: "risk_score",
       field: "风险评分",
-      left: leftDecision.risk_score ? `${Math.round(leftDecision.risk_score * 100)}%` : "-",
-      right: rightDecision.risk_score ? `${Math.round(rightDecision.risk_score * 100)}%` : "-",
+      left: leftDecision.risk_score ? `${Math.round(toPercent(leftDecision.risk_score))}%` : "-",
+      right: rightDecision.risk_score ? `${Math.round(toPercent(rightDecision.risk_score))}%` : "-",
     },
     {
       key: "reasoning",

@@ -4,5 +4,8 @@ REMOTE=root@192.168.1.100
 # 远程部署目录
 DEPLOY_DIR=/opt/ai-stock
 
+# Worker 进程数（建议设为 CPU 核数，默认 1）
+WORKERS=1
+
 # SSH 密码（留空则使用 SSH 密钥认证）
 SSH_PASSWORD=

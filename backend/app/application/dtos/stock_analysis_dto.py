@@ -54,6 +54,6 @@ class DecisionDTO:
     """结构化决策"""
     action: str = ""  # 买入 | 持有 | 卖出
     target_price: float = 0.0
-    confidence: float = 0.0  # 0-1
-    risk_score: float = 0.0  # 0-1
+    confidence: float = 0.0  # 0-100
+    risk_score: float = 0.0  # 0-100
     reasoning: str = ""

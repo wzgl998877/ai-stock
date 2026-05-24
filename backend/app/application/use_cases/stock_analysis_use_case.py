@@ -29,6 +29,9 @@ MAX_TIMEOUT = 600
 class StockAnalysisUseCase:
     """个股多Agent分析用例"""
 
+    # 类级别：运行中的 graph_task 映射 analysis_id -> asyncio.Task
+    _running_tasks: dict[str, asyncio.Task] = {}
+
     def __init__(
         self,
         chat_repo: ChatRepository,
@@ -235,7 +238,7 @@ class StockAnalysisUseCase:
                             }
                             analysis_data["decision"] = decision
                             await sse_queue.put({"type": "decision", "data": decision})
-                            full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 止损价: {decision['stop_loss_price']} | 预期收益: {decision['expected_return']}% | 置信度: {decision['confidence']*100:.0f}% | 风险评分: {decision['risk_score']*100:.0f}%\n{decision['reasoning']}"
+                            full_content += f"\n## 最终决策\n{action} | 目标价: {decision['target_price']} | 止损价: {decision['stop_loss_price']} | 预期收益: {decision['expected_return']}% | 置信度: {decision['confidence']:.0f}% | 风险评分: {decision['risk_score']:.0f}%\n{decision['reasoning']}"
 
                         # === 非 Analyst 阶段的 agent detail 写入 ===
                         if self.stock_analysis_repo and current_agent not in (
@@ -549,8 +552,12 @@ class StockAnalysisUseCase:
         # 初始化 accumulated（在闭包中使用）
         accumulated = {}
 
+        # 先将 analysis_id 推送给前端，用于停止分析等后续操作
+        yield {"type": "analysis_id", "data": analysis_id}
+
         # 启动后台 graph 任务
         graph_task = asyncio.create_task(_run_graph_task())
+        StockAnalysisUseCase._running_tasks[analysis_id] = graph_task
         t_main_start = time.time()
 
         # 主循环：消费 sse_queue 和 content_queue，带总超时保护
@@ -624,5 +631,27 @@ class StockAnalysisUseCase:
                 except asyncio.CancelledError:
                     pass
 
+        # 清理映射
+        StockAnalysisUseCase._running_tasks.pop(analysis_id, None)
+
         # 5. 完成
         yield {"type": "done", "data": ""}
+
+    @classmethod
+    async def stop_analysis(cls, analysis_id: str, stock_analysis_repo=None) -> bool:
+        """停止指定分析任务，取消 graph_task 并更新状态为 stopped"""
+        task = cls._running_tasks.pop(analysis_id, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.info("已取消分析任务: analysis_id=%s", analysis_id)
+        # 更新数据库状态
+        if stock_analysis_repo:
+            try:
+                await stock_analysis_repo.update_status(analysis_id, "stopped")
+            except Exception as e:
+                logger.warning("停止分析后更新状态失败: %s", e)
+        return True

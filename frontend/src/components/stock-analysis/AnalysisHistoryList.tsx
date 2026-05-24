@@ -4,6 +4,7 @@ import { ThunderboltOutlined, ExperimentOutlined } from "@ant-design/icons";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import * as stockAnalysisService from "../../services/stockAnalysisService";
 import type { AnalysisRecordListItem } from "../../domain/types";
+import { toPercent } from "../../utils/textUtils";
 
 const { Text } = Typography;
 
@@ -194,7 +195,7 @@ const AnalysisHistoryList: React.FC<AnalysisHistoryListProps> = ({ stockCode, on
                   )}
                   {item.decision.confidence > 0 && (
                     <Text style={{ fontSize: 11, color: "#64748d", fontFeatureSettings: "'tnum'" }}>
-                      置信度 {(item.decision.confidence * 100).toFixed(0)}%
+                      置信度 {toPercent(item.decision.confidence).toFixed(0)}%
                     </Text>
                   )}
                 </div>

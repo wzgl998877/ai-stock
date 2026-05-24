@@ -131,3 +131,9 @@ export async function getAnalysisProgress(recordId: string) {
   const res = await api.get(`${ANALYSIS_BASE}/records/${recordId}/progress`);
   return res.data;
 }
+
+/** 停止正在运行的分析任务 */
+export async function stopAnalysis(recordId: string) {
+  const res = await api.post(`${ANALYSIS_BASE}/records/${recordId}/stop`);
+  return res.data;
+}

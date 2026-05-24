@@ -201,7 +201,7 @@ class AnalysisParser:
             combined = "；".join(summaries[:3])
             result.summary = combined[:80] if len(combined) > 80 else combined
         elif action:
-            result.summary = f"建议{action}，置信度{decision.get('confidence', 0)*100:.0f}%"
+            result.summary = f"建议{action}，置信度{decision.get('confidence', 0):.0f}%"
 
         # 从分析数据中提取行业
         industries = analysis_data.get("industries", [])

@@ -644,3 +644,14 @@ async def get_analysis_progress(record_id: str, db: AsyncSession = Depends(get_d
         "created_at": sa.create_time.isoformat() if sa.create_time else "",
         "updated_at": sa.update_time.isoformat() if sa.update_time else "",
     }
+
+
+@router.post("/records/{record_id}/stop")
+async def stop_analysis(record_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """停止正在运行的个股分析任务"""
+    from app.application.use_cases.stock_analysis_use_case import StockAnalysisUseCase
+
+    stock_analysis_repo = MySQLStockAnalysisRepository(db)
+    await StockAnalysisUseCase.stop_analysis(record_id, stock_analysis_repo)
+    await db.commit()
+    return {"status": "stopped", "analysis_id": record_id}
