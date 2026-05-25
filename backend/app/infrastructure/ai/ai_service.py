@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import AsyncGenerator, NamedTuple
 
 import httpx
@@ -9,6 +10,16 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# DSML 标签正则（DeepSeek Function Calling 格式泄漏）
+_DSML_PATTERN = re.compile(r'<\uff5c\uff5cDSML\uff5c\uff5c[^>]*>')
+
+
+def strip_dsml(text: str) -> str:
+    """清除 DeepSeek DSML 标签（Function Calling 格式泄漏）"""
+    if not text:
+        return text
+    return _DSML_PATTERN.sub('', text)
 
 
 class StreamChunk(NamedTuple):
@@ -232,7 +243,14 @@ class AIService:
                 logger.error("AI tool_call error: status=%d body=%s", response.status_code, error_body)
                 raise RuntimeError(f"AI API error: {response.status_code} - {error_body}")
             result = response.json()
-            return result["choices"][0]["message"]
+            message = result["choices"][0]["message"]
+
+            # DeepSeek 等模型在返回 tool_calls 时会同时在 content 中写入 DSML 标签和推理文本
+            # 清除 content 防止泄漏到下游消息
+            if message.get("tool_calls"):
+                message["content"] = None
+
+            return message
 
     async def stream_chat_with_tools(
         self,

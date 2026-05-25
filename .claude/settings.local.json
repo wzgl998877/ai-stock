@@ -51,7 +51,8 @@
       "Read(//c/Program Files/nodejs/**)",
       "Bash(ls \"/c/nvm\"*/v*/node.exe)",
       "Read(//c/Users/zhengtao/AppData/**)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

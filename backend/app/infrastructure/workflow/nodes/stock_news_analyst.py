@@ -7,6 +7,7 @@ import time
 
 from app.domain.services.search_result_merger import merge_chunk_results
 from app.infrastructure.workflow.prompts.stock_analysis.news_analyst import SYSTEM_PROMPT, USER_TEMPLATE
+from app.infrastructure.ai.ai_service import strip_dsml
 from app.infrastructure.workflow.tools.stock_data_toolkit import (
     TOOL_FUNCTION_MAP,
     get_stock_tools_schema,
@@ -196,7 +197,7 @@ def create_news_analyst_node(ai_service, max_tool_calls: int = 3, search_service
                 max_tokens=4096,
             ):
                 if chunk.type == "content":
-                    full_text += chunk.text
+                    full_text += strip_dsml(chunk.text)
                     if content_queue:
                         await content_queue.put(chunk.text)
         except Exception as e:
