@@ -12,14 +12,22 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # DSML 标签正则（DeepSeek Function Calling 格式泄漏）
-_DSML_PATTERN = re.compile(r'<\uff5c\uff5cDSML\uff5c\uff5c[^>]*>')
+# 匹配完整 <｜｜DSML｜｜tool_calls>...</｜｜DSML｜｜tool_calls> 块
+_DSML_BLOCK = re.compile(
+    r'<\uff5c\uff5cDSML\uff5c\uff5ctool_calls>.*?</\uff5c\uff5cDSML\uff5c\uff5ctool_calls>',
+    re.DOTALL,
+)
+# 匹配残留的零散标签（开标签和闭合标签）
+_DSML_TAG = re.compile(r'</?\uff5c\uff5cDSML\uff5c\uff5c[^>]*>')
 
 
 def strip_dsml(text: str) -> str:
     """清除 DeepSeek DSML 标签（Function Calling 格式泄漏）"""
     if not text:
         return text
-    return _DSML_PATTERN.sub('', text)
+    text = _DSML_BLOCK.sub('', text)
+    text = _DSML_TAG.sub('', text)
+    return text
 
 
 class StreamChunk(NamedTuple):

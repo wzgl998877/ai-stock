@@ -103,9 +103,10 @@ def create_sentiment_analyst_node(ai_service, max_tool_calls: int = 3):
                 max_tokens=4096,
             ):
                 if chunk.type == "content":
-                    full_text += strip_dsml(chunk.text)
+                    clean = strip_dsml(chunk.text)
+                    full_text += clean
                     if content_queue:
-                        await content_queue.put(chunk.text)
+                        await content_queue.put(clean)
         except Exception as e:
             logger.error("[sentiment_analyst] stream_chat 失败: %s", e)
             full_text = f"情绪分析生成失败: {e}"

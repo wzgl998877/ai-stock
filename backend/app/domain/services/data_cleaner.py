@@ -17,11 +17,26 @@ from app.domain.models.stock_data import (
 
 
 def _to_decimal(value: Any) -> Decimal | None:
-    """Safely convert to Decimal, return None on failure."""
+    """Safely convert to Decimal, return None on failure.
+
+    支持带单位的字符串，如 '17.89%'、'454.03亿'、'910.94万'。
+    """
     if value is None or value == "":
         return None
     try:
-        return Decimal(str(value))
+        s = str(value).strip().replace(",", "")
+        # 处理百分比: '17.89%' -> 17.89
+        if s.endswith("%"):
+            s = s[:-1]
+        # 处理中文单位: 亿、万
+        multiplier = Decimal("1")
+        if s.endswith("亿"):
+            s = s[:-1]
+            multiplier = Decimal("100000000")
+        elif s.endswith("万"):
+            s = s[:-1]
+            multiplier = Decimal("10000")
+        return Decimal(s) * multiplier
     except Exception:
         return None
 
@@ -230,11 +245,11 @@ def clean_financial(raw: dict, source: str) -> StockFinancial:
         or raw.get("报告期")
     )
 
-    roe = _to_decimal(raw.get("roe") or raw.get("roe_dt"))
+    roe = _to_decimal(raw.get("roe") or raw.get("净资产收益率") or raw.get("roe_dt"))
     net_profit = _to_decimal(raw.get("net_profit") or raw.get("净利润"))
-    revenue = _to_decimal(raw.get("revenue") or raw.get("营业收入"))
+    revenue = _to_decimal(raw.get("revenue") or raw.get("营业总收入") or raw.get("营业收入"))
     eps = _to_decimal(raw.get("eps") or raw.get("基本每股收益"))
-    gross_margin = _to_decimal(raw.get("gross_margin") or raw.get("毛利率"))
+    gross_margin = _to_decimal(raw.get("gross_margin") or raw.get("销售毛利率") or raw.get("毛利率"))
     debt_ratio = _to_decimal(raw.get("debt_ratio") or raw.get("资产负债率"))
 
     return StockFinancial(

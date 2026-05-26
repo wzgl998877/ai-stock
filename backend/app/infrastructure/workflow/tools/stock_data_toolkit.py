@@ -230,12 +230,15 @@ def _query_db_history(code: str, days: int = 60) -> Optional[List[dict]]:
                     StockDailyQuoteModel.code == code,
                     StockDailyQuoteModel.trade_date >= cutoff,
                 )
-                .order_by(StockDailyQuoteModel.trade_date.asc())
+                .order_by(StockDailyQuoteModel.trade_date.desc())
                 .limit(days)
                 .all()
             )
             if not results:
                 return None
+
+            # 降序取的最新数据，反转为时间正序返回
+            results.reverse()
 
             return [
                 {
@@ -561,8 +564,119 @@ def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60)
     return f"未找到股票代码 {stock_code} 的历史数据（数据库和新浪均无数据，请确认已同步数据）"
 
 
+def _akshare_financial(code: str) -> Optional[List[dict]]:
+    """通过 AKShare 获取财务指标数据（同花顺来源，免费无需认证）。"""
+    try:
+        import akshare as ak
+
+        df = ak.stock_financial_abstract_ths(symbol=code)
+        if df is None or df.empty:
+            return None
+
+        records = df.to_dict(orient="records")
+        # 只取最近 4 个报告期
+        if len(records) > 4:
+            records = records[-4:]
+
+        result = []
+        for row in records:
+            # 兼容不同 AKShare 版本的列名（stock_financial_abstract_ths 实际列名）
+            report_date = (
+                row.get("报告期") or row.get("报告日期")
+                or row.get("report_date") or row.get("date") or ""
+            )
+            roe = row.get("净资产收益率") or row.get("净资产收益率(%)") or row.get("roe") or row.get("ROE") or ""
+            net_profit = row.get("净利润") or row.get("净利润(元)") or row.get("net_profit") or ""
+            revenue = row.get("营业总收入") or row.get("营业收入") or row.get("营业收入(元)") or row.get("revenue") or ""
+            eps = row.get("基本每股收益") or row.get("每股收益(元)") or row.get("每股收益") or row.get("eps") or ""
+            gross_margin = row.get("销售毛利率") or row.get("毛利率(%)") or row.get("毛利率") or row.get("gross_margin") or ""
+            debt_ratio = row.get("资产负债率") or row.get("资产负债率(%)") or row.get("debt_ratio") or ""
+
+            result.append({
+                "报告日期": str(report_date),
+                "ROE": str(roe),
+                "净利润": str(net_profit),
+                "营业收入": str(revenue),
+                "每股收益": str(eps),
+                "毛利率": str(gross_margin),
+                "资产负债率": str(debt_ratio),
+                "data_source": "akshare",
+            })
+        return result
+    except ImportError:
+        logger.debug("[AKShare] 未安装")
+        return None
+    except Exception as e:
+        logger.warning("[AKShare] 财务数据获取失败: %s", e)
+        return None
+
+
+def _baostock_financial(code: str) -> Optional[List[dict]]:
+    """通过 BaoStock 获取盈利数据（按季度查询，免费无需认证）。"""
+    try:
+        import baostock as bs
+        from datetime import datetime
+
+        prefix = "sh" if code.startswith(("6", "9")) else "sz"
+        bs_code = f"{prefix}.{code}"
+
+        current_year = datetime.now().year
+        current_quarter = (datetime.now().month - 1) // 3 + 1
+
+        # 构造最近 4 个报告期（优先取年报/半年报/季报）
+        quarters_to_fetch = []
+        year, quarter = current_year, current_quarter
+        while len(quarters_to_fetch) < 4 and year >= current_year - 2:
+            quarters_to_fetch.append((year, quarter))
+            quarter -= 1
+            if quarter <= 0:
+                quarter = 4
+                year -= 1
+
+        all_records = []
+        for yr, qtr in quarters_to_fetch:
+            try:
+                lg = bs.login()
+                if lg.error_code != "0":
+                    continue
+                try:
+                    rs = bs.query_profit_data(code=bs_code, year=yr, quarter=qtr)
+                    while rs.error_code == "0" and rs.next():
+                        row = rs.get_row_data()
+                        fields = rs.fields
+                        record = dict(zip(fields, row))
+                        all_records.append(record)
+                finally:
+                    bs.logout()
+            except Exception as e:
+                logger.debug("[BaoStock] 查询 year=%d quarter=%d 异常: %s", yr, qtr, e)
+
+        if not all_records:
+            return None
+
+        result = []
+        for row in all_records[:4]:
+            result.append({
+                "报告日期": str(row.get("statDate", "")),
+                "ROE": str(row.get("roeAvg", "")),
+                "净利润": str(row.get("npPerShare", "")),
+                "营业收入": str(row.get("netProfit", "")),
+                "每股收益": str(row.get("epsTTM", "")),
+                "毛利率": str(row.get("grossProfitMargin", "")),
+                "资产负债率": str(row.get("debtRatio", "")),
+                "data_source": "baostock",
+            })
+        return result
+    except ImportError:
+        logger.debug("[BaoStock] 未安装")
+        return None
+    except Exception as e:
+        logger.warning("[BaoStock] 财务数据获取失败: %s", e)
+        return None
+
+
 def _fetch_stock_financial(stock_code: str) -> str:
-    """获取股票财务指标数据（数据库优先 + Tushare 降级）"""
+    """获取股票财务指标数据（数据库优先 + AKShare + BaoStock + Tushare 降级）"""
     t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
@@ -573,16 +687,32 @@ def _fetch_stock_financial(stock_code: str) -> str:
                      stock_code, len(db_data), db_data[0].get("data_source"))
         return json.dumps(db_data, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_financial] 数据库无数据，尝试 Tushare: code=%s", stock_code)
+    logger.info("[fetch_stock_financial] 数据库无数据，尝试 AKShare: code=%s", stock_code)
 
-    # === 2. Tushare 查询 ===
+    # === 2. AKShare 查询（同花顺来源，免费） ===
+    akshare_data = _akshare_financial(stock_code)
+    if akshare_data:
+        logger.info("[耗时] _fetch_stock_financial(AKShare): %.3fs, code=%s", time.time() - t0, stock_code)
+        return json.dumps(akshare_data, ensure_ascii=False, indent=2)
+
+    logger.info("[fetch_stock_financial] AKShare 不可用，尝试 BaoStock: code=%s", stock_code)
+
+    # === 3. BaoStock 查询（按季度，免费） ===
+    baostock_data = _baostock_financial(stock_code)
+    if baostock_data:
+        logger.info("[耗时] _fetch_stock_financial(BaoStock): %.3fs, code=%s", time.time() - t0, stock_code)
+        return json.dumps(baostock_data, ensure_ascii=False, indent=2)
+
+    logger.info("[fetch_stock_financial] BaoStock 不可用，尝试 Tushare: code=%s", stock_code)
+
+    # === 4. Tushare 查询（最后降级） ===
     tushare_data = _tushare_financial(stock_code)
     if tushare_data:
         logger.info("[耗时] _fetch_stock_financial(Tushare): %.3fs, code=%s", time.time() - t0, stock_code)
         return json.dumps(tushare_data, ensure_ascii=False, indent=2)
 
-    # === 3. 都不可用 ===
-    return f"未找到股票代码 {stock_code} 的财务数据（数据库和Tushare均无数据，请确认已同步数据）"
+    # === 5. 都不可用 ===
+    return f"未找到股票代码 {stock_code} 的财务数据（数据库/AKShare/BaoStock/Tushare均无数据，请确认已同步数据）"
 
 
 def _fetch_stock_news(stock_code: str) -> str:

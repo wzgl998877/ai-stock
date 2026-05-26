@@ -338,42 +338,45 @@ class AKShareClient:
 
         result = []
         for row in records:
-            # 尝试多种可能的列名（不同 AKShare 版本列名可能不同）
+            # 兼容不同 AKShare 版本的列名（stock_financial_abstract_ths 实际列名）
             report_date = (
-                row.get("报告日期")
-                or row.get("报告期")
+                row.get("报告期")
+                or row.get("报告日期")
                 or row.get("report_date")
                 or row.get("date")
             )
             roe = (
-                row.get("净资产收益率(%)")
+                row.get("净资产收益率")
+                or row.get("净资产收益率(%)")
                 or row.get("roe")
                 or row.get("ROE")
             )
             net_profit = (
-                row.get("净利润(元)")
-                or row.get("净利润")
+                row.get("净利润")
+                or row.get("净利润(元)")
                 or row.get("net_profit")
             )
             revenue = (
-                row.get("营业收入(元)")
+                row.get("营业总收入")
                 or row.get("营业收入")
+                or row.get("营业收入(元)")
                 or row.get("revenue")
             )
             eps = (
-                row.get("每股收益(元)")
+                row.get("基本每股收益")
+                or row.get("每股收益(元)")
                 or row.get("每股收益")
                 or row.get("eps")
-                or row.get("基本每股收益")
             )
             gross_margin = (
-                row.get("毛利率(%)")
+                row.get("销售毛利率")
+                or row.get("毛利率(%)")
                 or row.get("毛利率")
                 or row.get("gross_margin")
             )
             debt_ratio = (
-                row.get("资产负债率(%)")
-                or row.get("资产负债率")
+                row.get("资产负债率")
+                or row.get("资产负债率(%)")
                 or row.get("debt_ratio")
             )
 

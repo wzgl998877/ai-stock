@@ -142,9 +142,8 @@ def main():
         f"mkdir -p {deploy_dir}/{{app,dist,logs}}\n"
         f"tar -xzf /tmp/ai-stock-deploy.tar.gz -C {deploy_dir}\n"
         f"rm -f /tmp/ai-stock-deploy.tar.gz\n"
-        # .env.prod → .env（首次或更新）
-        f"cp -n {deploy_dir}/.env.prod {deploy_dir}/.env 2>/dev/null || true\n"
-        f"if [ ! -f {deploy_dir}/.env ]; then cp {deploy_dir}/.env.prod {deploy_dir}/.env; fi\n"
+        # .env.prod → .env（强制覆盖，确保每次部署同步最新配置）
+        f"cp -f {deploy_dir}/.env.prod {deploy_dir}/.env\n"
         f"\n"
         f"cd {deploy_dir}\n"
         f"if [ -d '.venv' ] && [ ! -f '.venv/bin/pip' ]; then rm -rf .venv; fi\n"

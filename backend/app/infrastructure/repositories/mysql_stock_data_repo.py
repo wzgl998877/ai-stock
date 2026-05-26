@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Optional, List
 from decimal import Decimal
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import delete as sql_delete, select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.stock_data import (
@@ -350,11 +350,50 @@ class MySQLStockDataRepository(StockDataRepository):
         await self.session.flush()
 
     async def upsert_daily_batch(self, quotes: List[StockDailyQuote]) -> None:
-        """Batch upsert daily quotes in chunks."""
+        """先删除后插入，避免不同数据源产生重复记录。
+
+        同一批次数据必然来自同一 (code, period)，按日期范围先清除旧数据再插入新数据，
+        确保每个交易日只有一条记录。
+        """
+        if not quotes:
+            return
+
         for i in range(0, len(quotes), BATCH_SIZE):
             batch = quotes[i:i + BATCH_SIZE]
+
+            dates = [q.trade_date for q in batch if q.trade_date]
+            if not dates:
+                continue
+
+            code = batch[0].code
+            period = batch[0].period
+
+            # 先删除该 (code, period) 在日期范围内的所有旧记录
+            stmt = sql_delete(StockDailyQuoteModel).where(
+                StockDailyQuoteModel.code == code,
+                StockDailyQuoteModel.period == period,
+                StockDailyQuoteModel.trade_date.in_(dates),
+            )
+            await self.session.execute(stmt)
+
+            # 再插入新记录
             for quote in batch:
-                await self.upsert_daily(quote)
+                new_q = StockDailyQuoteModel(
+                    code=quote.code,
+                    trade_date=quote.trade_date,
+                    period=quote.period,
+                    open_price=quote.open_price,
+                    high_price=quote.high_price,
+                    low_price=quote.low_price,
+                    close_price=quote.close_price,
+                    pre_close=quote.pre_close,
+                    volume=quote.volume,
+                    amount=quote.amount,
+                    pct_chg=quote.pct_chg,
+                    data_source=quote.data_source,
+                )
+                self.session.add(new_q)
+
             await self.session.flush()
 
     async def get_daily(
