@@ -444,8 +444,45 @@ def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
 
 # === 工具函数实现 ===
 
+def _fetch_live_quote(code: str) -> Optional[dict]:
+    """通过腾讯/新浪实时接口获取行情（复用 batch_quote_client，与自选股同一数据源）。
+
+    此函数在 asyncio.to_thread 的线程中调用，可通过 asyncio.run() 安全执行异步代码。
+    """
+    try:
+        import asyncio
+        from app.infrastructure.market.batch_quote_client import get_batch_quotes
+
+        loop = asyncio.new_event_loop()
+        try:
+            quotes = loop.run_until_complete(get_batch_quotes([code]))
+        finally:
+            loop.close()
+
+        if code in quotes:
+            q = quotes[code]
+            if q.price is not None:
+                return {
+                    "price": str(q.price),
+                    "change_pct": str(q.change_pct) if q.change_pct is not None else "",
+                    "change_amount": str(q.change_amount) if q.change_amount is not None else "",
+                    "volume": str(q.volume) if q.volume is not None else "",
+                    "amount": str(q.amount) if q.amount is not None else "",
+                    "open": str(q.open_price) if q.open_price is not None else "",
+                    "high": str(q.high_price) if q.high_price is not None else "",
+                    "low": str(q.low_price) if q.low_price is not None else "",
+                    "pre_close": str(q.pre_close) if q.pre_close is not None else "",
+                    "name": q.name,
+                    "quote_time": q.quote_time or "",
+                    "data_source": q.data_source,
+                }
+    except Exception as e:
+        logger.warning("[实时行情] 获取失败: %s", e)
+    return None
+
+
 def _fetch_stock_quote(stock_code: str) -> str:
-    """获取股票实时/最新行情数据（数据库优先 + Tushare 降级 + BaoStock 保底）"""
+    """获取股票实时/最新行情数据（数据库优先 + 腾讯/新浪实时 + BaoStock 保底）"""
     t0 = time.time()
 
     # === 1. 优先从数据库查询 ===
@@ -469,35 +506,38 @@ def _fetch_stock_quote(stock_code: str) -> str:
         }
         return json.dumps(result, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_quote] 数据库无数据，尝试 Tushare: code=%s", stock_code)
+    logger.info("[fetch_stock_quote] 数据库无数据，尝试实时接口(腾讯/新浪): code=%s", stock_code)
 
-    # === 2. Tushare 查询 ===
-    tushare_data = _tushare_quote(stock_code)
-    if tushare_data:
-        logger.info("[耗时] _fetch_stock_quote(Tushare): %.3fs, code=%s", time.time() - t0, stock_code)
+    # === 2. 腾讯/新浪实时接口（与自选股同一数据源） ===
+    live_data = _fetch_live_quote(stock_code)
+    if live_data:
+        logger.info("[耗时] _fetch_stock_quote(实时%s): %.3fs, code=%s",
+                     live_data.get("data_source", ""), time.time() - t0, stock_code)
         result = {
             "代码": stock_code,
-            "最新价": str(tushare_data["price"]),
-            "涨跌幅": str(tushare_data["change_pct"]),
-            "涨跌额": str(tushare_data["change_amount"]),
-            "成交量": str(tushare_data["volume"]),
-            "成交额": str(tushare_data["amount"]),
-            "最高": str(tushare_data["high"]),
-            "最低": str(tushare_data["low"]),
-            "今开": str(tushare_data["open"]),
-            "昨收": str(tushare_data["pre_close"]),
-            "数据来源": "Tushare",
+            "名称": live_data.get("name", ""),
+            "最新价": live_data["price"],
+            "涨跌幅": live_data["change_pct"],
+            "涨跌额": live_data["change_amount"],
+            "成交量": live_data["volume"],
+            "成交额": live_data["amount"],
+            "最高": live_data["high"],
+            "最低": live_data["low"],
+            "今开": live_data["open"],
+            "昨收": live_data["pre_close"],
+            "更新时间": live_data.get("quote_time", ""),
+            "数据来源": f"实时({live_data.get('data_source', '')})",
         }
         return json.dumps(result, ensure_ascii=False, indent=2)
 
-    logger.info("[fetch_stock_quote] Tushare 不可用，尝试 BaoStock 降级")
+    logger.info("[fetch_stock_quote] 实时接口不可用，尝试 BaoStock 降级: code=%s", stock_code)
 
-    # === 3. BaoStock 降级 ===
+    # === 3. BaoStock 保底 ===
     try:
         import baostock as bs
         lg = bs.login()
         if lg.error_code != '0':
-            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，Tushare不可用，BaoStock登录失败）"
+            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，实时接口不可用，BaoStock登录失败）"
 
         prefix = "sh" if stock_code.startswith(("6", "9")) else "sz"
         rs = bs.query_history_k_data_plus(
@@ -509,7 +549,7 @@ def _fetch_stock_quote(stock_code: str) -> str:
 
         if rs.error_code != '0':
             bs.logout()
-            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，Tushare不可用，BaoStock查询失败: {rs.error_msg}）"
+            return f"未找到股票 {stock_code} 的行情数据（数据库无数据，实时接口不可用，BaoStock查询失败: {rs.error_msg}）"
 
         rows = []
         while (rs.error_code == '0') and rs.next():
@@ -518,7 +558,7 @@ def _fetch_stock_quote(stock_code: str) -> str:
         bs.logout()
 
         if not rows:
-            return f"未找到股票代码 {stock_code} 的行情数据（数据库无数据，Tushare不可用，BaoStock无数据）"
+            return f"未找到股票代码 {stock_code} 的行情数据（数据库无数据，实时接口不可用，BaoStock无数据）"
 
         last_row = rows[-1]
         result = {
@@ -535,9 +575,9 @@ def _fetch_stock_quote(stock_code: str) -> str:
         }
         return json.dumps(result, ensure_ascii=False, indent=2)
     except ImportError:
-        return f"未找到股票 {stock_code} 的行情数据：数据库无数据，Tushare不可用，BaoStock未安装"
+        return f"未找到股票 {stock_code} 的行情数据：数据库无数据，实时接口不可用，BaoStock未安装"
     except Exception as e2:
-        return f"获取行情数据失败: 数据库无数据，Tushare不可用，BaoStock({e2})"
+        return f"获取行情数据失败: 数据库无数据，实时接口不可用，BaoStock({e2})"
 
 
 def _fetch_stock_history(stock_code: str, period: str = "daily", days: int = 60) -> str:
