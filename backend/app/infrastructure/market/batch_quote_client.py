@@ -203,3 +203,32 @@ async def get_batch_quotes(codes: List[str]) -> Dict[str, LiveQuote]:
             logger.warning("实时行情源 %s 失败: %s", name, e)
 
     return result
+
+
+def get_batch_quotes_sync(codes: List[str]) -> Dict[str, LiveQuote]:
+    """同步版批量获取实时行情（腾讯 → 新浪 fallback，无 Redis 缓存）。
+
+    供在线程中运行的同步代码调用（如 LangGraph tool）。
+    使用独立事件循环执行 httpx 请求，避免与 FastAPI 主循环的异步资源冲突。
+    """
+    if not codes:
+        return {}
+
+    import asyncio
+
+    result: Dict[str, LiveQuote] = {}
+    loop = asyncio.new_event_loop()
+    try:
+        for name, fetcher in [("tencent", _fetch_tencent), ("sina", _fetch_sina)]:
+            try:
+                fetched = loop.run_until_complete(fetcher(codes))
+                if fetched:
+                    logger.info("[sync] 实时行情来源: %s (%d/%d)", name, len(fetched), len(codes))
+                    result.update(fetched)
+                    break
+            except Exception as e:
+                logger.warning("[sync] 实时行情源 %s 失败: %s", name, e)
+    finally:
+        loop.close()
+
+    return result

@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 引入前端skill">
+    <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 解决冲突">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/data_level0.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/data_level0.bin" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/length.bin" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data/vector_db/ee4cedf8-f777-43d5-92b3-ad7024eba859/length.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/ai/ai_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/ai/ai_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/market/batch_quote_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/market/batch_quote_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_fundamentals_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_fundamentals_analyst.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_market_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_market_analyst.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_news_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_news_analyst.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_sentiment_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_sentiment_analyst.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/tools/stock_data_toolkit.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/tools/stock_data_toolkit.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,6 +65,7 @@
       <workItem from="1776426217043" duration="704000" />
       <workItem from="1777086658066" duration="650000" />
       <workItem from="1779114137134" duration="3369000" />
+      <workItem from="1779861105397" duration="2443000" />
     </task>
     <task id="LOCAL-00001" summary="feat: 新增md文档">
       <created>1776352079122</created>
@@ -96,7 +102,14 @@
       <option name="project" value="LOCAL" />
       <updated>1779114226564</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="feat: 解决冲突">
+      <created>1779861369141</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1779861369141</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -112,10 +125,12 @@
         </entry>
       </map>
     </option>
+    <option name="oldMeFiltersMigrated" value="true" />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="feat: 新增md文档" />
     <MESSAGE value="feat: 引入前端skill" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: 引入前端skill" />
+    <MESSAGE value="feat: 解决冲突" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: 解决冲突" />
   </component>
 </project>

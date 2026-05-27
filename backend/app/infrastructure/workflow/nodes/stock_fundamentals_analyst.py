@@ -6,7 +6,7 @@ import logging
 import time
 
 from app.infrastructure.workflow.prompts.stock_analysis.fundamentals_analyst import SYSTEM_PROMPT, USER_TEMPLATE
-from app.infrastructure.ai.ai_service import strip_dsml
+from app.infrastructure.ai.ai_service import AIService
 from app.infrastructure.workflow.tools.stock_data_toolkit import (
     TOOL_FUNCTION_MAP,
     get_stock_tools_schema,
@@ -103,10 +103,9 @@ def create_fundamentals_analyst_node(ai_service, max_tool_calls: int = 3):
                 max_tokens=4096,
             ):
                 if chunk.type == "content":
-                    clean = strip_dsml(chunk.text)
-                    full_text += clean
+                    full_text += chunk.text
                     if content_queue:
-                        await content_queue.put(clean)
+                        await content_queue.put(chunk.text)
         except Exception as e:
             logger.error("[fundamentals_analyst] stream_chat 失败: %s", e)
             full_text = f"基本面分析生成失败: {e}"

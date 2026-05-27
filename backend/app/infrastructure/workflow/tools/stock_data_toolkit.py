@@ -445,20 +445,15 @@ def _retry_call(func, *args, retries=MAX_RETRIES, delay=RETRY_DELAY):
 # === 工具函数实现 ===
 
 def _fetch_live_quote(code: str) -> Optional[dict]:
-    """通过腾讯/新浪实时接口获取行情（复用 batch_quote_client，与自选股同一数据源）。
+    """通过腾讯/新浪实时接口获取行情（与自选股、行情页同一数据源）。
 
-    此函数在 asyncio.to_thread 的线程中调用，可通过 asyncio.run() 安全执行异步代码。
+    调用 batch_quote_client.get_batch_quotes_sync，保证数据源和 fallback 策略一致。
+    此函数在 asyncio.to_thread 的线程中调用。
     """
     try:
-        import asyncio
-        from app.infrastructure.market.batch_quote_client import get_batch_quotes
+        from app.infrastructure.market.batch_quote_client import get_batch_quotes_sync
 
-        loop = asyncio.new_event_loop()
-        try:
-            quotes = loop.run_until_complete(get_batch_quotes([code]))
-        finally:
-            loop.close()
-
+        quotes = get_batch_quotes_sync([code])
         if code in quotes:
             q = quotes[code]
             if q.price is not None:

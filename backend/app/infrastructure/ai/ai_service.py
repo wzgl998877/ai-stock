@@ -12,30 +12,17 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# DSML 标签正则（DeepSeek Function Calling 格式泄漏）
-# 匹配完整 <｜｜DSML｜｜tool_calls>...</｜｜DSML｜｜tool_calls> 块
-_DSML_BLOCK = re.compile(
-    r'<\uff5c\uff5cDSML\uff5c\uff5ctool_calls>.*?</\uff5c\uff5cDSML\uff5c\uff5ctool_calls>',
-    re.DOTALL,
-)
-# 匹配残留的零散标签（开标签和闭合标签）
-_DSML_TAG = re.compile(r'</?\uff5c\uff5cDSML\uff5c\uff5c[^>]*>')
+# ============================================================
+# DeepSeek DSML 兼容层
+# ============================================================
+# DeepSeek 模型内部使用 DSML 格式表达 tool calls。
+# 当 API 未能正确解析为结构化 tool_calls 时，需从 content 中手动提取。
+#
+# 核心原则：
+#   - DSML 标签只出现在「工具调用」场景（tool_call / stream_chat_with_tools）
+#   - 纯内容生成（stream_chat）不传递 tools，模型不应输出 DSML，无需处理
+#   - content 中的 DSML 是工具调用的序列化形式，对调用方无用，应丢弃
 
-
-def strip_dsml(text: str) -> str:
-    """清除 DeepSeek DSML 标签（Function Calling 格式泄漏）"""
-    if not text:
-        return text
-    text = _DSML_BLOCK.sub('', text)
-    text = _DSML_TAG.sub('', text)
-    return text
-
-# === DSML 标签处理 ===
-# DeepSeek 模型内部使用 DSML（DeepSeek Markup Language）格式表达 tool calls，
-# 格式如：<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="func"><｜｜DSML｜｜parameter name="p" string="true">val</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>
-# 当 DeepSeek API 无法正确解析 DSML 为结构化 tool_calls 时，需要手动解析。
-
-# 匹配完整 DSML tool_calls 块（包含零宽字符 ｜）
 DSML_TOOL_CALLS_RE = re.compile(
     r"<｜｜DSML｜｜tool_calls>(.*?)</｜｜DSML｜｜tool_calls>",
     re.DOTALL,
@@ -48,9 +35,9 @@ DSML_PARAM_RE = re.compile(
     r"<｜｜DSML｜｜parameter\s+name=\"([^\"]+)\"(?:\s+string=\"([^\"]*)\")?>(.*?)</｜｜DSML｜｜parameter>",
     re.DOTALL,
 )
-# 用于从流式 content 中剥离残留的 DSML 标签片段
-DSML_ANY_TAG_RE = re.compile(r"<｜｜DSML｜｜[^>]*>")
-DSML_ANY_CLOSE_RE = re.compile(r"</｜｜DSML｜｜[^>]*>")
+
+# 检测 content 中是否包含 DSML 标签（用于流式场景判断）
+_DSML_MARKER = "<｜｜"
 
 
 def _parse_dsml_tool_calls(content: str) -> list[dict]:
@@ -77,20 +64,16 @@ def _parse_dsml_tool_calls(content: str) -> list[dict]:
     return tool_calls
 
 
-def _strip_dsml_tags(text: str) -> str:
-    """移除文本中的 DSML 标签（用于流式输出清理）"""
-    text = DSML_TOOL_CALLS_RE.sub("", text)
-    text = DSML_INVOKE_RE.sub("", text)
-    text = DSML_PARAM_RE.sub("", text)
-    text = DSML_ANY_TAG_RE.sub("", text)
-    text = DSML_ANY_CLOSE_RE.sub("", text)
-    return text.strip()
+def _is_dsml_chunk(text: str) -> bool:
+    """判断文本是否包含 DSML 标签（快速检测，不做正则匹配）"""
+    return _DSML_MARKER in text
 
 
 class StreamChunk(NamedTuple):
     """流式输出块：区分正式回答和推理思考"""
-    type: str   # "content" = 正式回答, "reasoning" = 推理思考
+    type: str   # "content" = 正式回答, "reasoning" = 推理思考, "tool_calls" = 工具调用
     text: str
+    tool_calls: list[dict] | None = None  # DSML 解析出的工具调用
     agent_id: str = ""  # 可选：标识产出该块的Agent
 
 
@@ -108,6 +91,10 @@ class AIService:
         self.model = settings.llm_model
         logger.info("AIService 初始化: base_url=%s, model=%s", self.base_url, self.model)
 
+    # ------------------------------------------------------------------
+    # stream_chat — 纯内容生成，不涉及 tools
+    # ------------------------------------------------------------------
+
     async def stream_chat(
         self,
         system_prompt: str,
@@ -120,14 +107,8 @@ class AIService:
         """
         流式调用 LLM，逐块 yield StreamChunk。
 
-        支持两种调用方式：
-        1. 兼容旧接口：system_prompt + user_message（无 history_messages）
-        2. 多轮对话：传入 history_messages 完整消息列表
-
-        返回 StreamChunk，type 为 "content"（正式回答）或 "reasoning"（推理思考）。
-
-        注意：部分推理模型（如 GLM-5.1）可能只输出 reasoning_content 而无 content，
-        此时自动将 reasoning_content 作为 content 输出，确保前端有内容展示。
+        纯内容生成场景（分析师报告、辩论等），不传递 tools。
+        content 原样透传，不做任何 DSML 处理。
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -173,7 +154,6 @@ class AIService:
                     raw_line_count = 0
                     first_data_line_found = False
                     reasoning_buffer = ""  # 缓存 reasoning_content，在无 content 时使用
-                    dsml_buffer = ""       # 缓冲跨 chunk 的 DSML 标签片段
 
                     async for line in response.aiter_lines():
                         raw_line_count += 1
@@ -207,7 +187,6 @@ class AIService:
                             break
                         try:
                             chunk = json.loads(data)
-                            # 防御：chunk 可能不是 dict，或 choices 为空
                             if not isinstance(chunk, dict):
                                 continue
                             choices = chunk.get("choices")
@@ -225,22 +204,12 @@ class AIService:
                                 reasoning_buffer += reasoning
                                 yield StreamChunk("reasoning", reasoning)
 
-                            # 正式回答内容（含 DSML 跨 chunk 缓冲）
+                            # 正式回答内容 — 原样透传
                             content = delta.get("content", "")
                             if content:
-                                content = dsml_buffer + content
-                                dsml_buffer = ""
-                                # 如果包含未闭合的 DSML 标签，缓冲到下次
-                                if "<｜｜" in content and not content.rstrip().endswith("｜｜>"):
-                                    # 找到最后一个标签开始位置
-                                    last_tag_start = content.rfind("<｜｜")
-                                    dsml_buffer = content[last_tag_start:]
-                                    content = content[:last_tag_start]
-                                content = _strip_dsml_tags(content)
-                                if content:
-                                    has_content = True
-                                    chunk_count += 1
-                                    yield StreamChunk("content", content)
+                                has_content = True
+                                chunk_count += 1
+                                yield StreamChunk("content", content)
 
                         except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
                             logger.warning("SSE chunk 解析跳过: %s, data=%s", e, data[:200])
@@ -258,6 +227,10 @@ class AIService:
         except Exception as e:
             logger.error("AI 流式调用异常: %s", e, exc_info=True)
             raise
+
+    # ------------------------------------------------------------------
+    # generate_title_and_summary — 非流式，纯内容
+    # ------------------------------------------------------------------
 
     async def generate_title_and_summary(
         self, system_prompt: str, user_message: str, max_tokens: int = 256,
@@ -287,6 +260,10 @@ class AIService:
             content = result["choices"][0]["message"]["content"]
             return content, content
 
+    # ------------------------------------------------------------------
+    # tool_call — 非流式工具调用
+    # ------------------------------------------------------------------
+
     async def tool_call(
         self,
         messages: list[dict],
@@ -296,10 +273,10 @@ class AIService:
         temperature: float = 0,
         max_tokens: int = 4096,
     ) -> dict:
-        """非流式调用 LLM，支持 function calling / tools
+        """非流式调用 LLM，支持 function calling / tools。
 
-        兼容 DeepSeek：当 API 未将内部 DSML 格式转换为结构化 tool_calls 时，
-        自动从 content 中解析 DSML 标签并补充 tool_calls 字段。
+        DeepSeek 兼容：当 API 未将 DSML 转为结构化 tool_calls 时，
+        从 content 中解析并补充 tool_calls，然后清空 content。
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -329,22 +306,25 @@ class AIService:
             result = response.json()
             message = result["choices"][0]["message"]
 
-            # === DeepSeek DSML 兼容 ===
-            # 如果 API 没有返回结构化 tool_calls，但 content 中包含 DSML 标签，
-            # 则手动解析为 OpenAI 兼容的 tool_calls 格式
+            # DeepSeek DSML 兼容：API 未返回结构化 tool_calls 时，从 content 中解析
             if tools and not message.get("tool_calls"):
                 content = message.get("content", "") or ""
-                dsml_calls = _parse_dsml_tool_calls(content)
-                if dsml_calls:
-                    logger.info(
-                        "DSML 兼容：从 content 中解析出 %d 个 tool_calls（模型: %s）",
-                        len(dsml_calls), use_model,
-                    )
-                    message["tool_calls"] = dsml_calls
-                    # 清理 content 中的 DSML 标签，避免泄漏到后续对话
-                    message["content"] = _strip_dsml_tags(content) or None
+                if _is_dsml_chunk(content):
+                    dsml_calls = _parse_dsml_tool_calls(content)
+                    if dsml_calls:
+                        logger.info(
+                            "DSML 兼容：从 content 中解析出 %d 个 tool_calls（模型: %s）",
+                            len(dsml_calls), use_model,
+                        )
+                        message["tool_calls"] = dsml_calls
+                    # content 是 DSML 格式的工具调用，对调用方无用，清空
+                    message["content"] = None
 
             return message
+
+    # ------------------------------------------------------------------
+    # stream_chat_with_tools — 流式 + 工具调用
+    # ------------------------------------------------------------------
 
     async def stream_chat_with_tools(
         self,
@@ -355,7 +335,11 @@ class AIService:
         temperature: float = 0.7,
         max_tokens: int = 100000,
     ) -> AsyncGenerator[StreamChunk, None]:
-        """流式调用 LLM，支持 function calling + 流式输出"""
+        """流式调用 LLM，支持 function calling + 流式输出。
+
+        DeepSeek 兼容：content 中的 DSML 标签是工具调用的序列化形式，
+        缓冲后解析为 tool_calls，不作为内容透传。
+        """
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -381,7 +365,7 @@ class AIService:
 
         has_content = False
         reasoning_buffer = ""
-        dsml_buffer = ""       # 缓冲跨 chunk 的 DSML 标签片段
+        dsml_buffer = ""  # 缓冲跨 chunk 的 DSML 内容，用于解析 tool_calls
 
         async with httpx.AsyncClient(timeout=self.STREAM_TIMEOUT) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as response:
@@ -415,19 +399,43 @@ class AIService:
 
                         content = delta.get("content", "")
                         if content:
-                            # DSML 跨 chunk 缓冲
-                            content = dsml_buffer + content
+                            # 判断是否为 DSML 内容
+                            # DSML 是工具调用的序列化形式，不应作为内容透传
+                            combined = dsml_buffer + content
+                            if _is_dsml_chunk(combined):
+                                # 缓冲 DSML 内容，等完整后再解析为 tool_calls
+                                dsml_buffer = combined
+                                # 检查是否已闭合（包含完整的 tool_calls 块）
+                                if "</｜｜DSML｜｜tool_calls>" in dsml_buffer:
+                                    parsed = _parse_dsml_tool_calls(dsml_buffer)
+                                    if parsed:
+                                        logger.info(
+                                            "DSML 流式：解析出 %d 个 tool_calls（模型: %s）",
+                                            len(parsed), use_model,
+                                        )
+                                        yield StreamChunk("tool_calls", "", tool_calls=parsed)
+                                    dsml_buffer = ""
+                                continue
+
+                            # 非 DSML 内容：原样透传
                             dsml_buffer = ""
-                            if "<｜｜" in content and not content.rstrip().endswith("｜｜>"):
-                                last_tag_start = content.rfind("<｜｜")
-                                dsml_buffer = content[last_tag_start:]
-                                content = content[:last_tag_start]
-                            content = _strip_dsml_tags(content)
-                            if content:
-                                has_content = True
-                                yield StreamChunk("content", content)
+                            has_content = True
+                            yield StreamChunk("content", content)
+
+                        # 结构化 tool_calls（API 正常返回时走这里）
+                        tool_calls_delta = delta.get("tool_calls")
+                        if tool_calls_delta:
+                            yield StreamChunk("tool_calls", "", tool_calls=tool_calls_delta)
+
                     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
+
+                # 流结束时处理残余 DSML 缓冲
+                if dsml_buffer and _is_dsml_chunk(dsml_buffer):
+                    parsed = _parse_dsml_tool_calls(dsml_buffer)
+                    if parsed:
+                        logger.info("DSML 流式（残余）：解析出 %d 个 tool_calls", len(parsed))
+                        yield StreamChunk("tool_calls", "", tool_calls=parsed)
 
                 # 如果只有 reasoning_content 没有 content，将 reasoning 作为 content 输出
                 if not has_content and reasoning_buffer:
