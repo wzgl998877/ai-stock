@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import uuid
 from typing import AsyncGenerator, NamedTuple
 
 import httpx
@@ -29,6 +30,62 @@ def strip_dsml(text: str) -> str:
     text = _DSML_TAG.sub('', text)
     return text
 
+# === DSML 标签处理 ===
+# DeepSeek 模型内部使用 DSML（DeepSeek Markup Language）格式表达 tool calls，
+# 格式如：<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="func"><｜｜DSML｜｜parameter name="p" string="true">val</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>
+# 当 DeepSeek API 无法正确解析 DSML 为结构化 tool_calls 时，需要手动解析。
+
+# 匹配完整 DSML tool_calls 块（包含零宽字符 ｜）
+DSML_TOOL_CALLS_RE = re.compile(
+    r"<｜｜DSML｜｜tool_calls>(.*?)</｜｜DSML｜｜tool_calls>",
+    re.DOTALL,
+)
+DSML_INVOKE_RE = re.compile(
+    r"<｜｜DSML｜｜invoke\s+name=\"([^\"]+)\">(.*?)</｜｜DSML｜｜invoke>",
+    re.DOTALL,
+)
+DSML_PARAM_RE = re.compile(
+    r"<｜｜DSML｜｜parameter\s+name=\"([^\"]+)\"(?:\s+string=\"([^\"]*)\")?>(.*?)</｜｜DSML｜｜parameter>",
+    re.DOTALL,
+)
+# 用于从流式 content 中剥离残留的 DSML 标签片段
+DSML_ANY_TAG_RE = re.compile(r"<｜｜DSML｜｜[^>]*>")
+DSML_ANY_CLOSE_RE = re.compile(r"</｜｜DSML｜｜[^>]*>")
+
+
+def _parse_dsml_tool_calls(content: str) -> list[dict]:
+    """将 DeepSeek DSML 格式的 tool_calls 解析为 OpenAI 兼容结构"""
+    tool_calls = []
+    for tc_match in DSML_TOOL_CALLS_RE.finditer(content):
+        tc_body = tc_match.group(1)
+        for inv_match in DSML_INVOKE_RE.finditer(tc_body):
+            func_name = inv_match.group(1)
+            inv_body = inv_match.group(2)
+            args = {}
+            for param_match in DSML_PARAM_RE.finditer(inv_body):
+                p_name = param_match.group(1)
+                p_value = param_match.group(3).strip()
+                args[p_name] = p_value
+            tool_calls.append({
+                "id": f"call_{uuid.uuid4().hex[:24]}",
+                "type": "function",
+                "function": {
+                    "name": func_name,
+                    "arguments": json.dumps(args, ensure_ascii=False),
+                },
+            })
+    return tool_calls
+
+
+def _strip_dsml_tags(text: str) -> str:
+    """移除文本中的 DSML 标签（用于流式输出清理）"""
+    text = DSML_TOOL_CALLS_RE.sub("", text)
+    text = DSML_INVOKE_RE.sub("", text)
+    text = DSML_PARAM_RE.sub("", text)
+    text = DSML_ANY_TAG_RE.sub("", text)
+    text = DSML_ANY_CLOSE_RE.sub("", text)
+    return text.strip()
+
 
 class StreamChunk(NamedTuple):
     """流式输出块：区分正式回答和推理思考"""
@@ -40,11 +97,15 @@ class StreamChunk(NamedTuple):
 class AIService:
     """统一 AI 服务抽象层，支持 OpenAI/DeepSeek/GLM 等兼容接口"""
 
+    # 流式调用专用超时：connect 短，read 长（推理模型思考阶段可能数分钟无数据）
+    STREAM_TIMEOUT = httpx.Timeout(connect=30.0, read=600.0, write=30.0, pool=30.0)
+    # 非流式调用超时：单次请求总耗时上限
+    API_TIMEOUT = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
+
     def __init__(self):
         self.api_key = settings.openai_api_key
         self.base_url = settings.openai_base_url.rstrip("/")
         self.model = settings.llm_model
-        self.timeout = settings.analysis_timeout
         logger.info("AIService 初始化: base_url=%s, model=%s", self.base_url, self.model)
 
     async def stream_chat(
@@ -100,7 +161,7 @@ class AIService:
         has_content = False  # 跟踪是否有正式 content 输出
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.STREAM_TIMEOUT) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as response:
                     if response.status_code != 200:
                         error_body = await response.aread()
@@ -112,6 +173,7 @@ class AIService:
                     raw_line_count = 0
                     first_data_line_found = False
                     reasoning_buffer = ""  # 缓存 reasoning_content，在无 content 时使用
+                    dsml_buffer = ""       # 缓冲跨 chunk 的 DSML 标签片段
 
                     async for line in response.aiter_lines():
                         raw_line_count += 1
@@ -163,12 +225,22 @@ class AIService:
                                 reasoning_buffer += reasoning
                                 yield StreamChunk("reasoning", reasoning)
 
-                            # 正式回答内容
+                            # 正式回答内容（含 DSML 跨 chunk 缓冲）
                             content = delta.get("content", "")
                             if content:
-                                has_content = True
-                                chunk_count += 1
-                                yield StreamChunk("content", content)
+                                content = dsml_buffer + content
+                                dsml_buffer = ""
+                                # 如果包含未闭合的 DSML 标签，缓冲到下次
+                                if "<｜｜" in content and not content.rstrip().endswith("｜｜>"):
+                                    # 找到最后一个标签开始位置
+                                    last_tag_start = content.rfind("<｜｜")
+                                    dsml_buffer = content[last_tag_start:]
+                                    content = content[:last_tag_start]
+                                content = _strip_dsml_tags(content)
+                                if content:
+                                    has_content = True
+                                    chunk_count += 1
+                                    yield StreamChunk("content", content)
 
                         except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
                             logger.warning("SSE chunk 解析跳过: %s, data=%s", e, data[:200])
@@ -207,7 +279,7 @@ class AIService:
             "max_tokens": max_tokens,
         }
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=self.API_TIMEOUT) as client:
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:
                 raise RuntimeError(f"AI API error: {response.status_code}")
@@ -222,9 +294,13 @@ class AIService:
         tool_choice: str = "auto",
         model: str | None = None,
         temperature: float = 0,
-        max_tokens: int = 256,
+        max_tokens: int = 4096,
     ) -> dict:
-        """非流式调用 LLM，支持 function calling / tools"""
+        """非流式调用 LLM，支持 function calling / tools
+
+        兼容 DeepSeek：当 API 未将内部 DSML 格式转换为结构化 tool_calls 时，
+        自动从 content 中解析 DSML 标签并补充 tool_calls 字段。
+        """
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -244,7 +320,7 @@ class AIService:
 
         logger.info("AI tool_call: url=%s, model=%s, tools=%d", url, use_model, len(tools or []))
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=self.API_TIMEOUT) as client:
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:
                 error_body = response.text[:500]
@@ -253,10 +329,20 @@ class AIService:
             result = response.json()
             message = result["choices"][0]["message"]
 
-            # DeepSeek 等模型在返回 tool_calls 时会同时在 content 中写入 DSML 标签和推理文本
-            # 清除 content 防止泄漏到下游消息
-            if message.get("tool_calls"):
-                message["content"] = None
+            # === DeepSeek DSML 兼容 ===
+            # 如果 API 没有返回结构化 tool_calls，但 content 中包含 DSML 标签，
+            # 则手动解析为 OpenAI 兼容的 tool_calls 格式
+            if tools and not message.get("tool_calls"):
+                content = message.get("content", "") or ""
+                dsml_calls = _parse_dsml_tool_calls(content)
+                if dsml_calls:
+                    logger.info(
+                        "DSML 兼容：从 content 中解析出 %d 个 tool_calls（模型: %s）",
+                        len(dsml_calls), use_model,
+                    )
+                    message["tool_calls"] = dsml_calls
+                    # 清理 content 中的 DSML 标签，避免泄漏到后续对话
+                    message["content"] = _strip_dsml_tags(content) or None
 
             return message
 
@@ -295,8 +381,9 @@ class AIService:
 
         has_content = False
         reasoning_buffer = ""
+        dsml_buffer = ""       # 缓冲跨 chunk 的 DSML 标签片段
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.STREAM_TIMEOUT) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as response:
                 if response.status_code != 200:
                     error_body = await response.aread()
@@ -328,8 +415,17 @@ class AIService:
 
                         content = delta.get("content", "")
                         if content:
-                            has_content = True
-                            yield StreamChunk("content", content)
+                            # DSML 跨 chunk 缓冲
+                            content = dsml_buffer + content
+                            dsml_buffer = ""
+                            if "<｜｜" in content and not content.rstrip().endswith("｜｜>"):
+                                last_tag_start = content.rfind("<｜｜")
+                                dsml_buffer = content[last_tag_start:]
+                                content = content[:last_tag_start]
+                            content = _strip_dsml_tags(content)
+                            if content:
+                                has_content = True
+                                yield StreamChunk("content", content)
                     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                         continue
 

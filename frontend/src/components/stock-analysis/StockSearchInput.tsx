@@ -25,7 +25,7 @@ const StockSearchInput: React.FC = () => {
 
   const [keyword, setKeyword] = useState("");
   const [options, setOptions] = useState<{ value: string; label: React.ReactNode }[]>([]);
-  const [selected, setSelected] = useState(false);
+  const [selected, setSelected] = useState(!!stockCode);
   const abortRef = useRef<AbortController | null>(null);
 
   const debouncedKeyword = useDebounce(keyword, 300);
