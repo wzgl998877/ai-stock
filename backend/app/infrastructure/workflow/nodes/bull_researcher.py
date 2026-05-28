@@ -43,7 +43,7 @@ def create_bull_researcher_node(ai_service):
                 user_message="",
                 history_messages=messages,
                 temperature=0.5,
-                max_tokens=4096,
+                max_tokens=100000,
             ):
                 if chunk.type == "content":
                     full_text += chunk.text

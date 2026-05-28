@@ -21,6 +21,17 @@ from app.infrastructure.ai.ai_service import AIService
 
 logger = logging.getLogger(__name__)
 
+
+def _is_invalid_agent_report(report: str) -> bool:
+    return "生成失败" in report or "调用失败" in report or "<｜｜DSML｜｜" in report
+
+
+def _safe_agent_report(report: str, display_name: str) -> str:
+    if "<｜｜DSML｜｜" in report:
+        return f"{display_name}生成失败: 模型返回了工具调用格式，未生成有效报告"
+    return report
+
+
 # 超时配置（秒）
 DEFAULT_TIMEOUT = 3600  # 60分钟（深度模式 4分析师+辩论+风险评估，含 AI 调用延迟）
 MAX_TIMEOUT = 600
@@ -185,9 +196,10 @@ class StockAnalysisUseCase:
                         for field_name, (agent_key, agent_id) in agent_reports.items():
                             report = state_update.get(field_name)
                             if report:
+                                report = _safe_agent_report(report, AGENT_DISPLAY_NAMES.get(agent_id, agent_key))
                                 summary = report[:100] + ("..." if len(report) > 100 else "")
                                 # 检测是否为节点内部错误（如 AI 调用失败）
-                                is_err = "生成失败" in report or "调用失败" in report
+                                is_err = _is_invalid_agent_report(report)
                                 analysis_data["agents"][agent_key] = {
                                     "status": "failed" if is_err else "done",
                                     "summary": summary,
@@ -360,6 +372,7 @@ class StockAnalysisUseCase:
 
                                 # 写入 detail 记录
                                 if report_text:
+                                    report_text = _safe_agent_report(report_text, display_name)
                                     summary = report_text[:100] + ("..." if len(report_text) > 100 else "")
                                     # 判断是否为错误报告
                                     is_err = "生成失败" in report_text or "调用失败" in report_text

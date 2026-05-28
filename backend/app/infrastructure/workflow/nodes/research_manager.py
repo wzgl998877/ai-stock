@@ -49,7 +49,7 @@ def create_research_manager_node(ai_service):
                 history_messages=messages,
                 model=deep_model,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=100000,
             ):
                 if chunk.type == "content":
                     full_text += chunk.text

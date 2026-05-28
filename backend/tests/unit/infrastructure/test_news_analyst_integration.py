@@ -46,7 +46,7 @@ class TestNewsAnalystPreSearch:
         async def _stream(*args, **kwargs):
             yield mock_chunk
 
-        mock_ai.stream_chat = _stream
+        mock_ai.stream_chat_with_tools = _stream
 
         node = create_news_analyst_node(
             ai_service=mock_ai,
@@ -78,7 +78,7 @@ class TestNewsAnalystPreSearch:
             chunk.text = "无预搜报告"
             yield chunk
 
-        mock_ai.stream_chat = _stream
+        mock_ai.stream_chat_with_tools = _stream
 
         node = create_news_analyst_node(
             ai_service=mock_ai,
@@ -109,7 +109,7 @@ class TestNewsAnalystPreSearch:
             chunk.text = "降级报告"
             yield chunk
 
-        mock_ai.stream_chat = _stream
+        mock_ai.stream_chat_with_tools = _stream
 
         node = create_news_analyst_node(
             ai_service=mock_ai,

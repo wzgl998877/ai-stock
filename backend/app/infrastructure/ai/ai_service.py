@@ -155,6 +155,8 @@ class AIService:
                     raw_line_count = 0
                     first_data_line_found = False
                     reasoning_buffer = ""  # 缓存 reasoning_content，在无 content 时使用
+                    dsml_buffer = ""
+                    saw_dsml_tool_call = False
 
                     # === 诊断统计 ===
                     t_stream_start = time.time()
@@ -230,6 +232,19 @@ class AIService:
                             # 正式回答内容 — 原样透传
                             content = delta.get("content", "")
                             if content:
+                                combined = dsml_buffer + content
+                                if _is_dsml_chunk(combined):
+                                    dsml_buffer = combined
+                                    if "</｜｜DSML｜｜tool_calls>" in dsml_buffer:
+                                        parsed = _parse_dsml_tool_calls(dsml_buffer)
+                                        saw_dsml_tool_call = bool(parsed)
+                                        logger.warning(
+                                            "stream_chat 收到 DSML tool_calls，已拦截不作为正文输出: parsed=%d",
+                                            len(parsed),
+                                        )
+                                        dsml_buffer = ""
+                                    continue
+
                                 has_content = True
                                 chunk_count += 1
                                 content_chunks += 1
@@ -263,8 +278,17 @@ class AIService:
                             logger.warning("SSE chunk 解析跳过: %s, data=%s", e, data[:200])
                             continue
 
-                    # 流结束后，如果只有 reasoning_content 没有 content，将 reasoning 作为 content 输出
-                    if not has_content and reasoning_buffer:
+                    if dsml_buffer and _is_dsml_chunk(dsml_buffer):
+                        parsed = _parse_dsml_tool_calls(dsml_buffer)
+                        saw_dsml_tool_call = saw_dsml_tool_call or bool(parsed)
+                        logger.warning(
+                            "stream_chat 收到未闭合 DSML 内容，已拦截不作为正文输出: parsed=%d",
+                            len(parsed),
+                        )
+
+                    if not has_content and saw_dsml_tool_call:
+                        logger.warning("stream_chat 只收到 DSML tool_calls，没有正文内容。")
+                    elif not has_content and reasoning_buffer:
                         logger.warning(
                             "LLM 只输出了 reasoning_content（%d 字符），没有 content。将 reasoning 作为 content 输出。",
                             len(reasoning_buffer),

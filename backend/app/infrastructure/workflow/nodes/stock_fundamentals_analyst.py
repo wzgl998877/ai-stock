@@ -11,6 +11,7 @@ from app.infrastructure.workflow.tools.stock_data_toolkit import (
     TOOL_FUNCTION_MAP,
     get_stock_tools_schema,
 )
+from app.infrastructure.workflow.nodes.stock_tool_runner import collect_report_with_tool_continuation
 
 logger = logging.getLogger(__name__)
 
@@ -90,28 +91,25 @@ def create_fundamentals_analyst_node(ai_service, max_tool_calls: int = 3):
                 })
                 tool_call_count += 1
 
-        # 最终获取完整分析报告
         t_stream = time.time()
-        full_text = ""
         content_queue = state.get("_content_queue")
         try:
-            async for chunk in ai_service.stream_chat(
-                system_prompt="",
-                user_message="",
-                history_messages=messages,
+            full_text, extra_tool_calls = await collect_report_with_tool_continuation(
+                ai_service=ai_service,
+                messages=messages,
+                tools_schema=tools_schema,
+                agent_name="fundamentals_analyst",
+                content_queue=content_queue,
                 temperature=0.3,
-                max_tokens=4096,
-            ):
-                if chunk.type == "content":
-                    full_text += chunk.text
-                    if content_queue:
-                        await content_queue.put(chunk.text)
+                max_tokens=100000,
+            )
+            tool_call_count += extra_tool_calls
         except Exception as e:
-            logger.error("[fundamentals_analyst] stream_chat 失败: %s", e)
+            logger.error("[fundamentals_analyst] 最终报告生成失败: %s", e)
             full_text = f"基本面分析生成失败: {e}"
 
         logger.info(
-            "[耗时] fundamentals_analyst stream_chat: %.3fs", time.time() - t_stream,
+            "[耗时] fundamentals_analyst final_report: %.3fs", time.time() - t_stream,
         )
         logger.info(
             "[耗时] fundamentals_analyst 总耗时: %.3fs, stock=%s, tool_calls=%d, report_len=%d",

@@ -23,9 +23,9 @@ class _FakeAIService:
     async def tool_call(self, messages, tools, tool_choice, max_tokens):
         return {"tool_calls": []}
 
-    async def stream_chat(self, *, system_prompt, user_message, history_messages,
-                          temperature=0.3, max_tokens=4096):
-        self.captured_history = history_messages
+    async def stream_chat_with_tools(self, *, messages, tools=None, tool_choice="auto",
+                                     temperature=0.3, max_tokens=4096):
+        self.captured_history = messages
         chunk = MagicMock()
         chunk.type = "content"
         chunk.text = "新闻分析报告"
@@ -106,7 +106,7 @@ class TestStockAnalystContextInjection:
         # 验证 vector_search 被调用
         mock_vector_repo.search.assert_called_once()
         search_kwargs = mock_vector_repo.search.call_args[1]
-        assert search_kwargs["top_k"] == 3
+        assert search_kwargs["top_k"] == 6
         assert search_kwargs["collection"] == "knowledge_articles"
 
         # 验证上下文被注入到 user message
