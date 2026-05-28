@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 import uuid
 from typing import AsyncGenerator, NamedTuple
 
@@ -155,12 +156,23 @@ class AIService:
                     first_data_line_found = False
                     reasoning_buffer = ""  # 缓存 reasoning_content，在无 content 时使用
 
+                    # === 诊断统计 ===
+                    t_stream_start = time.time()
+                    t_last_log = t_stream_start
+                    reasoning_chunks = 0
+                    content_chunks = 0
+                    reasoning_chars = 0
+                    content_chars = 0
+                    finish_reason = None
+                    phase = "init"  # init → reasoning → content → done
+
                     async for line in response.aiter_lines():
                         raw_line_count += 1
                         line = line.strip()
                         if not line:
                             continue
-                        if raw_line_count <= 10:
+                        # 前 5 行详细日志，之后只在关键时刻打日志
+                        if raw_line_count <= 5:
                             logger.info("SSE raw line %d: %s", raw_line_count, line[:300])
 
                         # 检测非 SSE 响应（如 HTML 错误页面）
@@ -184,6 +196,12 @@ class AIService:
                         first_data_line_found = True
                         data = line[6:]
                         if data == "[DONE]":
+                            logger.info(
+                                "[stream] 收到 [DONE], phase=%s, chunks=%d(reasoning=%d,content=%d), "
+                                "finish_reason=%s, 耗时 %.1fs",
+                                phase, chunk_count, reasoning_chunks, content_chunks,
+                                finish_reason, time.time() - t_stream_start,
+                            )
                             break
                         try:
                             chunk = json.loads(data)
@@ -201,7 +219,12 @@ class AIService:
                             reasoning = delta.get("reasoning_content", "")
                             if reasoning:
                                 chunk_count += 1
+                                reasoning_chunks += 1
+                                reasoning_chars += len(reasoning)
                                 reasoning_buffer += reasoning
+                                if phase == "init":
+                                    phase = "reasoning"
+                                    logger.info("[stream] 进入推理阶段, 耗时 %.1fs", time.time() - t_stream_start)
                                 yield StreamChunk("reasoning", reasoning)
 
                             # 正式回答内容 — 原样透传
@@ -209,7 +232,32 @@ class AIService:
                             if content:
                                 has_content = True
                                 chunk_count += 1
+                                content_chunks += 1
+                                content_chars += len(content)
+                                if phase == "reasoning" or phase == "init":
+                                    phase = "content"
+                                    logger.info(
+                                        "[stream] 推理→内容阶段切换, 推理 %d chunks/%d 字符, 耗时 %.1fs",
+                                        reasoning_chunks, reasoning_chars, time.time() - t_stream_start,
+                                    )
                                 yield StreamChunk("content", content)
+
+                            # 检测 finish_reason
+                            fr = choice.get("finish_reason")
+                            if fr:
+                                finish_reason = fr
+
+                            # === 周期性诊断日志（每 30 秒或每 500 chunks）===
+                            t_now = time.time()
+                            if t_now - t_last_log >= 30 or chunk_count % 500 == 0:
+                                logger.info(
+                                    "[stream] 心跳: phase=%s, chunks=%d(reasoning=%d,content=%d), "
+                                    "reasoning_chars=%d, content_chars=%d, raw_lines=%d, finish_reason=%s, 耗时 %.1fs",
+                                    phase, chunk_count, reasoning_chunks, content_chunks,
+                                    reasoning_chars, content_chars, raw_line_count,
+                                    finish_reason, t_now - t_stream_start,
+                                )
+                                t_last_log = t_now
 
                         except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
                             logger.warning("SSE chunk 解析跳过: %s, data=%s", e, data[:200])
@@ -223,9 +271,26 @@ class AIService:
                         )
                         yield StreamChunk("content", reasoning_buffer)
 
-            logger.info("AI 流式调用完成: 共 %d 个有效 chunk, has_content=%s", chunk_count, has_content)
+            logger.info(
+                "AI 流式调用完成: 共 %d chunks(reasoning=%d,content=%d), "
+                "reasoning_chars=%d, content_chars=%d, has_content=%s, 耗时 %.1fs",
+                chunk_count, reasoning_chunks, content_chunks,
+                reasoning_chars, content_chars, has_content,
+                time.time() - t_stream_start,
+            )
+        except httpx.ReadTimeout as e:
+            logger.error(
+                "AI 流式调用 ReadTimeout: 已等待 %.1fs, 收到 %d chunks(reasoning=%d,content=%d), "
+                "phase=%s, finish_reason=%s — 模型思考阶段可能超过 read timeout",
+                time.time() - t_stream_start, chunk_count, reasoning_chunks, content_chunks,
+                phase, finish_reason,
+            )
+            raise
         except Exception as e:
-            logger.error("AI 流式调用异常: %s", e, exc_info=True)
+            logger.error(
+                "AI 流式调用异常: %s, phase=%s, chunks=%d, 耗时 %.1fs",
+                e, phase, chunk_count, time.time() - t_stream_start, exc_info=True,
+            )
             raise
 
     # ------------------------------------------------------------------

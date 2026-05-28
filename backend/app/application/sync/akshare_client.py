@@ -11,6 +11,7 @@ AKShare 是免费的 A 股数据接口，无需认证。
 """
 
 import logging
+import threading
 import time
 from typing import Optional, List, Dict, Any
 
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 # 全局 patch：让 AKShare 底层请求使用 curl_cffi（绕过东方财富反爬）
 # 只执行一次，模块加载时自动触发
 # ---------------------------------------------------------------------------
+
+# curl_cffi 不是线程安全的，多线程同时调用会导致 Segmentation fault
+_curl_lock = threading.Lock()
+
 
 def _patch_akshare_with_curl_cffi():
     """Monkey-patch requests.get 使 AKShare 的东方财富请求走 curl_cffi。"""
@@ -43,33 +48,34 @@ def _patch_akshare_with_curl_cffi():
     def patched_get(url, **kwargs):
         # 只对东方财富的请求添加延迟 + curl_cffi
         if 'eastmoney.com' in url:
-            # 请求延迟，避免被反爬封禁
-            now = time.time()
-            elapsed = now - _last_request_time['time']
-            if elapsed < 0.5:
-                time.sleep(0.5 - elapsed)
-            _last_request_time['time'] = time.time()
+            with _curl_lock:
+                # 请求延迟，避免被反爬封禁
+                now = time.time()
+                elapsed = now - _last_request_time['time']
+                if elapsed < 0.5:
+                    time.sleep(0.5 - elapsed)
+                _last_request_time['time'] = time.time()
 
-            # 使用 curl_cffi 模拟 Chrome 浏览器 TLS 指纹
-            try:
-                curl_kwargs = {
-                    'timeout': kwargs.get('timeout', 30),
-                    'impersonate': 'chrome120',
-                }
-                if 'params' in kwargs:
-                    curl_kwargs['params'] = kwargs['params']
-                if 'headers' in kwargs:
-                    curl_kwargs['headers'] = kwargs['headers']
-                if 'data' in kwargs:
-                    curl_kwargs['data'] = kwargs['data']
-                if 'json' in kwargs:
-                    curl_kwargs['json'] = kwargs['json']
+                # 使用 curl_cffi 模拟 Chrome 浏览器 TLS 指纹
+                try:
+                    curl_kwargs = {
+                        'timeout': kwargs.get('timeout', 30),
+                        'impersonate': 'chrome120',
+                    }
+                    if 'params' in kwargs:
+                        curl_kwargs['params'] = kwargs['params']
+                    if 'headers' in kwargs:
+                        curl_kwargs['headers'] = kwargs['headers']
+                    if 'data' in kwargs:
+                        curl_kwargs['data'] = kwargs['data']
+                    if 'json' in kwargs:
+                        curl_kwargs['json'] = kwargs['json']
 
-                response = curl_requests.get(url, **curl_kwargs)
-                logger.debug("[curl_cffi] %s → %d", url[:80], response.status_code)
-                return response
-            except Exception as e:
-                logger.warning("curl_cffi 请求失败，回退到 requests: %s", e)
+                    response = curl_requests.get(url, **curl_kwargs)
+                    logger.debug("[curl_cffi] %s → %d", url[:80], response.status_code)
+                    return response
+                except Exception as e:
+                    logger.warning("curl_cffi 请求失败，回退到 requests: %s", e)
 
         # 非东方财富请求 或 curl_cffi 失败 → 原始 requests
         return original_get(url, **kwargs)

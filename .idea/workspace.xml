@@ -3,13 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 解决冲突">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/application/sync/akshare_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/application/sync/akshare_client.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/ai/ai_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/ai/ai_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/market/batch_quote_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/market/batch_quote_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_fundamentals_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_fundamentals_analyst.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_market_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_market_analyst.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_news_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_news_analyst.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_sentiment_analyst.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/nodes/stock_sentiment_analyst.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/workflow/tools/stock_data_toolkit.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/workflow/tools/stock_data_toolkit.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,7 +43,7 @@
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../../item/tf-aliyun/springboot/tf-crm" />
     <property name="settings.editor.selected.configurable" value="MavenSettings" />
     <property name="ts.external.directory.path" value="D:\item\ai-stock\frontend\node_modules\typescript\lib" />
     <property name="vue.rearranger.settings.migration" value="true" />
@@ -65,7 +60,9 @@
       <workItem from="1776426217043" duration="704000" />
       <workItem from="1777086658066" duration="650000" />
       <workItem from="1779114137134" duration="3369000" />
-      <workItem from="1779861105397" duration="2443000" />
+      <workItem from="1779861105397" duration="4647000" />
+      <workItem from="1779934134147" duration="148000" />
+      <workItem from="1779950351384" duration="2594000" />
     </task>
     <task id="LOCAL-00001" summary="feat: 新增md文档">
       <created>1776352079122</created>
