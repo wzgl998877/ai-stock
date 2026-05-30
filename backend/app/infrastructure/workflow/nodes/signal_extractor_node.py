@@ -27,16 +27,31 @@ def create_signal_extractor_node(ai_service):
 
         # === 优先从 state 中获取 risk_judge 写入的结构化字段 ===
         # risk_judge 和 trader 节点会将解析后的 JSON 写入 state，直接使用
-        state_action = state.get("risk_judge_action") or state.get("trader_action") or ""
-        state_target_price = state.get("risk_judge_target_price") or state.get("trader_target_price") or 0
-        state_stop_loss = state.get("risk_judge_stop_loss_price") or state.get("trader_stop_loss_price") or 0
-        state_expected_return = state.get("risk_judge_expected_return") or state.get("trader_expected_return") or 0
-        state_confidence = state.get("risk_judge_confidence") or state.get("trader_confidence") or 0
-        state_risk_score = state.get("risk_judge_risk_score", 50) or 50
-        state_reasoning = state.get("risk_judge_reasoning") or state.get("trader_reasoning") or ""
+        # 使用 is not None 检查，避免 0/0.0 被误判为缺失
+        state_action = state.get("risk_judge_action")
+        if state_action is None:
+            state_action = state.get("trader_action", "")
+        state_target_price = state.get("risk_judge_target_price")
+        if state_target_price is None:
+            state_target_price = state.get("trader_target_price", 0)
+        state_stop_loss = state.get("risk_judge_stop_loss_price")
+        if state_stop_loss is None:
+            state_stop_loss = state.get("trader_stop_loss_price", 0)
+        state_expected_return = state.get("risk_judge_expected_return")
+        if state_expected_return is None:
+            state_expected_return = state.get("trader_expected_return", 0)
+        state_confidence = state.get("risk_judge_confidence")
+        if state_confidence is None:
+            state_confidence = state.get("trader_confidence", 0)
+        state_risk_score = state.get("risk_judge_risk_score")
+        if state_risk_score is None:
+            state_risk_score = 50
+        state_reasoning = state.get("risk_judge_reasoning")
+        if state_reasoning is None:
+            state_reasoning = state.get("trader_reasoning", "")
 
         # 如果 state 中已有完整结构化数据，直接使用，跳过 AI 调用
-        if state_action and state_target_price and state_confidence:
+        if state_action and state_target_price is not None and state_confidence is not None:
             logger.info(
                 "[耗时] signal_extractor 总耗时: %.3fs, stock=%s, action=%s, confidence=%.1f (直接从state取值)",
                 time.time() - t_start, stock_code, state_action, state_confidence,
@@ -179,7 +194,7 @@ def _extract_signal_from_text(text: str) -> dict:
         result["target_price"] = float(price_match.group(1))
 
     # 尝试提取 stop_loss_price
-    stop_loss_match = re.search(r"stop_loss_price[\"':\s]+(\d+\.?\d*)", text)
+    stop_loss_match = re.search(r"stop_loss_price[\"':\s]+([-]?\d+\.?\d*)", text)
     if stop_loss_match:
         result["stop_loss_price"] = float(stop_loss_match.group(1))
 
@@ -221,8 +236,9 @@ def _merge_signal_with_state(signal: dict, state: dict) -> dict:
     策略：signal 中有效值（非0非空）优先，state 值兜底。
     """
     def _pick(*values):
+        """返回第一个非 None 非空字符串的值，0 和 0.0 视为有效值。"""
         for v in values:
-            if v and v != 0:
+            if v is not None and v != "":
                 return v
         return 0
 

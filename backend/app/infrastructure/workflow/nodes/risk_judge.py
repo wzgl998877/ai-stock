@@ -103,7 +103,7 @@ def create_risk_judge_node(ai_service):
         if parsed:
             for key in ("action", "target_price", "stop_loss_price", "expected_return", "confidence", "risk_score", "reasoning"):
                 val = parsed.get(key)
-                if val:
+                if val is not None and val != "":
                     result[f"risk_judge_{key}"] = val
             logger.info(
                 "[耗时] risk_judge 总耗时: %.3fs, stock=%s, report_len=%d, action=%s, target=%.2f",

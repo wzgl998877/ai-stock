@@ -84,7 +84,7 @@ def create_trader_node(ai_service):
         if parsed:
             for key in ("action", "target_price", "stop_loss_price", "expected_return", "confidence", "reasoning"):
                 val = parsed.get(key)
-                if val:
+                if val is not None and val != "":
                     result[f"trader_{key}"] = val
             logger.info(
                 "[耗时] trader 总耗时: %.3fs, stock=%s, plan_len=%d, action=%s, target=%.2f",
