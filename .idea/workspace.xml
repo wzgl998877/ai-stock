@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 解决冲突">
+    <list default="true" id="b02f4d4f-116a-408e-8703-e8dc88d78ed7" name="Changes" comment="feat: 新增财联社脚本">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/application/sync/akshare_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/application/sync/akshare_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/infrastructure/ai/ai_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/infrastructure/ai/ai_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -63,6 +61,8 @@
       <workItem from="1779861105397" duration="4647000" />
       <workItem from="1779934134147" duration="148000" />
       <workItem from="1779950351384" duration="2594000" />
+      <workItem from="1780317792031" duration="655000" />
+      <workItem from="1780364732631" duration="164000" />
     </task>
     <task id="LOCAL-00001" summary="feat: 新增md文档">
       <created>1776352079122</created>
@@ -106,7 +106,14 @@
       <option name="project" value="LOCAL" />
       <updated>1779861369141</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="feat: 解决冲突">
+      <created>1780317850661</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1780317850661</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -128,6 +135,7 @@
     <MESSAGE value="feat: 新增md文档" />
     <MESSAGE value="feat: 引入前端skill" />
     <MESSAGE value="feat: 解决冲突" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: 解决冲突" />
+    <MESSAGE value="feat: 新增财联社脚本" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: 新增财联社脚本" />
   </component>
 </project>
