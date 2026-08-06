@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { syncService, SyncTaskRecord, SyncParams } from "../services/syncService";
+import { syncService, SyncTaskRecord } from "../services/syncService";
 
 export type SyncStatus = "idle" | "running" | "completed" | "failed";
 
@@ -34,7 +34,7 @@ interface SyncState {
   retryTask: (taskId: string) => void;
 }
 
-export const useSyncStore = create<SyncState>((set, get) => ({
+export const useSyncStore = create<SyncState>((set) => ({
   currentSync: null,
   syncStatus: "idle",
   syncHistory: [],

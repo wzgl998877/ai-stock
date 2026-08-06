@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useChatStore } from "../../store/chatStore";
 import MessageBubble from "./MessageBubble";
 import { Button } from "antd";
-import { ArrowDownOutlined } from "@ant-design/icons";
 
 const SCROLL_THRESHOLD = 300; // 距离底部超过此值时显示按钮
 
@@ -18,7 +17,7 @@ const MessageList: React.FC<{
 }> = ({ onNewChat, onSaveToKnowledge, onScrollFarFromBottom, scrollBottomRef }) => {
   const { messages, streamingMessageId } = useChatStore();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [, setShowScrollBottom] = useState(false);
 
   // 检查是否需要显示回到底部按钮
   const checkScrollPosition = useCallback(() => {

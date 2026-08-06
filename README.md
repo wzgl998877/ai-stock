@@ -74,7 +74,7 @@ npm install
 
 ```bash
 cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 18000
 ```
 
 **终端 2 — 前端：**
@@ -96,7 +96,7 @@ npm run dev
 
 ```bash
 # 后端健康检查
-curl http://localhost:8000/health
+curl http://localhost:18000/health
 # 应返回: {"status":"ok"}
 ```
 

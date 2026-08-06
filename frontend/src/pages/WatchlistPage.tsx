@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Modal, Input, Popconfirm, Empty, Spin, Tag, Alert,
-  Table, Pagination, message, Select, Tooltip,
+  Table, Pagination, message, Select, Tooltip, Switch,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
@@ -13,6 +13,9 @@ import { useWatchlistStore, type WatchlistStock } from '../store/watchlistStore'
 import { useEventRadarStore } from '../store/eventRadarStore';
 import { stockDataService } from '../services/stockDataService';
 import { eventRadarService } from '../services/eventRadarService';
+import { isMarketOpen } from '../utils/marketTime';
+import SignalBadge from '../components/strategy/SignalBadge';
+import { useStrategyStore } from '../store/strategyStore';
 import WatchlistImpactColumn from '../components/event-radar/WatchlistImpactColumn';
 
 // ---------------------------------------------------------------------------
@@ -48,19 +51,56 @@ const formatRefreshTime = (ts: number | null) => {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
 };
 
-const isMarketOpen = () => {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const t = h * 60 + m;
-  return (t >= 570 && t <= 690) || (t >= 780 && t <= 900);
-};
+// isMarketOpen 由 utils/marketTime 提供（北京时区 A 股时段判断）
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+/** 逐股逐周期监控开关（T055）：关闭后徽标显示「停用」。 */
+const MonitorToggle: React.FC<{
+  stockCode: string;
+  dailyStatus?: string;
+  m30Status?: string;
+}> = ({ stockCode, dailyStatus, m30Status }) => {
+  const updateConfig = useStrategyStore((s) => s.updateConfig);
+  const [loading, setLoading] = useState<null | 'daily' | 'm30'>(null);
+
+  const toggle = async (period: 'daily' | 'm30', enabled: boolean) => {
+    setLoading(period);
+    try {
+      await updateConfig(stockCode, { [`${period}_enabled`]: enabled });
+      message.success(`${period === 'daily' ? '日 K' : '30 分钟'}监控已${enabled ? '开启' : '关闭'}`);
+    } catch (e: any) {
+      message.error(e?.message || '更新监控配置失败');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4, fontSize: 11 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#999' }}>
+        日
+        <Switch
+          size="small"
+          checked={dailyStatus !== 'disabled'}
+          loading={loading === 'daily'}
+          onChange={(v) => toggle('daily', v)}
+        />
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#999' }}>
+        30m
+        <Switch
+          size="small"
+          checked={m30Status !== 'disabled'}
+          loading={loading === 'm30'}
+          onChange={(v) => toggle('m30', v)}
+        />
+      </span>
+    </div>
+  );
+};
 
 const WatchlistPage: React.FC = () => {
   const navigate = useNavigate();
@@ -71,6 +111,8 @@ const WatchlistPage: React.FC = () => {
   } = useWatchlistStore();
 
   const { stockImpacts, setStockImpacts } = useEventRadarStore();
+  const { watchlistSignals, fetchWatchlistSignals } = useStrategyStore();
+  const [signalFilter, setSignalFilter] = useState<'all' | 'has_buy' | 'has_sell' | 'none'>('all');
 
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -85,6 +127,7 @@ const WatchlistPage: React.FC = () => {
 
   useEffect(() => {
     fetchGroups();
+    fetchWatchlistSignals();
   }, []);
 
   // 加载自选股事件影响数据
@@ -119,6 +162,7 @@ const WatchlistPage: React.FC = () => {
     const tick = () => {
       if (isMarketOpen()) {
         refreshQuotes();
+        fetchWatchlistSignals();
       } else if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
         refreshTimerRef.current = null;
@@ -179,13 +223,25 @@ const WatchlistPage: React.FC = () => {
   const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
   const stocks = selectedGroup?.stocks ?? [];
 
-  const filteredStocks = searchText
+  const searched = searchText
     ? stocks.filter(
         (s) =>
           s.code.includes(searchText) ||
           s.name.toLowerCase().includes(searchText.toLowerCase()),
       )
     : stocks;
+
+  // 信号筛选：有买点 / 有卖点 / 无信号 / 全部
+  const filteredStocks = searched.filter((s) => {
+    if (signalFilter === 'all') return true;
+    const sig = watchlistSignals.find((w) => w.stock_code === s.code);
+    const dt = sig?.daily?.signal_type;
+    const mt = sig?.m30?.signal_type;
+    if (signalFilter === 'none') return !dt && !mt;
+    if (signalFilter === 'has_buy') return !!dt?.startsWith('buy') || !!mt?.startsWith('buy');
+    if (signalFilter === 'has_sell') return !!dt?.startsWith('sell') || !!mt?.startsWith('sell');
+    return true;
+  });
 
   const total = filteredStocks.length;
   const pagedStocks = filteredStocks.slice((page - 1) * pageSize, page * pageSize);
@@ -301,6 +357,33 @@ const WatchlistPage: React.FC = () => {
             direction={impact?.direction ?? 'neutral'}
             recentImpacts={impact?.recent_impacts ?? []}
           />
+        );
+      },
+    },
+    {
+      title: '信号',
+      key: 'chanlun_signal',
+      width: 150,
+      align: 'center',
+      render: (_: unknown, record: WatchlistStock) => {
+        const sig = watchlistSignals.find((w) => w.stock_code === record.code);
+        return (
+          <div>
+            <SignalBadge
+              stockCode={record.code}
+              stockName={record.name}
+              daily={sig?.daily ?? null}
+              dailyStatus={sig?.daily_status}
+              m30={sig?.m30 ?? null}
+              m30Status={sig?.m30_status}
+              onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
+            />
+            <MonitorToggle
+              stockCode={record.code}
+              dailyStatus={sig?.daily_status}
+              m30Status={sig?.m30_status}
+            />
+          </div>
         );
       },
     },
@@ -592,6 +675,18 @@ const WatchlistPage: React.FC = () => {
               onChange={(e) => setSearchText(e.target.value)}
               allowClear
               size="small"
+            />
+            <Select
+              size="small"
+              style={{ width: 120 }}
+              value={signalFilter}
+              onChange={(v) => setSignalFilter(v)}
+              options={[
+                { value: 'all', label: '全部信号' },
+                { value: 'has_buy', label: '有买点' },
+                { value: 'has_sell', label: '有卖点' },
+                { value: 'none', label: '无信号' },
+              ]}
             />
           </div>
         </div>

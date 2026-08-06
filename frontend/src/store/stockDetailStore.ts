@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { stockDataService } from '../services/stockDataService';
+import { getStructure } from '../services/strategyService';
+import type { SignalMark, StructureData } from '../domain/types';
 
 // --- 类型定义 ---
 
@@ -57,29 +59,15 @@ export interface StockDetailQuote {
 
 export interface StockDetailFinancial {
   revenue: number;
-  revenue_growth_pct: number;
+  revenue_growth_pct: number | null;   // 后端不一定提供，可能为 null
   net_profit: number;
-  profit_growth_pct: number;
+  profit_growth_pct: number | null;
 }
 
 export type KlinePeriod = 'minute' | 'daily' | 'weekly' | 'monthly';
 
-// --- A 股交易时段判断 ---
-
-export function isMarketOpen(): boolean {
-  const now = new Date();
-  // 获取北京时间（UTC+8）
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  const bj = new Date(utc + 8 * 3600000);
-  const h = bj.getHours();
-  const m = bj.getMinutes();
-  const day = bj.getDay();
-  // 周六(6)、周日(0)休市
-  if (day === 0 || day === 6) return false;
-  const t = h * 60 + m;
-  // 上午 9:30 - 11:30，下午 13:00 - 15:00
-  return (t >= 570 && t <= 690) || (t >= 780 && t <= 900);
-}
+// A 股交易时段判断统一走 utils/marketTime（北京时区）；此处 re-export 保持向后兼容。
+export { isMarketOpen } from '../utils/marketTime';
 
 interface StockDetailState {
   stockCode: string | null;
@@ -96,6 +84,10 @@ interface StockDetailState {
   activePeriod: KlinePeriod;
   showMACD: boolean;
   showKDJ: boolean;
+  showChanlun: boolean;
+  signalMarks: SignalMark[];
+  structureData: StructureData | null;
+  highlightDate: string | null;
 
   fetchStockDetail: (code: string) => Promise<void>;
   fetchKlineData: (code: string, period: KlinePeriod) => Promise<void>;
@@ -105,6 +97,9 @@ interface StockDetailState {
   setActivePeriod: (period: KlinePeriod) => void;
   toggleMACD: () => void;
   toggleKDJ: () => void;
+  toggleChanlun: () => void;
+  fetchChanlunLayer: (code: string, period: KlinePeriod) => Promise<void>;
+  setHighlightDate: (date: string | null) => void;
   clear: () => void;
 }
 
@@ -123,6 +118,10 @@ const initialState = {
   activePeriod: 'daily' as KlinePeriod,
   showMACD: false,
   showKDJ: false,
+  showChanlun: true,
+  signalMarks: [],
+  structureData: null,
+  highlightDate: null,
 };
 
 export const useStockDetailStore = create<StockDetailState>((set, get) => ({
@@ -184,8 +183,9 @@ export const useStockDetailStore = create<StockDetailState>((set, get) => ({
       } else {
         const res = await stockDataService.getStockDaily(code, { period });
         set({ klineData: res?.items || [], klineLoading: false });
-        // 同时加载指标
+        // 同时加载指标与缠论结构图层（笔/线段/中枢 + 买卖点）
         get().fetchIndicators(code, period);
+        get().fetchChanlunLayer(code, period);
       }
     } catch {
       set({ klineLoading: false });
@@ -233,5 +233,21 @@ export const useStockDetailStore = create<StockDetailState>((set, get) => ({
 
   toggleMACD: () => set((s) => ({ showMACD: !s.showMACD })),
   toggleKDJ: () => set((s) => ({ showKDJ: !s.showKDJ })),
+  toggleChanlun: () => set((s) => ({ showChanlun: !s.showChanlun })),
+  fetchChanlunLayer: async (code: string, period: KlinePeriod) => {
+    // 缠论结构图层（笔/线段/中枢 + 买卖点标注）仅日 K 支持；周/月/分时见 T041
+    if (period !== 'daily') {
+      set({ signalMarks: [], structureData: null });
+      return;
+    }
+    try {
+      const { structure, signalMarks } = await getStructure(code, 'daily');
+      set({ structureData: structure, signalMarks });
+    } catch {
+      // 结构加载失败不影响 K 线显示
+      set({ signalMarks: [], structureData: null });
+    }
+  },
+  setHighlightDate: (date: string | null) => set({ highlightDate: date }),
   clear: () => set(initialState),
 }));

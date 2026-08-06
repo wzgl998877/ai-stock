@@ -4,9 +4,9 @@ import { Descriptions, Empty } from 'antd';
 interface FinancialTabProps {
   financial: {
     revenue?: number;
-    revenue_growth_pct?: number;
+    revenue_growth_pct: number | null;
     net_profit?: number;
-    profit_growth_pct?: number;
+    profit_growth_pct: number | null;
     pe_ttm?: number;
     pb?: number;
   } | null;
@@ -22,8 +22,8 @@ const FinancialTab: React.FC<FinancialTabProps> = ({ financial }) => {
     return v.toFixed(2);
   };
 
-  const growthStyle = (v: number | undefined) => {
-    if (v === undefined || v === null) return {};
+  const growthStyle = (v: number | null) => {
+    if (v === null) return {};
     return { color: v >= 0 ? '#f5222d' : '#52c41a' };
   };
 
@@ -40,7 +40,7 @@ const FinancialTab: React.FC<FinancialTabProps> = ({ financial }) => {
       </Descriptions.Item>
       <Descriptions.Item label="营收同比增长">
         <span style={growthStyle(financial.revenue_growth_pct)}>
-          {financial.revenue_growth_pct !== undefined
+          {financial.revenue_growth_pct != null
             ? `${financial.revenue_growth_pct > 0 ? '+' : ''}${financial.revenue_growth_pct.toFixed(2)}%`
             : '--'}
         </span>
@@ -50,7 +50,7 @@ const FinancialTab: React.FC<FinancialTabProps> = ({ financial }) => {
       </Descriptions.Item>
       <Descriptions.Item label="净利润同比增长">
         <span style={growthStyle(financial.profit_growth_pct)}>
-          {financial.profit_growth_pct !== undefined
+          {financial.profit_growth_pct != null
             ? `${financial.profit_growth_pct > 0 ? '+' : ''}${financial.profit_growth_pct.toFixed(2)}%`
             : '--'}
         </span>

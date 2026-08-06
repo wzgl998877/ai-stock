@@ -63,3 +63,11 @@ class WatchlistRepository(ABC):
     async def count_items(self, group_id: int) -> int:
         """统计分组内股票数量"""
         ...
+
+    @abstractmethod
+    async def get_all_items_by_user(self, user_id: str) -> List[WatchlistItem]:
+        """获取用户所有自选股（跨分组 join，按 stock_code 去重）。
+
+        供缠论监控扫描使用——监控范围 = 用户全部自选股。
+        """
+        ...

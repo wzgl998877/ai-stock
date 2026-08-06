@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # === 事件采集 ===
     event_crawl_enabled: bool = True                              # 事件采集调度器开关（本地开发可关闭）
 
+    # === 缠论策略监控（模块三） ===
+    chanlun_scan_enabled: bool = True        # 缠论扫描调度器总开关（本地开发可关闭）
+    chanlun_scan_daily_cron: str = "15:40"   # 日线收盘扫描触发时刻（HH:MM，工作日）
+    chanlun_backtest_timeout: int = 300      # 回测任务整体超时（秒）
+    chanlun_concurrency: int = 10            # 监控扫描并发上限
+    chanlun_algo_version: str = "1.0.0"      # 缠论算法版本号（写入信号/结构/回测，保证可回放与一致性）
+
     # === 邮件 (SMTP) ===
     smtp_host: str = "smtp.qq.com"
     smtp_port: int = 465

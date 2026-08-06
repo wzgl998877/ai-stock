@@ -13,7 +13,6 @@ const SyncPanel: React.FC = () => {
   const {
     currentSync,
     syncStatus,
-    resetSync,
     startSync,
     updateProgress,
     completeSync,
@@ -64,14 +63,6 @@ const SyncPanel: React.FC = () => {
     },
     [startSync, updateProgress, completeSync, failSync, loadHistory],
   );
-
-  const handleCancel = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-    resetSync();
-  }, [resetSync]);
 
   useEffect(() => {
     // Cleanup on unmount

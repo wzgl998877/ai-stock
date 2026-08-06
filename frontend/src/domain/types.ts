@@ -257,6 +257,7 @@ export interface StockValidationResult {
 // 扩展 SSE 事件类型
 export type StockSSEEventType =
   | SSEEventType
+  | "analysis_id"
   | "agent_status"
   | "agent_report"
   | "debate"
@@ -326,3 +327,193 @@ export interface AnalysisRecordListResponse {
   page_size: number;
   items: AnalysisRecordListItem[];
 }
+
+// ============================================================================
+// 缠论策略监控与信号回测（模块三）
+// ============================================================================
+
+/** 缠论周期：日线 / 30 分钟 */
+export type ChanlunPeriod = "daily" | "m30";
+
+/** 缠论信号类型：一/二/三类买、一/二/三类卖 */
+export type SignalType = "buy1" | "buy2" | "buy3" | "sell1" | "sell2" | "sell3";
+
+/** 自选股徽标状态 */
+export type SignalStatus =
+  | "monitored"           // 监控中且有近期信号
+  | "monitored_nodata"    // 监控中但无信号
+  | "disabled"            // 已关闭该周期监控
+  | "insufficient_data";  // 数据不足
+
+/** 信号结构级别 */
+export type StructureLevel = "stroke" | "segment";
+
+/** 单条信号摘要（徽标 Tooltip / K 线 markPoint 用） */
+export interface SignalSummary {
+  signal_type: SignalType | null;
+  signal_time: string | null;
+  confirmed_at: string | null;
+  trigger_price: number | null;
+}
+
+/** 自选股列表信号行（双周期） */
+export interface WatchlistSignalItem {
+  stock_code: string;
+  stock_name: string;
+  daily: SignalSummary | null;
+  m30: SignalSummary | null;
+  daily_status: SignalStatus;
+  m30_status: SignalStatus;
+}
+
+/** 缠论结构端点 */
+export interface StructurePoint {
+  time: string;
+  price: number;
+}
+
+/** 笔 */
+export interface Stroke {
+  start: StructurePoint;
+  end: StructurePoint;
+  direction: "up" | "down";
+  confirmed: boolean;
+}
+
+/** 线段 */
+export interface Segment {
+  start: StructurePoint;
+  end: StructurePoint;
+  direction: "up" | "down";
+  confirmed: boolean;
+}
+
+/** 中枢 */
+export interface Zhongshu {
+  zd: number;        // 中枢下沿
+  zg: number;        // 中枢上沿
+  dd: number;        // 最低点
+  gg: number;        // 最高点
+  enter_time: string;
+  exit_time: string | null;
+}
+
+/** 单股结构快照（K 线渲染） */
+export interface StructureData {
+  strokes: Stroke[];
+  segments: Segment[];
+  zhongshu: Zhongshu[];
+  last_kline_time: string;
+  algo_version: string;
+}
+
+/** K 线买卖点标注（markPoint） */
+export interface SignalMark {
+  signal_type: SignalType;
+  time: string;
+  price: number;
+  confirmed_at: string;
+  level: 1 | 2 | 3;  // 一/二/三类
+}
+
+/** 信号历史记录 */
+export interface SignalHistoryItem {
+  signal_type: SignalType;
+  period: ChanlunPeriod;
+  structure_level: StructureLevel;
+  signal_time: string;
+  confirmed_at: string | null;
+  trigger_price: number | null;
+  algo_version: string;
+  status: "confirmed" | "invalidated";
+  invalidated_reason: string | null;
+}
+
+/** 计算任务状态（日线 / m30） */
+export interface RunStatusItem {
+  last_run_at: string | null;
+  duration_ms: number | null;
+  total: number;
+  success: number;
+  failed: number;
+  failed_detail: { stock_code: string; reason: string }[] | null;
+  algo_version: string;
+}
+
+/** 计算任务状态响应（GET /run-status，双周期） */
+export interface RunStatus {
+  daily: RunStatusItem | null;
+  m30: RunStatusItem | null;
+  algo_version?: string;
+}
+
+/** 监控配置 */
+export interface MonitorConfig {
+  daily_enabled: boolean;
+  m30_enabled: boolean;
+}
+
+// === 回测 ===
+export type BacktestRange = "1y" | "3y" | "5y";
+export type BacktestWindow = 5 | 10 | 20 | 60;
+
+export interface BacktestReportListItem {
+  report_id: number;
+  range_label: BacktestRange;
+  start_date: string;
+  end_date: string;
+  stock_count: number;
+  signal_total: number;
+  algo_version: string;
+  status: "running" | "done" | "failed";
+  create_time: string;
+}
+
+export interface BacktestSummaryCell {
+  period: ChanlunPeriod;
+  signal_type: SignalType;
+  window: BacktestWindow;
+  sample: number;
+  win_rate: number;          // 0-1
+  avg_return: number;
+  median_return: number;
+  profit_loss_ratio: number;
+  note: "sample_insufficient" | "window_incomplete" | null;
+}
+
+export interface BacktestReportDetail {
+  meta: {
+    range_label: BacktestRange;
+    stock_count: number;
+    signal_total: number;
+    excluded_invalidated: number;
+    algo_version: string;
+    benchmark_return: number | null;
+    finished_at: string | null;
+  };
+  summary: BacktestSummaryCell[];
+}
+
+export interface BacktestSignalDetailItem {
+  stock_code: string;
+  signal_type: SignalType;
+  signal_time: string;
+  trigger_price: number | null;
+  ret_5: number | null;
+  ret_10: number | null;
+  ret_20: number | null;
+  ret_60: number | null;
+  window_complete: boolean;
+}
+
+// === 缠论 SSE 事件 ===
+export type StrategySSEEvent =
+  | { event: "calc_started"; data: { period: ChanlunPeriod; total: number } }
+  | { event: "calc_progress"; data: { stock_code: string; status: "done" | "skipped" | "failed"; reason: string | null } }
+  | { event: "data_error"; data: { message: string } }
+  | { event: "calc_completed"; data: { total: number; success: number; failed: number; duration_ms: number; algo_version: string } }
+  | { event: "calc_error"; data: { message: string } }
+  | { event: "backtest_started"; data: { range: BacktestRange; stock_count: number } }
+  | { event: "backtest_progress"; data: { stock_code: string; signals_found: number } }
+  | { event: "backtest_completed"; data: { report_id: number; signal_total: number; excluded_invalidated: number; duration_ms: number } }
+  | { event: "backtest_error"; data: { message: string } };

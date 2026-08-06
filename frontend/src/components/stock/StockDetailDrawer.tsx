@@ -13,7 +13,7 @@ interface StockDetailDrawerProps {
 
 const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ visible, stockCode, onClose }) => {
   const navigate = useNavigate();
-  const { basic, quote, klineData, minuteData, indicators, activePeriod, klineLoading, fetchStockDetail, fetchKlineData, clear } = useStockDetailStore();
+  const { basic, quote, klineData, minuteData, indicators, activePeriod, klineLoading, fetchStockDetail, clear } = useStockDetailStore();
 
   useEffect(() => {
     if (visible && stockCode) {

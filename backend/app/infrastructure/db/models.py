@@ -409,6 +409,36 @@ class StockDailyQuoteModel(Base):
     )
 
 
+class StockKline30mModel(Base):
+    """30 分钟 K 线（模块三缠论专用，独立表）。
+
+    与 ``t_stock_daily_quote`` 隔离：后者 ``trade_date`` 为 ``Date``，无法区分同日 8 根 30m。
+    本表 ``trade_time`` 为区间结束时刻（10:00/10:30/.../15:00）。
+    """
+
+    __tablename__ = "t_stock_kline_30m"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)
+    trade_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    open_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    high_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    low_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    close_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    volume: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 0), nullable=True)
+    amount: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(18, 2), nullable=True)
+    data_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("code", "trade_time", "data_source", name="uk_code_time_source_30m"),
+        Index("idx_k30m_code_time", "code", "trade_time"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # 16. t_stock_analysis（个股分析主表）
 # ---------------------------------------------------------------------------
@@ -707,4 +737,186 @@ class RadarConfigModel(Base):
     quiet_hours_end: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module 3: 缠论策略监控与信号回测
+# 字段对照 specs/009-chanlun-signal-system/data-model.md
+# 价格 DECIMAL(12,3)；比率 DECIMAL(8,6)；user_id VARCHAR(32)
+# ---------------------------------------------------------------------------
+
+class StrategySignalModel(Base):
+    """缠论信号历史（核心，对标 ``t_strategy_signal``）。"""
+
+    __tablename__ = "t_strategy_signal"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    signal_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    structure_level: Mapped[str] = mapped_column(String(8), nullable=False)
+    signal_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    trigger_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="confirmed")
+    invalidated_reason: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    dedup_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("dedup_key", name="uq_strategy_signal_dedup"),
+        Index("idx_ss_code_period_time", "stock_code", "period", "signal_time"),
+        Index("idx_ss_user_status", "user_id", "status"),
+    )
+
+
+class StrategyStructureModel(Base):
+    """缠论结构快照（覆盖式更新，对标 ``t_strategy_structure``）。"""
+
+    __tablename__ = "t_strategy_structure"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    strokes_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    segments_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    zhongshu_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    last_kline_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("stock_code", "period", name="uq_strategy_structure_code_period"),
+    )
+
+
+class StrategyMonitorConfigModel(Base):
+    """逐股监控配置（对标 ``t_strategy_monitor_config``）。"""
+
+    __tablename__ = "t_strategy_monitor_config"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    daily_enabled: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    m30_enabled: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "stock_code", name="uq_monitor_user_stock"),
+    )
+
+
+class StrategyRunLogModel(Base):
+    """计算任务日志（对标 ``t_strategy_run_log``）。"""
+
+    __tablename__ = "t_strategy_run_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(12), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="running")
+    total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    success: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    failed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    failed_detail: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+
+    __table_args__ = (
+        Index("idx_srl_period_started", "period", "started_at"),
+    )
+
+
+class BacktestReportModel(Base):
+    """回测报告（对标 ``t_backtest_report``）。"""
+
+    __tablename__ = "t_backtest_report"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    range_label: Mapped[str] = mapped_column(String(4), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    stock_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    signal_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    excluded_invalidated: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    benchmark_return: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="running")
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+    __table_args__ = (
+        Index("idx_br_user_created", "user_id", "create_time"),
+    )
+
+
+class BacktestSignalDetailModel(Base):
+    """回测信号明细（对标 ``t_backtest_signal_detail``）。"""
+
+    __tablename__ = "t_backtest_signal_detail"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("t_backtest_report.id", ondelete="CASCADE"), nullable=False,
+    )
+    stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    signal_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    structure_level: Mapped[str] = mapped_column(String(8), nullable=False)
+    signal_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    trigger_price: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(12, 3), nullable=True)
+    ret_5: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    ret_10: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    ret_20: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    ret_60: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    window_complete: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "report_id", "stock_code", "period", "signal_type", "signal_time",
+            name="uq_bsd_report_signal",
+        ),
+        Index("idx_bsd_report_type", "report_id", "period", "signal_type"),
+    )
+
+
+class BacktestSummaryModel(Base):
+    """回测聚合统计（对标 ``t_backtest_summary``）。"""
+
+    __tablename__ = "t_backtest_summary"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("t_backtest_report.id", ondelete="CASCADE"), nullable=False,
+    )
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    signal_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    window: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    win_rate: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    avg_return: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    median_return: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    profit_loss_ratio: Mapped[Optional[Decimal]] = mapped_column(DECIMAL(8, 6), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "report_id", "period", "signal_type", "window",
+            name="uq_bs_report_window",
+        ),
     )

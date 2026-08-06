@@ -16,8 +16,9 @@ import AnalysisRecordsPage from "./pages/AnalysisRecordsPage";
 import SyncPanel from "./pages/SyncPanel";
 import StockDetailPage from "./pages/StockDetailPage";
 import WatchlistPage from "./pages/WatchlistPage";
-import IndustryPage from "./pages/IndustryPage";
 import EventRadarPage from "./pages/EventRadarPage";
+import BacktestPage from "./pages/BacktestPage";
+import StrategyMonitorPage from "./pages/StrategyMonitorPage";
 import { useAuthStore } from "./store/authStore";
 import "./styles/global.css";
 
@@ -59,6 +60,9 @@ const AppContent: React.FC = () => {
         {/* <Route path="/market/industry" element={<IndustryPage />} /> */}
         {/* 模块四：事件影响雷达 */}
         <Route path="/event-radar" element={<EventRadarPage />} />
+        {/* 模块三：缠论信号 — 监控与回测 */}
+        <Route path="/strategy" element={<StrategyMonitorPage />} />
+        <Route path="/strategy/backtest" element={<BacktestPage />} />
         <Route path="*" element={<Navigate to="/analysis" replace />} />
       </Routes>
     </AppLayout>

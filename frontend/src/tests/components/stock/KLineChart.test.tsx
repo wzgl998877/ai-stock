@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import KLineChart from '../../../components/stock/KLineChart';
 
 // ---------- echarts mock ----------
@@ -98,14 +98,10 @@ describe('KLineChart', () => {
   });
 
   it('handles empty data gracefully', () => {
-    const { container } = render(<KLineChart data={[]} />);
+    render(<KLineChart data={[]} />);
 
-    // Even with empty data, the chart div should still be rendered
-    const chartDiv = container.querySelector('div[style]');
-    expect(chartDiv).toBeInTheDocument();
-
-    // setOption should be called with an empty object (since data is empty)
-    expect(mockSetOption).toHaveBeenCalledWith({}, true);
+    // 空数据走 Empty 占位，不渲染图表、不调用 setOption（优雅降级）
+    expect(mockSetOption).not.toHaveBeenCalled();
   });
 
   it('shows minute chart when period is "minute" and minuteData is provided', () => {
@@ -166,6 +162,151 @@ describe('KLineChart', () => {
 
     const chartDiv = container.querySelector('div[style]');
     expect(chartDiv).toHaveStyle({ height: '600px' });
+  });
+
+  it('renders signal markPoints when signalMarks provided', () => {
+    render(
+      <KLineChart
+        data={klineData}
+        signalMarks={[
+          { signal_type: 'buy1', time: '2026-01-02', price: 10.5, confirmed_at: '2026-01-02', level: 1 },
+          { signal_type: 'sell2', time: '2026-01-06', price: 11.5, confirmed_at: '2026-01-06', level: 2 },
+        ]}
+      />,
+    );
+
+    expect(mockSetOption).toHaveBeenCalled();
+    const optionArg = mockSetOption.mock.calls[0][0];
+    const candlestickSeries = optionArg.series?.find((s: any) => s.type === 'candlestick');
+    expect(candlestickSeries.markPoint).toBeDefined();
+    expect(candlestickSeries.markPoint.data).toHaveLength(2);
+    // 买绿 ▲ / 卖红 ▼
+    expect(candlestickSeries.markPoint.data[0].itemStyle.color).toBe('#16c79a');
+    expect(candlestickSeries.markPoint.data[1].itemStyle.color).toBe('#ea2261');
+    // 卖点箭头翻转 180°
+    expect(candlestickSeries.markPoint.data[1].symbolRotate).toBe(180);
+    // coord 取日期前 10 字符对齐 x 轴
+    expect(candlestickSeries.markPoint.data[0].coord[0]).toBe('2026-01-02');
+  });
+
+  it('hides markPoints when showChanlun=false', () => {
+    render(
+      <KLineChart
+        data={klineData}
+        signalMarks={[
+          { signal_type: 'buy1', time: '2026-01-02', price: 10.5, confirmed_at: '2026-01-02', level: 1 },
+        ]}
+        showChanlun={false}
+      />,
+    );
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    const candlestickSeries = optionArg.series?.find((s: any) => s.type === 'candlestick');
+    expect(candlestickSeries.markPoint).toBeUndefined();
+  });
+
+  // ---------- T038：缠论结构图层（笔/线段 markLine + 中枢 markArea） ----------
+  const structureData = {
+    strokes: [
+      { start: { time: '2026-01-02', price: 10.5 }, end: { time: '2026-01-03', price: 10.8 }, direction: 'up' as const, confirmed: true },
+    ],
+    segments: [
+      { start: { time: '2026-01-02', price: 10.5 }, end: { time: '2026-01-06', price: 11.5 }, direction: 'up' as const, confirmed: false },
+    ],
+    zhongshu: [
+      { zd: 10.6, zg: 11.0, dd: 10.5, gg: 11.2, enter_time: '2026-01-02', exit_time: '2026-01-06' },
+    ],
+    last_kline_time: '2026-01-06',
+    algo_version: '1.0.0',
+  };
+
+  it('renders structure markLine (strokes+segments) and markArea (zhongshu)', () => {
+    render(<KLineChart data={klineData} structure={structureData} />);
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    const candlestickSeries = optionArg.series?.find((s: any) => s.type === 'candlestick');
+    // 1 笔 + 1 线段 = 2 条 markLine（实现中线段在前、笔在后）
+    expect(candlestickSeries.markLine).toBeDefined();
+    expect(candlestickSeries.markLine.data).toHaveLength(2);
+    // 线段在前：未确认 → dashed
+    const segLine = candlestickSeries.markLine.data[0];
+    expect(segLine[1].lineStyle.type).toBe('dashed');
+    // 笔在后：已确认 → solid
+    const strokeLine = candlestickSeries.markLine.data[1];
+    expect(strokeLine[1].lineStyle.type).toBe('solid');
+    // 1 个中枢矩形
+    expect(candlestickSeries.markArea).toBeDefined();
+    expect(candlestickSeries.markArea.data).toHaveLength(1);
+    // 中枢矩形以 [enter_time, zd] → [exit_time, zg] 圈定
+    const area = candlestickSeries.markArea.data[0];
+    expect(area[0].xAxis).toBe('2026-01-02');
+    expect(area[0].yAxis).toBe(10.6);
+    expect(area[1].yAxis).toBe(11.0);
+  });
+
+  it('omits markLine/markArea when structure is null', () => {
+    render(<KLineChart data={klineData} structure={null} />);
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    const candlestickSeries = optionArg.series?.find((s: any) => s.type === 'candlestick');
+    expect(candlestickSeries.markLine).toBeUndefined();
+    expect(candlestickSeries.markArea).toBeUndefined();
+  });
+
+  // ---------- T038：highlightDate 经 dataZoom startValue/endValue 定位 ----------
+  it('positions dataZoom via startValue/endValue when highlightDate hits a trading day', () => {
+    render(<KLineChart data={klineData} highlightDate="2026-01-03" />);
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    expect(optionArg.dataZoom[0].startValue).toBe('2026-01-02'); // 窗口左端（idx-40 截到 0）
+    expect(optionArg.dataZoom[0].endValue).toBe('2026-01-06'); // 窗口右端（idx+20 截到末尾）
+    expect(optionArg.dataZoom[0].start).toBeUndefined();
+  });
+
+  it('falls back to percentage dataZoom when highlightDate is absent', () => {
+    render(<KLineChart data={klineData} />);
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    expect(optionArg.dataZoom[0].start).toBeDefined();
+    expect(optionArg.dataZoom[0].startValue).toBeUndefined();
+  });
+
+  it('falls back to percentage dataZoom when highlightDate misses the range', () => {
+    render(<KLineChart data={klineData} highlightDate="2099-12-31" />);
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    expect(optionArg.dataZoom[0].start).toBeDefined();
+    expect(optionArg.dataZoom[0].startValue).toBeUndefined();
+  });
+
+  // ---------- T041：周/月 K 隐藏缠论图层 + 提示 ----------
+  it('hides chanlun marks on weekly period even when signalMarks/structure provided', () => {
+    render(
+      <KLineChart
+        data={klineData}
+        period="weekly"
+        signalMarks={[
+          { signal_type: 'buy1', time: '2026-01-02', price: 10.5, confirmed_at: '2026-01-02', level: 1 },
+        ]}
+        structure={structureData}
+      />,
+    );
+
+    const optionArg = mockSetOption.mock.calls[0][0];
+    const candlestickSeries = optionArg.series?.find((s: any) => s.type === 'candlestick');
+    expect(candlestickSeries.markPoint).toBeUndefined();
+    expect(candlestickSeries.markLine).toBeUndefined();
+    expect(candlestickSeries.markArea).toBeUndefined();
+  });
+
+  it('shows "unsupported" notice on monthly period when chanlun enabled', () => {
+    const { queryByText } = render(<KLineChart data={klineData} period="monthly" />);
+    expect(queryByText('当前周期暂不支持缠论分析')).toBeInTheDocument();
+  });
+
+  it('does not show "unsupported" notice on daily period', () => {
+    const { queryByText } = render(<KLineChart data={klineData} period="daily" />);
+    expect(queryByText('当前周期暂不支持缠论分析')).not.toBeInTheDocument();
   });
 
   it('cleans up chart instance on unmount', () => {

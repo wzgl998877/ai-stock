@@ -11,6 +11,9 @@ from app.infrastructure.db.models import (  # noqa: F401 — ensure all models r
     AnalysisArticle,
     ArticleIndustry,
     ArticleStock,
+    BacktestReportModel,
+    BacktestSignalDetailModel,
+    BacktestSummaryModel,
     ChatMessage,
     ChatSession,
     EventReminder,
@@ -19,6 +22,11 @@ from app.infrastructure.db.models import (  # noqa: F401 — ensure all models r
     StockAnalysisDetailModel,
     StockAnalysisModel,
     StockIndustry,
+    StockKline30mModel,
+    StrategyMonitorConfigModel,
+    StrategyRunLogModel,
+    StrategySignalModel,
+    StrategyStructureModel,
     User,
 )
 

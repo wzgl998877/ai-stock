@@ -149,3 +149,25 @@ class MySQLWatchlistRepository(WatchlistRepository):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def get_all_items_by_user(self, user_id: str) -> List[WatchlistItem]:
+        """获取用户所有自选股（跨分组 join，按 stock_code 去重）。
+
+        同一只股票可能在多个分组中，取 ``add_time`` 最新的一行代表。
+        """
+        # 子查询：每个 stock_code 的最大 id（即最新加入记录）
+        latest_id = (
+            select(func.max(WatchlistItemModel.id).label("max_id"))
+            .join(WatchlistGroupModel, WatchlistItemModel.group_id == WatchlistGroupModel.id)
+            .where(WatchlistGroupModel.user_id == user_id)
+            .group_by(WatchlistItemModel.stock_code)
+            .subquery()
+        )
+        stmt = (
+            select(WatchlistItemModel)
+            .join(latest_id, WatchlistItemModel.id == latest_id.c.max_id)
+            .order_by(WatchlistItemModel.add_time.desc())
+        )
+        result = await self.session.execute(stmt)
+        models = result.scalars().all()
+        return [_item_to_entity(m) for m in models]

@@ -34,7 +34,7 @@
 
 ### 技术栈
 
-- **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 5 + **Zustand**
+- **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 6 + **Zustand**
 - **后端**：Python 3 + **FastAPI**
 - **数据**：**MySQL**（主库）+ **Redis**（缓存/计算结果）；A 股数据 **AKShare**
 - **大模型**：经统一抽象层接入（如 OpenAI / DeepSeek 兼容接口），**禁止**在业务层散落直连 SDK

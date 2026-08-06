@@ -568,6 +568,20 @@ const StockAnalysisPage: React.FC = () => {
     } else {
       // 无 recordId → 强制 reset 到 idle（每次进入都是新分析入口）
       store.reset();
+      // FR-017：支持 ?code= 预填（来自信号徽标「AI 深度分析」等入口）
+      const code = searchParams.get("code");
+      if (code) {
+        stockAnalysisService
+          .validateStock(code)
+          .then((res) => {
+            if (res.valid && res.stock_code) {
+              useStockAnalysisStore.getState().setStock(res.stock_code, res.stock_name || "");
+            }
+          })
+          .catch(() => {
+            /* 预填失败不阻断入口，用户可手动搜索 */
+          });
+      }
     }
   }, [searchParams]);
 
@@ -576,7 +590,6 @@ const StockAnalysisPage: React.FC = () => {
   const isDone = store.analysisState === "done";
   const isError = store.analysisState === "error";
   const isQuickMode = store.analysisMode === AnalysisMode.QUICK;
-  const isViewMode = store.viewMode;
 
   // Fetch data source info when stock code changes
   useEffect(() => {

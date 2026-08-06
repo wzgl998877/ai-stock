@@ -44,7 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🛠 技术栈
 
-- **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 5 + Zustand
+- **前端**：React 18 + TypeScript + Ant Design 5 + ECharts 6 + Zustand
 - **后端**：Python 3 + FastAPI
 - **数据**：AKShare（A 股数据）、MySQL、Redis
 - **大模型**：统一抽象层，支持 OpenAI / DeepSeek 等兼容接口
@@ -75,7 +75,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # 后端（示例：在项目根目录或 backend 目录下）
 # pip install -r requirements.txt
-# uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# uvicorn app.main:app --reload --host 0.0.0.0 --port 18000
 
 # 前端（示例：在 frontend 目录下）
 # npm install

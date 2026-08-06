@@ -148,6 +148,26 @@ class StockDailyQuote:
 
 
 @dataclass
+class StockKline30m:
+    """30 分钟 K 线（模块三缠论专用，对标 ``t_stock_kline_30m``）。
+
+    ``trade_time`` 为区间结束时刻（10:00/10:30/.../15:00，每交易日 8 根）。
+    """
+    code: str
+    trade_time: datetime
+    open_price: Optional[Decimal] = None
+    high_price: Optional[Decimal] = None
+    low_price: Optional[Decimal] = None
+    close_price: Optional[Decimal] = None
+    volume: Optional[Decimal] = None
+    amount: Optional[Decimal] = None
+    data_source: str = ""
+    id: Optional[int] = None
+    create_time: Optional[datetime] = None
+    update_time: Optional[datetime] = None
+
+
+@dataclass
 class StockFinancial:
     code: str
     report_date: date

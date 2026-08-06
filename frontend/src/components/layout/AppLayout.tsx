@@ -248,12 +248,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {
           key: "/strategy",
           icon: <RadarChartOutlined />,
-          label: (
-            <Tooltip title="即将推出" placement="right">
-              <span>策略监控</span>
-            </Tooltip>
-          ),
-          disabled: true,
+          label: "策略监控",
         },
       ],
     },

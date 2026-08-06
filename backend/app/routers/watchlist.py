@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser, get_current_user
+from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
 from app.infrastructure.repositories.mysql_watchlist_repo import MySQLWatchlistRepository
 from app.application.use_cases.watchlist import WatchlistUseCase
 
@@ -13,7 +14,9 @@ router = APIRouter(prefix="/api/v1/watchlist", tags=["watchlist"])
 
 def _get_use_case(db: AsyncSession = Depends(get_db)) -> tuple[WatchlistUseCase, AsyncSession]:
     repo = MySQLWatchlistRepository(db)
-    return WatchlistUseCase(repo), db
+    # 注入缠论仓库：自选股移除时联动清理逐股监控配置（T051）
+    chanlun_repo = MySQLChanlunRepository(db)
+    return WatchlistUseCase(repo, chanlun_repo=chanlun_repo), db
 
 
 def _group_to_dict(g) -> dict:

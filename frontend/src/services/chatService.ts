@@ -1,7 +1,7 @@
 /** Chat API Service */
 
 import api, { getAuthHeaders } from "./api";
-import type { SSEEvent, ChatSessionType, ChatMessageType } from "../domain/types";
+import type { SSEEvent, ChatSessionType } from "../domain/types";
 
 const BASE = "/api/chat";
 

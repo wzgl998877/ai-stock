@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.trace_context import new_trace_id, set_trace_id, clear_trace_id, push_span, pop_span
 from app.infrastructure.ai.ai_service import AIService
-from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry, auth, search, event_radar
+from app.routers import analysis, knowledge, chat, sync, datasource, stock_data, watchlist, industry, auth, search, event_radar, chanlun, backtest
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("事件采集调度器初始化失败（非致命）: %s", e)
 
+    # 初始化缠论监控扫描调度器（APScheduler）
+    _chanlun_scheduler = None
+    if not settings.chanlun_scan_enabled:
+        logger.info("缠论扫描调度器已禁用 (chanlun_scan_enabled=false)")
+    else:
+        try:
+            from app.infrastructure.scheduler.chanlun_scheduler import setup_scheduler as chanlun_setup
+            _chanlun_scheduler = chanlun_setup(session_factory=async_session)
+            if _chanlun_scheduler:
+                _chanlun_scheduler.start()
+                logger.info("缠论扫描调度器已启动")
+        except Exception as e:
+            logger.warning("缠论扫描调度器初始化失败（非致命）: %s", e)
+
     yield
     # Shutdown
     if hasattr(app.state, "search_service") and app.state.search_service:
@@ -154,6 +168,9 @@ async def lifespan(app: FastAPI):
     if _event_scheduler:
         _event_scheduler.shutdown(wait=False)
         logger.info("事件采集调度器已关闭")
+    if _chanlun_scheduler:
+        _chanlun_scheduler.shutdown(wait=False)
+        logger.info("缠论扫描调度器已关闭")
 
 
 app = FastAPI(
@@ -247,6 +264,8 @@ app.include_router(watchlist.router)
 app.include_router(industry.router)
 app.include_router(search.router)
 app.include_router(event_radar.router)
+app.include_router(chanlun.router)
+app.include_router(backtest.router)
 
 # 托管前端静态文件（与后端同端口）
 _frontend_dist = Path(__file__).resolve().parent.parent / "dist"

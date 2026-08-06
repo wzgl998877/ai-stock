@@ -27,10 +27,7 @@ import {
   ReadOutlined,
   CheckCircleOutlined,
   SyncOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
   ClockCircleOutlined,
-  RightOutlined,
   FileTextOutlined,
   ThunderboltOutlined,
   ExperimentOutlined,
@@ -102,13 +99,6 @@ const MOCK_RECENT_ANALYSES = [
   { id: "1", stockCode: "600519", stockName: "贵州茅台", mode: "full" as const, status: "completed" as const, date: "2026-04-24 15:32" },
   { id: "2", stockCode: "000858", stockName: "五粮液", mode: "quick" as const, status: "completed" as const, date: "2026-04-23 10:18" },
   { id: "3", stockCode: "300750", stockName: "宁德时代", mode: "full" as const, status: "in_progress" as const, date: "2026-04-22 09:45" },
-];
-
-/** 市场环境快照 Mock */
-const MOCK_MARKET_INDICES = [
-  { name: "上证指数", value: "3286.42", change: "+0.58%", up: true },
-  { name: "深证成指", value: "10892.15", change: "+0.72%", up: true },
-  { name: "创业板指", value: "2198.33", change: "-0.15%", up: false },
 ];
 
 /** 数据就绪状态 Mock */
@@ -382,67 +372,6 @@ const AnalystReadyCardItem: React.FC<{ card: AnalystReadyCard }> = ({ card }) =>
         {card.description}
       </div>
     </div>
-  </div>
-);
-
-/** 最近分析列表项 */
-const RecentAnalysisItem: React.FC<{
-  item: typeof MOCK_RECENT_ANALYSES[0];
-  onClick: () => void;
-}> = ({ item, onClick }) => {
-  const statusColor = item.status === "completed" ? "success" : "processing";
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "10px 12px",
-        borderRadius: 8,
-        cursor: "pointer",
-        transition: "background 0.15s ease",
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#f9f9f9"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-    >
-      <Badge status={statusColor as "success" | "processing"} />
-      <div style={{ flex: 1 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: "#1f2937" }}>{item.stockName}</span>
-        <span style={{ fontSize: 12, color: "#8c8c8c", marginLeft: 4 }}>({item.stockCode})</span>
-      </div>
-      <Tag color={item.mode === "full" ? "purple" : "blue"} style={{ fontSize: 10, margin: 0 }}>
-        {item.mode === "full" ? "深度" : "快速"}
-      </Tag>
-      <span style={{ fontSize: 11, color: "#bfbfbf" }}>{item.date}</span>
-    </div>
-  );
-};
-
-/** 市场环境快照 */
-const MarketSnapshot: React.FC = () => (
-  <div style={{ display: "flex", gap: 8 }}>
-    {MOCK_MARKET_INDICES.map((idx) => (
-      <div
-        key={idx.name}
-        style={{
-          flex: 1,
-          padding: "10px 12px",
-          borderRadius: 8,
-          background: "#fafbfc",
-          border: "1px solid #f0f0f0",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ fontSize: 11, color: "#8c8c8c", marginBottom: 4 }}>{idx.name}</div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "#1f2937", fontFeatureSettings: "'ss01' on" }}>
-          {idx.value}
-        </div>
-        <div style={{ fontSize: 12, color: idx.up ? "#15be53" : "#ef4444", marginTop: 2 }}>
-          {idx.up ? <ArrowUpOutlined /> : <ArrowDownOutlined />} {idx.change}
-        </div>
-      </div>
-    ))}
   </div>
 );
 

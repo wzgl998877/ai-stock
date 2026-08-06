@@ -1,4 +1,5 @@
 import { EventType } from "./types";
+import type { SignalType, SignalStatus, BacktestWindow, BacktestRange } from "./types";
 
 // === 事件类型配置 ===
 export const EVENT_TYPES: { value: EventType; label: string }[] = [
@@ -236,3 +237,62 @@ export const ANALYSIS_MODE_OPTIONS = [
 
 export const DEFAULT_DEBATE_ROUNDS = 2;
 export const DEFAULT_RISK_DEBATE_ROUNDS = 2;
+
+// ============================================================================
+// 缠论策略监控（模块三）
+// ============================================================================
+
+/** 回测观察窗口（交易日） */
+export const BACKTEST_WINDOWS: BacktestWindow[] = [5, 10, 20, 60];
+
+/** 回测区间选项 */
+export const BACKTEST_RANGES: { value: BacktestRange; label: string }[] = [
+  { value: "1y", label: "近 1 年" },
+  { value: "3y", label: "近 3 年" },
+  { value: "5y", label: "近 5 年" },
+];
+
+/** 信号类型中文标签 */
+export const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
+  buy1: "一类买点",
+  buy2: "二类买点",
+  buy3: "三类买点",
+  sell1: "一类卖点",
+  sell2: "二类卖点",
+  sell3: "三类卖点",
+};
+
+/** 信号徽标颜色（买绿 / 卖红，沿用 A 股 K 线箭头习惯） */
+export const SIGNAL_BADGE_COLORS: Record<SignalType, string> = {
+  buy1: "#16c79a",
+  buy2: "#16c79a",
+  buy3: "#16c79a",
+  sell1: "#ea2261",
+  sell2: "#ea2261",
+  sell3: "#ea2261",
+};
+
+/** 徽标状态中文文案 */
+export const SIGNAL_STATUS_LABELS: Record<SignalStatus, string> = {
+  monitored: "有信号",
+  monitored_nodata: "无信号",
+  disabled: "已停用",
+  insufficient_data: "数据不足",
+};
+
+/** 信号方向：买 / 卖 */
+export function isBuySignal(t: SignalType): boolean {
+  return t.startsWith("buy");
+}
+
+/** 一/二/三类等级 */
+export function signalLevel(t: SignalType): 1 | 2 | 3 {
+  return Number(t.slice(-1)) as 1 | 2 | 3;
+}
+
+/** 统一免责声明（FR-016，强制） */
+export const STRATEGY_DISCLAIMER = "规则参考信号，不构成投资建议";
+export const STRATEGY_DISCLAIMER_LONG =
+  "本信号由缠论规则算法自动生成，仅供投研参考，不构成任何投资建议；历史表现不代表未来，市场有风险，决策需谨慎。";
+export const BACKTEST_DISCLAIMER =
+  "回测存在生存者偏差（仅含当前在市自选股）与未来函数防护，结果仅供算法有效性参考，不代表未来收益。";

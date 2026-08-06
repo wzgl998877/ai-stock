@@ -612,7 +612,7 @@ CREATE TABLE t_radar_config (
 └── 行情数据
     ├── 自选股        → /market/watchlist     （分组管理+行情刷新+影响徽标）
     ├── 行业对比      → /market/industry      （申万31行业股票对比）
-    └── 策略监控      → （即将推出）
+    └── 策略监控      → /strategy             （缠论信号监控，已实现）
 ```
 
 ---

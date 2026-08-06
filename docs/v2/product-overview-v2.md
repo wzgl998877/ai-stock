@@ -178,7 +178,7 @@
 
 ### 和原计划的差异
 
-原计划为"缠论策略监控"模块。实际实现为**数据管理与同步面板**。缠论功能标记为"即将推出"，当前模块聚焦于数据采集和工具管理。
+原计划为"缠论策略监控"模块。实际实现为**数据管理与同步面板**（本模块聚焦数据采集和工具管理）。缠论策略监控与历史回测已独立实现（spec 009），详见 `docs/v2/strategy-monitor-prd-v2.md` 与 `docs/v2/backtest-prd-v2.md`。
 
 ### 核心功能
 
@@ -262,7 +262,8 @@
 └── 行情数据
     ├── 自选股        → /market/watchlist   （分组管理+行情刷新）
     ├── 行业对比      → /market/industry    （申万31行业股票对比）
-    └── 策略监控      → （即将推出）         （缠论信号监控）
+    └── 策略监控      → /strategy             （缠论信号监控，已实现）
+    │   └── 信号回测  → /strategy/backtest    （历史回测，已实现）
 ```
 
 ---
@@ -275,7 +276,7 @@
 | 分析架构 | 单 LLM 调用 | LangGraph 工作流 + 13个Agent辩论 |
 | 输入方式 | 纯文本 | 文本 + URL + 文件上传 |
 | 搜索能力 | 无 | 多引擎互联网搜索（3个引擎容错） |
-| 模块三定位 | 缠论策略监控 | 数据与工具面板（缠论即将推出） |
+| 模块三定位 | 缠论策略监控 | 数据与工具面板 + 缠论监控/回测（spec 009，已实现） |
 | 认证 | 未规划 | 完整用户认证系统 |
 | 数据源 | AKShare 单源 | Tushare/AKShare/BaoStock 三源 |
 | 行情获取 | 单一方式 | 腾讯+新浪+TwelveData 多级容错 |
@@ -286,4 +287,4 @@
 *各模块详细 PRD：*
 - *模块一详细 PRD：`docs/ai-analysis-prd-v2.md`*
 - *模块二详细 PRD：`docs/market-data-prd-v2.md`*
-- *模块三详细 PRD（缠论策略监控，未变）：`docs/strategy-monitor-prd.md`*
+- *模块三详细 PRD（缠论策略监控，已实现）：`docs/v2/strategy-monitor-prd-v2.md` + `docs/v2/backtest-prd-v2.md`（spec 009）*

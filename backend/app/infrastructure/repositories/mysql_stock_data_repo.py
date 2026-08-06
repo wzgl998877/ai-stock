@@ -13,6 +13,7 @@ from app.domain.models.stock_data import (
     MarketQuote,
     StockDailyQuote,
     StockFinancial,
+    StockKline30m,
 )
 from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.domain.services.data_priority import get_highest_priority_source, SourceType
@@ -21,6 +22,7 @@ from app.infrastructure.db.models import (
     MarketQuoteModel,
     StockDailyQuoteModel,
     StockFinancialModel,
+    StockKline30mModel,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,6 +94,23 @@ def _to_financial(model: StockFinancialModel) -> StockFinancial:
         eps=model.eps,
         gross_margin=model.gross_margin,
         debt_ratio=model.debt_ratio,
+        data_source=model.data_source,
+        id=model.id,
+        create_time=model.create_time,
+        update_time=model.update_time,
+    )
+
+
+def _to_kline_30m(model: StockKline30mModel) -> StockKline30m:
+    return StockKline30m(
+        code=model.code,
+        trade_time=model.trade_time,
+        open_price=model.open_price,
+        high_price=model.high_price,
+        low_price=model.low_price,
+        close_price=model.close_price,
+        volume=model.volume,
+        amount=model.amount,
         data_source=model.data_source,
         id=model.id,
         create_time=model.create_time,
@@ -449,6 +468,67 @@ class MySQLStockDataRepository(StockDataRepository):
         # Fallback: return first source
         first_key = list(by_source.keys())[0]
         return [_to_daily_quote(q) for q in by_source[first_key]]
+
+    # --- 30 分钟 K 线（缠论模块三） ---
+
+    async def upsert_kline_30m_batch(self, quotes: List[StockKline30m]) -> None:
+        """先删后插，避免重复（同一批次必然同 code）。"""
+        if not quotes:
+            return
+        for i in range(0, len(quotes), BATCH_SIZE):
+            batch = quotes[i:i + BATCH_SIZE]
+            times = [q.trade_time for q in batch if q.trade_time]
+            if not times:
+                continue
+            code = batch[0].code
+            # 先删除该 code 在时间范围内的旧记录（含多数据源，统一以最新批次为准）
+            stmt = sql_delete(StockKline30mModel).where(
+                StockKline30mModel.code == code,
+                StockKline30mModel.trade_time.in_(times),
+            )
+            await self.session.execute(stmt)
+            for q in batch:
+                self.session.add(StockKline30mModel(
+                    code=q.code,
+                    trade_time=q.trade_time,
+                    open_price=q.open_price,
+                    high_price=q.high_price,
+                    low_price=q.low_price,
+                    close_price=q.close_price,
+                    volume=q.volume,
+                    amount=q.amount,
+                    data_source=q.data_source,
+                ))
+            await self.session.flush()
+
+    async def get_kline_30m(
+        self,
+        code: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[StockKline30m]:
+        conditions = [StockKline30mModel.code == code]
+        if start_time:
+            conditions.append(StockKline30mModel.trade_time >= start_time)
+        if end_time:
+            conditions.append(StockKline30mModel.trade_time <= end_time)
+        stmt = (
+            select(StockKline30mModel)
+            .where(and_(*conditions))
+            .order_by(StockKline30mModel.trade_time.asc())
+        )
+        result = await self.session.execute(stmt)
+        return [_to_kline_30m(m) for m in result.scalars().all()]
+
+    async def get_latest_kline_30m_time(self, code: str) -> Optional[datetime]:
+        stmt = (
+            select(StockKline30mModel.trade_time)
+            .where(StockKline30mModel.code == code)
+            .order_by(StockKline30mModel.trade_time.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     # --- Financial Data ---
 

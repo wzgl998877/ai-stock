@@ -1,8 +1,6 @@
 import React, { useCallback } from "react";
-import { Select, Button, DatePicker, Input, Space, Typography, Form } from "antd";
+import { Select, Button, DatePicker, Input, Form } from "antd";
 import { SyncOutlined } from "@ant-design/icons";
-
-const { Text } = Typography;
 
 export interface SyncFormData {
   sourceType: string;
@@ -46,8 +44,9 @@ const DataSourceSelector: React.FC<DataSourceSelectorProps> = ({
         sourceType: values.sourceType,
         dataType: values.dataType,
         symbol: values.symbol,
-        startDate: values.startDate?.format("YYYY-MM-DD"),
-        endDate: values.endDate?.format("YYYY-MM-DD"),
+        // DatePicker 值为 Dayjs，表单值类型推断为 string，此处按 Dayjs 取 format
+        startDate: (values.startDate as any)?.format("YYYY-MM-DD"),
+        endDate: (values.endDate as any)?.format("YYYY-MM-DD"),
       });
     });
   }, [form, onSync]);

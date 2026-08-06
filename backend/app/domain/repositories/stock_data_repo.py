@@ -1,12 +1,14 @@
 """Repository interface for stock data (basic info, quotes, K-line, financial)."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Optional, List
 from app.domain.models.stock_data import (
     StockBasicInfo,
     MarketQuote,
     StockDailyQuote,
     StockFinancial,
+    StockKline30m,
 )
 
 
@@ -71,6 +73,28 @@ class StockDataRepository(ABC):
         period: str = "daily",
     ) -> List[StockDailyQuote]:
         """获取历史K线（返回优先级最高的数据源）"""
+        ...
+
+    # --- 30 分钟 K 线（缠论模块三，独立表 t_stock_kline_30m） ---
+
+    @abstractmethod
+    async def upsert_kline_30m_batch(self, quotes: List[StockKline30m]) -> None:
+        """批量插入/更新 30 分钟 K 线（先删后插，同一批次同 code）"""
+        ...
+
+    @abstractmethod
+    async def get_kline_30m(
+        self,
+        code: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[StockKline30m]:
+        """获取 30 分钟 K 线（按 trade_time 升序）"""
+        ...
+
+    @abstractmethod
+    async def get_latest_kline_30m_time(self, code: str) -> Optional[datetime]:
+        """获取某股最新的 30m trade_time（监控数据新鲜度检查用）"""
         ...
 
     # --- Financial Data ---

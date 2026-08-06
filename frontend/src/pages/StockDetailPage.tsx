@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, Skeleton, Alert, Card } from 'antd';
 import { useStockDetailStore, isMarketOpen } from '../store/stockDetailStore';
 import PriceCard from '../components/stock/PriceCard';
@@ -11,6 +11,7 @@ import RelatedAnalysisTab from '../components/stock/RelatedAnalysisTab';
 import IndustryComparison from '../components/stock/IndustryComparison';
 import AddToWatchlistButton from '../components/stock/AddToWatchlistButton';
 import SyncKlineButton from '../components/stock/SyncKlineButton';
+import SignalHistoryList from '../components/strategy/SignalHistoryList';
 
 /** 分时轮询间隔（毫秒） */
 const MINUTE_POLL_INTERVAL = 30_000;
@@ -18,11 +19,12 @@ const MINUTE_POLL_INTERVAL = 30_000;
 const StockDetailPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     basic, quote, financial, klineData, minuteData, indicators,
     relatedArticles, loading, klineLoading, error,
-    activePeriod, showMACD, showKDJ,
-    fetchStockDetail, setActivePeriod, toggleMACD, toggleKDJ, clear,
+    activePeriod, showMACD, showKDJ, showChanlun, signalMarks, structureData, highlightDate,
+    fetchStockDetail, setActivePeriod, toggleMACD, toggleKDJ, toggleChanlun, setHighlightDate, clear,
     fetchKlineData, refreshMinuteData,
   } = useStockDetailStore();
 
@@ -56,6 +58,11 @@ const StockDetailPage: React.FC = () => {
     };
   }, [code]);
 
+  // T039/D4：解析 ?signalDate=&period=，定位 K 线（m30 信号按日期在日 K 上高亮）
+  useEffect(() => {
+    setHighlightDate(searchParams.get('signalDate'));
+  }, [searchParams, setHighlightDate]);
+
   // 当 activePeriod 变化时，控制轮询启停
   useEffect(() => {
     if (activePeriod === 'minute' && code && isMarketOpen()) {
@@ -81,7 +88,7 @@ const StockDetailPage: React.FC = () => {
             <Skeleton.Input active size="small" style={{ width: 200 }} />
             <Skeleton.Input active size="small" style={{ width: 120 }} />
           </div>
-          <Skeleton.Image active style={{ width: '100%', height: 450 }} styles={{ image: { height: 450 } }} />
+          <Skeleton.Image active style={{ width: '100%', height: 450 }} />
         </Card>
 
         {/* Tabs skeleton */}
@@ -134,6 +141,15 @@ const StockDetailPage: React.FC = () => {
       children: basic?.industry_code ? <IndustryComparison industryCode={basic.industry_code} /> : <div>暂无行业数据</div>,
     },
     {
+      key: 'chanlun',
+      label: '缠论信号',
+      children: code ? (
+        <SignalHistoryList stockCode={code} />
+      ) : (
+        <div>暂无数据</div>
+      ),
+    },
+    {
       key: 'analysis',
       label: '相关分析',
       children: <RelatedAnalysisTab articles={relatedArticles} onClick={handleArticleClick} />,
@@ -168,8 +184,10 @@ const StockDetailPage: React.FC = () => {
             <IndicatorToggle
               showMACD={showMACD}
               showKDJ={showKDJ}
+              showChanlun={showChanlun}
               onToggleMACD={toggleMACD}
               onToggleKDJ={toggleKDJ}
+              onToggleChanlun={toggleChanlun}
             />
             {activePeriod !== 'minute' && code && (
               <SyncKlineButton
@@ -187,6 +205,10 @@ const StockDetailPage: React.FC = () => {
           showMA={true}
           showMACD={showMACD}
           showKDJ={showKDJ}
+          signalMarks={signalMarks}
+          showChanlun={showChanlun}
+          structure={structureData}
+          highlightDate={highlightDate}
           height={450}
           loading={klineLoading}
           period={activePeriod}

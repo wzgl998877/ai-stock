@@ -22,15 +22,20 @@ def _prefix_code(code: str) -> str:
     return f"sz{code}"
 
 
-# 新浪K线 scale 映射
+# 新浪K线 scale 映射（scale=30 为 30 分钟线，前复权与日线一致——Sina scale 系列默认前复权）
 _SCALE_MAP = {
+    "m30":     30,
     "daily":   240,
     "weekly":  1200,
     "monthly": 7200,
 }
 
 # 新浪K线默认拉取条数
+# ⚠️ scale=30 单次 datalen 上限约 1500-1999（超限接口返回空），1500 为安全值
+#    （≈ 9 个月 30m 数据）。日常监控每日增量 8 根，首次回补后随运行持续累积；
+#    历史 30m 回测样本首次限于该窗口，日线回测仍可达 3 年（见 research.md D1）。
 _COUNT_MAP = {
+    "m30":     1500,
     "daily":   500,
     "weekly":  200,
     "monthly": 120,
@@ -52,10 +57,14 @@ class SinaKlineClient:
 
         Args:
             code: 纯数字股票代码，如 "000858"。
-            period: "daily" / "weekly" / "monthly"。
+            period: "m30" / "daily" / "weekly" / "monthly"。
 
         Returns:
             标准格式列表: [{trade_date, open, high, low, close, volume, amount}, ...]
+
+            - 日/周/月K：``trade_date`` 为日期串 ``"2026-05-06"``；
+            - 30分钟K：``trade_date`` 为**区间结束时刻** ``"2026-05-06 10:00:00"``
+              （每个交易日 8 根：10:00/10:30/11:00/11:30/13:30/14:00/14:30/15:00）。
         """
         prefixed = _prefix_code(code)
         scale = _SCALE_MAP.get(period, 240)
@@ -92,8 +101,12 @@ class SinaKlineClient:
         for item in items:
             try:
                 day_str = item.get("day", "")
-                # 提取日期部分 "2026-05-06 00:00:00" -> "2026-05-06"
-                trade_date = day_str.split(" ")[0] if " " in day_str else day_str
+                if period == "m30":
+                    # 30分钟K：保留区间结束时刻（含时分），用于区分同日 8 根
+                    trade_date = day_str
+                else:
+                    # 日/周/月K：仅取日期部分 "2026-05-06 00:00:00" -> "2026-05-06"
+                    trade_date = day_str.split(" ")[0] if " " in day_str else day_str
 
                 result.append({
                     "trade_date": trade_date,

@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import * as echarts from 'echarts';
 import { Skeleton, Empty } from 'antd';
+import type { SignalMark, StructureData } from '../../domain/types';
+import { isBuySignal, STRATEGY_DISCLAIMER } from '../../domain/constants';
 
 interface KLineChartProps {
   data: any[];
@@ -12,6 +14,15 @@ interface KLineChartProps {
   loading?: boolean;
   period?: string;
   minuteData?: any[];
+  signalMarks?: SignalMark[];
+  showChanlun?: boolean;
+  structure?: StructureData | null;
+  highlightDate?: string | null;
+}
+
+/** 取时间字符串的日期前缀（与日 K x 轴 ``trade_date`` 对齐，T038 结构端点定位） */
+function dateKey(t: string): string {
+  return String(t || '').slice(0, 10);
 }
 
 const KLineChart: React.FC<KLineChartProps> = ({
@@ -24,19 +35,31 @@ const KLineChart: React.FC<KLineChartProps> = ({
   loading = false,
   period = 'daily',
   minuteData = [],
+  signalMarks = [],
+  showChanlun = true,
+  structure = null,
+  highlightDate = null,
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
-  const hasData = period === 'minute' ? minuteData.length > 0 : (data && data.length > 0);
+  const hasData = period === 'minute'
+    ? minuteData.length > 0 || (data && data.length > 0)
+    : (data && data.length > 0);
+
+  // 缠论图层仅日 K 支持（T041：分时/周/月隐藏）
+  const chanlunVisible = showChanlun && period === 'daily';
 
   const option = useMemo(() => {
     if (period === 'minute' && minuteData.length > 0) {
       return buildMinuteOption(minuteData);
     }
     if (!data || data.length === 0) return null;
-    return buildDailyOption(data, indicators, showMA, showMACD, showKDJ);
-  }, [data, indicators, showMA, showMACD, showKDJ, period, minuteData]);
+    return buildDailyOption(
+      data, indicators, showMA, showMACD, showKDJ,
+      signalMarks, structure, highlightDate, chanlunVisible,
+    );
+  }, [data, indicators, showMA, showMACD, showKDJ, period, minuteData, signalMarks, showChanlun, structure, highlightDate, chanlunVisible]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -66,7 +89,6 @@ const KLineChart: React.FC<KLineChartProps> = ({
       <Skeleton.Image
         active
         style={{ width: '100%', height }}
-        styles={{ image: { height } }}
       />
     );
   }
@@ -79,7 +101,33 @@ const KLineChart: React.FC<KLineChartProps> = ({
     );
   }
 
-  return <div ref={chartRef} style={{ width: '100%', height }} />;
+  // T041：开启缠论但当前为周/月 K 时提示「暂不支持」
+  const showUnsupportedNotice = showChanlun && (period === 'weekly' || period === 'monthly');
+
+  return (
+    <div style={{ width: '100%', height, position: 'relative' }}>
+      <div ref={chartRef} style={{ width: '100%', height }} />
+      {showUnsupportedNotice && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            zIndex: 10,
+            padding: '2px 8px',
+            fontSize: 12,
+            color: '#8c8c8c',
+            background: 'rgba(255,255,255,0.85)',
+            borderRadius: 4,
+            border: '1px solid #f0f0f0',
+            pointerEvents: 'none',
+          }}
+        >
+          当前周期暂不支持缠论分析
+        </div>
+      )}
+    </div>
+  );
 };
 
 function buildMinuteOption(data: any[]) {
@@ -142,6 +190,10 @@ function buildDailyOption(
   showMA: boolean,
   showMACD: boolean,
   showKDJ: boolean,
+  signalMarks: SignalMark[],
+  structure: StructureData | null,
+  highlightDate: string | null,
+  chanlunVisible: boolean,
 ) {
   const dates = data.map((d) => d.trade_date);
   const ohlc = data.map((d) => [d.open, d.close, d.low, d.high]);
@@ -164,6 +216,83 @@ function buildDailyOption(
   const xAxes: any[] = [{ type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { show: false } }];
   const yAxes: any[] = [{ type: 'value', gridIndex: 0, scale: true, splitLine: { lineStyle: { color: '#f0f0f0' } } }];
 
+  // --- 缠论图层（T038）：买卖点 markPoint + 笔/线段 markLine + 中枢 markArea ---
+  const chanlunMarks: any = {};
+  if (chanlunVisible) {
+    // 买卖点标注（买绿▲在 K 线下方，卖红▼在上方，角标 1/2/3）
+    if (signalMarks && signalMarks.length > 0) {
+      chanlunMarks.markPoint = {
+        symbol: 'arrow',
+        symbolSize: 16,
+        label: { show: true, color: '#fff', fontSize: 10 },
+        data: signalMarks.map((m) => {
+          const buy = isBuySignal(m.signal_type);
+          return {
+            coord: [dateKey(m.time), m.price],
+            symbolRotate: buy ? 0 : 180,
+            symbolOffset: [0, buy ? 12 : -12],
+            itemStyle: { color: buy ? '#16c79a' : '#ea2261' },
+            value: String(m.level),
+          };
+        }),
+      };
+    }
+    if (structure) {
+      // 笔/线段端点连线：线段粗、笔细；未确认 dashed
+      const markLineData: any[] = [];
+      for (const seg of structure.segments) {
+        markLineData.push([
+          { coord: [dateKey(seg.start.time), seg.start.price] },
+          {
+            coord: [dateKey(seg.end.time), seg.end.price],
+            lineStyle: {
+              color: seg.direction === 'up' ? '#722ed1' : '#fa8c16',
+              width: 2,
+              type: seg.confirmed ? 'solid' : 'dashed',
+            },
+          },
+        ]);
+      }
+      for (const st of structure.strokes) {
+        markLineData.push([
+          { coord: [dateKey(st.start.time), st.start.price] },
+          {
+            coord: [dateKey(st.end.time), st.end.price],
+            lineStyle: {
+              color: st.direction === 'up' ? 'rgba(114,46,209,0.55)' : 'rgba(250,140,22,0.55)',
+              width: 1,
+              type: st.confirmed ? 'solid' : 'dashed',
+            },
+          },
+        ]);
+      }
+      if (markLineData.length > 0) {
+        chanlunMarks.markLine = { symbol: 'none', silent: true, data: markLineData };
+      }
+      // 中枢 [ZD,ZG] 半透明矩形
+      const zhongshu = structure.zhongshu || [];
+      if (zhongshu.length > 0) {
+        chanlunMarks.markArea = {
+          silent: true,
+          itemStyle: {
+            color: 'rgba(114,46,209,0.08)',
+            borderColor: 'rgba(114,46,209,0.35)',
+            borderWidth: 1,
+          },
+          label: { show: true, fontSize: 10, color: '#722ed1', position: 'insideTop' },
+          data: zhongshu.map((z) => [
+            {
+              xAxis: dateKey(z.enter_time),
+              yAxis: z.zd,
+              value: `中枢 [${z.zd}, ${z.zg}]`,
+            },
+            { xAxis: dateKey(z.exit_time || z.enter_time), yAxis: z.zg },
+          ]),
+        };
+      }
+    }
+  }
+
   // K线
   const series: any[] = [
     {
@@ -178,6 +307,7 @@ function buildDailyOption(
         borderColor: '#f5222d',
         borderColor0: '#52c41a',
       },
+      ...chanlunMarks,
     },
   ];
 
@@ -243,6 +373,24 @@ function buildDailyOption(
 
   // 默认展示最近6个月（约120个交易日）
   const defaultStart = Math.max(0, ((dates.length - 120) / dates.length) * 100);
+  const zoomAxis = { xAxisIndex: xAxes.map((_, i) => i) };
+
+  // T038：highlightDate 命中日 K 时，用 startValue/endValue 把窗口定位到该日期附近
+  let dataZoom: any[];
+  const hiIdx = highlightDate ? dates.indexOf(dateKey(highlightDate)) : -1;
+  if (hiIdx >= 0) {
+    const winStart = Math.max(0, hiIdx - 40);
+    const winEnd = Math.min(dates.length - 1, hiIdx + 20);
+    dataZoom = [
+      { ...zoomAxis, type: 'inside', startValue: dates[winStart], endValue: dates[winEnd] },
+      { ...zoomAxis, type: 'slider', startValue: dates[winStart], endValue: dates[winEnd], top: 'bottom', height: 20 },
+    ];
+  } else {
+    dataZoom = [
+      { ...zoomAxis, type: 'inside', start: defaultStart, end: 100 },
+      { ...zoomAxis, type: 'slider', start: defaultStart, end: 100, top: 'bottom', height: 20 },
+    ];
+  }
 
   return {
     animation: false,
@@ -257,7 +405,12 @@ function buildDailyOption(
         let html = `<div style="font-size:12px">${d.trade_date}<br/>`;
         html += `开: ${d.open} 收: ${d.close}<br/>`;
         html += `高: ${d.high} 低: ${d.low}<br/>`;
-        html += `量: ${formatVolume(d.volume)}</div>`;
+        html += `量: ${formatVolume(d.volume)}`;
+        // FR-016：缠论图层可见时，Tooltip 附免责声明
+        if (chanlunVisible) {
+          html += `<br/><span style="color:#999;font-size:11px">${STRATEGY_DISCLAIMER}</span>`;
+        }
+        html += `</div>`;
         return html;
       },
     },
@@ -265,10 +418,7 @@ function buildDailyOption(
     grid: grids,
     xAxis: xAxes,
     yAxis: yAxes,
-    dataZoom: [
-      { type: 'inside', xAxisIndex: xAxes.map((_, i) => i), start: defaultStart, end: 100 },
-      { type: 'slider', xAxisIndex: xAxes.map((_, i) => i), start: defaultStart, end: 100, top: 'bottom', height: 20 },
-    ],
+    dataZoom,
     series,
   };
 }

@@ -6,8 +6,9 @@ import logging
 from typing import List, Optional
 
 from app.domain.entities.watchlist import WatchlistGroup, WatchlistItem
-from app.domain.repositories.watchlist_repo import WatchlistRepository
+from app.domain.repositories.chanlun_repo import ChanlunRepository
 from app.domain.repositories.stock_data_repo import StockDataRepository
+from app.domain.repositories.watchlist_repo import WatchlistRepository
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,14 @@ DEFAULT_GROUP_NAME = "默认分组"
 class WatchlistUseCase:
     """自选股管理用例：包含首次访问自动创建默认分组逻辑"""
 
-    def __init__(self, watchlist_repo: WatchlistRepository):
+    def __init__(
+        self,
+        watchlist_repo: WatchlistRepository,
+        chanlun_repo: Optional[ChanlunRepository] = None,
+    ):
         self.watchlist_repo = watchlist_repo
+        # 可选：注入缠论仓库以在自选股移除时联动清理监控配置（T051）
+        self.chanlun_repo = chanlun_repo
 
     async def _fetch_live_quote_price(self, stock_code: str) -> Optional[float]:
         """通过分时数据源获取最新价格（与分时图同一数据源）。
@@ -131,7 +138,11 @@ class WatchlistUseCase:
         return await self.watchlist_repo.add_item(item)
 
     async def remove_stock(self, user_id: str, group_id: int, stock_code: str) -> None:
-        """从分组移除股票"""
+        """从分组移除股票。
+
+        若该股已不在用户任何分组中（自选股并集），联动删除其逐股监控配置（T051），
+        避免悬空配置残留导致徽标长期「停用」。
+        """
         group = await self.watchlist_repo.get_group_by_id(group_id)
         if group is None:
             raise ValueError(f"分组 id={group_id} 不存在")
@@ -139,6 +150,17 @@ class WatchlistUseCase:
             raise ValueError("无权操作此分组")
 
         await self.watchlist_repo.remove_item(group_id, stock_code)
+
+        if self.chanlun_repo is None:
+            return
+        # 检查该股是否仍存在于用户其他分组
+        items = await self.watchlist_repo.get_all_items_by_user(user_id)
+        still_in_watchlist = any(it.stock_code == stock_code for it in items if it.stock_code)
+        if not still_in_watchlist:
+            try:
+                await self.chanlun_repo.delete_monitor_config(user_id, stock_code)
+            except Exception:
+                logger.warning("清理 %s 监控配置失败", stock_code, exc_info=True)
 
     async def get_items(self, user_id: str, group_id: int) -> List[WatchlistItem]:
         """获取分组内股票"""

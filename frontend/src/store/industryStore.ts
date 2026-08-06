@@ -34,7 +34,7 @@ interface IndustryState {
   selectIndustry: (code: string, name: string) => Promise<void>;
 }
 
-export const useIndustryStore = create<IndustryState>((set, get) => ({
+export const useIndustryStore = create<IndustryState>((set) => ({
   industries: [],
   selectedIndustry: null,
   selectedIndustryName: '',
