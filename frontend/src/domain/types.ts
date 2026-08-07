@@ -354,6 +354,8 @@ export interface SignalSummary {
   signal_time: string | null;
   confirmed_at: string | null;
   trigger_price: number | null;
+  /** 新鲜度（后端计算）：false=历史信号（超出新鲜度窗口，前端置灰） */
+  is_fresh?: boolean | null;
 }
 
 /** 自选股列表信号行（双周期） */

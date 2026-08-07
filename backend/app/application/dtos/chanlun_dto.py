@@ -54,6 +54,7 @@ class SignalSummaryDTO(BaseModel):
     signal_time: Optional[datetime] = None
     confirmed_at: Optional[datetime] = None
     trigger_price: Optional[Decimal] = None
+    is_fresh: Optional[bool] = None        # 新鲜度（纯展示属性）；False=历史信号（超出新鲜度窗口）
 
 
 class WatchlistSignalItem(BaseModel):

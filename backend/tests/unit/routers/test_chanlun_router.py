@@ -49,7 +49,7 @@ def test_sse_format_and_jsonable():
 
 
 def test_summary_from_signal_none():
-    assert summary_from_signal(None) is None
+    assert summary_from_signal(None, "daily") is None
 
 
 def test_summary_from_signal_maps_fields():
@@ -59,11 +59,42 @@ def test_summary_from_signal_maps_fields():
         confirmed_at=datetime(2026, 8, 5, 15, 0),
         trigger_price=Decimal("10.5"), status="confirmed", algo_version="1.0.0",
     )
-    s = summary_from_signal(sig)
+    s = summary_from_signal(sig, "daily")
     assert s is not None
     assert s.signal_type == "buy1"
     assert s.trigger_price == Decimal("10.5")
     assert s.confirmed_at == datetime(2026, 8, 5, 15, 0)
+    assert s.is_fresh is True  # 昨天产生的日K信号在 7 天窗口内
+
+
+def test_is_fresh_window_by_period():
+    """新鲜度窗口：daily 7 自然日、m30 2 自然日；边界含当日，无时间视为不新鲜。"""
+    from datetime import timedelta
+
+    from app.routers.chanlun import _is_fresh
+
+    now = datetime.now()
+    # daily：窗口内 / 超窗（避开整日边界，防计时抖动）
+    assert _is_fresh("daily", now - timedelta(days=6, hours=12)) is True
+    assert _is_fresh("daily", now - timedelta(days=8)) is False
+    # m30：窗口内 / 超窗
+    assert _is_fresh("m30", now - timedelta(days=1)) is True
+    assert _is_fresh("m30", now - timedelta(days=3)) is False
+    # signal_time 缺失 → 视为不新鲜（无时间可比，不应置亮）
+    assert _is_fresh("daily", None) is False
+
+
+def test_summary_is_fresh_false_for_old_signal():
+    """超出窗口的信号 is_fresh=False（前端置灰为历史信号）。"""
+    from datetime import timedelta
+
+    sig = ChanlunSignal(
+        stock_code="600000", period="m30", signal_type="sell1",
+        structure_level="segment", signal_time=datetime.now() - timedelta(days=5),
+        algo_version="1.0.0",
+    )
+    s = summary_from_signal(sig, "m30")
+    assert s is not None and s.is_fresh is False
 
 
 def test_signal_to_dto_maps_all_fields():

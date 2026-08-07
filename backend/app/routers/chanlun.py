@@ -56,6 +56,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/strategy", tags=["strategy"])
 
 WATCHLIST_SIGNALS_TTL = 600
+# 信号新鲜度窗口（日历天，纯展示属性）：日K 7 天、30m 2 天，超窗视为「历史信号」
+FRESH_WINDOW_DAYS = {"daily": 7, "m30": 2}
 # 后台 SSE 任务引用集合，避免被 GC 回收
 _bg_tasks: set = set()
 
@@ -82,7 +84,7 @@ def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(jsonable(data), ensure_ascii=False)}\n\n"
 
 
-def summary_from_signal(s: Optional[ChanlunSignal]) -> Optional[SignalSummaryDTO]:
+def summary_from_signal(s: Optional[ChanlunSignal], period: str) -> Optional[SignalSummaryDTO]:
     if s is None:
         return None
     return SignalSummaryDTO(
@@ -90,7 +92,57 @@ def summary_from_signal(s: Optional[ChanlunSignal]) -> Optional[SignalSummaryDTO
         signal_time=s.signal_time,
         confirmed_at=s.confirmed_at,
         trigger_price=s.trigger_price,
+        is_fresh=_is_fresh(period, s.signal_time),
     )
+
+
+def _is_fresh(period: str, signal_time: Optional[datetime]) -> bool:
+    """信号新鲜度判定：超出 ``FRESH_WINDOW_DAYS`` 窗口视为历史信号（置灰展示）。"""
+    if signal_time is None:
+        return False
+    window = FRESH_WINDOW_DAYS.get(period, 7)
+    return (datetime.now() - signal_time).days <= window
+
+
+async def _pull_m30(codes: list[str]) -> None:
+    """手动重算 m30 前并发拉取 30m 行情（与调度器 ``scan_m30`` 第一步一致）。
+
+    单股失败仅告警不阻断（可能无该周期行情权限/接口异常）。
+    """
+    from app.application.sync.chanlun_30m_sync import sync_stock_30m
+    from app.infrastructure.repositories.mysql_stock_data_repo import (
+        MySQLStockDataRepository,
+    )
+
+    sem = asyncio.Semaphore(max(1, settings.chanlun_concurrency))
+
+    async def pull(code: str) -> None:
+        async with sem:
+            async with async_session() as s:
+                try:
+                    await sync_stock_30m(code, MySQLStockDataRepository(s))
+                    await s.commit()
+                except Exception as e:
+                    await s.rollback()
+                    logger.warning("recalculate: 30m 行情拉取 %s 失败: %s", code, e)
+
+    if codes:
+        await asyncio.gather(*[pull(c) for c in codes])
+
+
+async def _invalidate_strategy_caches(user_id: str) -> None:
+    """重算完成后失效徽标与结构缓存，避免用户等待 TTL 才看到新信号。"""
+    try:
+        await redis_cache.delete(f"strategy:watchlist-signals:{user_id}")
+        cursor = 0
+        while True:
+            cursor, keys = await redis_cache.scan(cursor, match="strategy:structure:*", count=100)
+            for k in keys:
+                await redis_cache.delete(k)
+            if cursor == 0:
+                break
+    except Exception:
+        logger.warning("recalculate: 策略缓存失效失败", exc_info=True)
 
 
 def signal_to_dto(s: ChanlunSignal) -> SignalDTO:
@@ -175,10 +227,10 @@ async def get_watchlist_signals(
         if not it.stock_code:
             continue
         d_status, d_summary = _period_status(
-            it.stock_code, summary_from_signal(daily_map.get(it.stock_code)), "daily", cfg_map,
+            it.stock_code, summary_from_signal(daily_map.get(it.stock_code), "daily"), "daily", cfg_map,
         )
         m_status, m_summary = _period_status(
-            it.stock_code, summary_from_signal(m30_map.get(it.stock_code)), "m30", cfg_map,
+            it.stock_code, summary_from_signal(m30_map.get(it.stock_code), "m30"), "m30", cfg_map,
         )
         out_items.append(WatchlistSignalItem(
             stock_code=it.stock_code,
@@ -440,6 +492,11 @@ async def recalculate(
                     await queue.put({"event": "data_error", "data": {"message": "未找到自选股，无法重算"}})
                     return
                 for p in periods:
+                    if p == "m30":
+                        # 手动重算不会走调度器的行情拉取，先并发同步 30m K 线再计算，
+                        # 否则库中无数据时只会产出空信号（对齐 scheduler.scan_m30 第 1 步）
+                        await queue.put({"event": "calc_syncing", "data": {"period": p, "total": len(codes)}})
+                        await _pull_m30(codes)
                     await queue.put({"event": "calc_started", "data": {"period": p, "total": len(codes)}})
                     log = await monitor.scan(
                         period=p,
@@ -448,6 +505,8 @@ async def recalculate(
                         stock_codes=codes,
                         progress_cb=progress_cb,
                     )
+                    # 新信号已落库：立即失效徽标/结构缓存，不等 TTL
+                    await _invalidate_strategy_caches(current_user.user_id)
                     await queue.put({
                         "event": "calc_completed",
                         "data": {

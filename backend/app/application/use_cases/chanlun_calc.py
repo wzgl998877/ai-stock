@@ -28,6 +28,14 @@ from app.domain.services.indicator_service import IndicatorService
 logger = logging.getLogger(__name__)
 
 
+class NoKlineDataError(Exception):
+    """目标股票在该周期无 K 线数据（如 30m 表未同步）。
+
+    由监控扫描捕获并记为 ``skipped/no_kline_data``，避免把「没数据」误报为
+    「计算成功但无信号」。
+    """
+
+
 class ChanlunCalcUseCase:
     """单股缠论计算 + 落库用例。"""
 
@@ -53,14 +61,14 @@ class ChanlunCalcUseCase:
         Returns:
             ``(signals, snapshot, added)`` —— 信号列表、结构快照、新增信号条数
             （已存在信号不计；幂等由 ``dedup_key`` 保证）。
+
+        Raises:
+            NoKlineDataError: 该股票在该周期无 K 线数据（监控层据此记 skipped）。
         """
-        empty_snapshot = StructureSnapshot(
-            stock_code=stock_code, period=period, algo_version=self.algo_version
-        )
         bars = await self._load_bars(stock_code, period)
         if not bars:
             logger.info("chanlun_calc: 无 K 线数据 %s @ %s", stock_code, period)
-            return [], empty_snapshot, 0
+            raise NoKlineDataError(f"{stock_code} @ {period} 无 K 线数据")
 
         signals, snapshot = self.chanlun_service.compute_all(
             bars, stock_code=stock_code, period=period, algo_version=self.algo_version

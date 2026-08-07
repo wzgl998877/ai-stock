@@ -21,7 +21,7 @@ from typing import Awaitable, Callable, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase
+from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase, NoKlineDataError
 from app.core.config import settings
 from app.domain.entities.strategy import StrategyRunLog
 from app.domain.repositories.chanlun_repo import ChanlunRepository
@@ -149,6 +149,10 @@ class ChanlunMonitorUseCase:
                         await calc.compute_and_persist(code, period)
                         await session.commit()
                         kind, reason = "success", None
+                except NoKlineDataError:
+                    await session.rollback()
+                    logger.info("chanlun_monitor: %s @ %s 无 K 线数据，跳过", code, period)
+                    kind, reason = "skipped", "no_kline_data"
                 except Exception as e:  # 单股失败不阻断整体扫描
                     await session.rollback()
                     logger.warning("chanlun_monitor: %s @ %s 计算失败: %s", code, period, e)

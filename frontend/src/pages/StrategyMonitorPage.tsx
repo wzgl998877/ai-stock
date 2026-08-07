@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Card, Radio, Button, Progress, Statistic, Row, Col, Tag, Empty, Spin, Alert, Typography, message,
 } from "antd";
@@ -16,6 +16,7 @@ import {
 } from "../domain/constants";
 import type { RunStatusItem } from "../domain/types";
 import { useStrategyStore } from "../store/strategyStore";
+import SignalOverviewTable from "../components/strategy/SignalOverviewTable";
 
 const { Title, Text } = Typography;
 
@@ -86,8 +87,10 @@ const StatusCard: React.FC<{ title: string; item: RunStatusItem | null; loading:
 };
 
 const StrategyMonitorPage: React.FC = () => {
+  const navigate = useNavigate();
   const {
     runStatus, runStatusLoading, fetchRunStatus,
+    watchlistSignals, signalsLoading, fetchWatchlistSignals,
     recalcRunning, recalcPeriod, recalcTotal, recalcDone, recalcFailed, recalcSkipped, recalcError,
     recalculate, stopRecalc,
   } = useStrategyStore();
@@ -95,7 +98,8 @@ const StrategyMonitorPage: React.FC = () => {
 
   useEffect(() => {
     fetchRunStatus();
-  }, [fetchRunStatus]);
+    fetchWatchlistSignals();
+  }, [fetchRunStatus, fetchWatchlistSignals]);
 
   const start = () => {
     recalculate({ period }).catch(() => message.error("重算失败"));
@@ -167,6 +171,14 @@ const StrategyMonitorPage: React.FC = () => {
           <StatusCard title="30 分钟计算状态" item={runStatus?.m30 ?? null} loading={runStatusLoading} />
         </Col>
       </Row>
+
+      <Card size="small" title="信号总览（自选股 × 双周期）" style={{ marginBottom: 12 }}>
+        <SignalOverviewTable
+          items={watchlistSignals}
+          loading={signalsLoading}
+          onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
+        />
+      </Card>
 
       <div style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
         {STRATEGY_DISCLAIMER_LONG}

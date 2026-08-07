@@ -10,6 +10,7 @@ from typing import Optional
 
 import pytest
 
+from app.application.use_cases.chanlun_calc import NoKlineDataError
 from app.application.use_cases.chanlun_monitor import ChanlunMonitorUseCase
 from app.domain.entities.chanlun import StructureSnapshot
 from app.domain.entities.strategy import StrategyRunLog
@@ -102,17 +103,20 @@ class FakeStockDataRepo:
 class FakeCalc:
     """每股 ``build_calc`` 产出；``chanlun_repo``/``stock_data_repo`` 指向共享 fake。"""
 
-    def __init__(self, session, chanlun_repo, stock_data_repo, fail_codes=(), calls=None):
+    def __init__(self, session, chanlun_repo, stock_data_repo, fail_codes=(), no_data_codes=(), calls=None):
         self.session = session
         self.chanlun_repo = chanlun_repo
         self.stock_data_repo = stock_data_repo
         self._fail_codes = set(fail_codes or [])
+        self._no_data_codes = set(no_data_codes or [])
         self._calls = calls if calls is not None else []
 
     async def compute_and_persist(self, code, period):
         self._calls.append((code, period))
         if code in self._fail_codes:
             raise RuntimeError(f"boom {code}")
+        if code in self._no_data_codes:
+            raise NoKlineDataError(f"{code} @ {period} 无 K 线数据")
         return [], StructureSnapshot(stock_code=code, period=period), 0
 
 
@@ -120,7 +124,7 @@ def _item(code):
     return WatchlistItem(group_id=1, stock_code=code)
 
 
-def _make_monitor(wl, cr, sd, fail_codes=(), concurrency=5):
+def _make_monitor(wl, cr, sd, fail_codes=(), no_data_codes=(), concurrency=5):
     """用新签名装配 monitor：session_factory 每次返回新 FakeSession 并收集。"""
     sessions: list[FakeSession] = []
     calc_calls: list[tuple[str, str]] = []
@@ -132,7 +136,8 @@ def _make_monitor(wl, cr, sd, fail_codes=(), concurrency=5):
 
     def build_calc(s):
         return FakeCalc(s, chanlun_repo=cr, stock_data_repo=sd,
-                        fail_codes=fail_codes, calls=calc_calls)
+                        fail_codes=fail_codes, no_data_codes=no_data_codes,
+                        calls=calc_calls)
 
     mon = ChanlunMonitorUseCase(
         watchlist_repo=wl,
@@ -201,6 +206,34 @@ async def test_scan_failure_isolation():
     assert "boom" in detail[0]["reason"]
     # 失败股 rollback、未 commit
     assert [s for s in sessions if s.rolled_back]  # 有一股 rollback
+
+
+async def test_no_kline_data_skipped_not_failed():
+    """无 K 线数据（如 30m 表未同步）→ skipped/no_kline_data，不计入 failed。
+
+    核心回归：「没数据」不得误报为「计算成功」或「计算失败」。
+    """
+    wl = FakeWatchlistRepo([_item("600000"), _item("000001")])
+    cr = FakeChanlunRepo()
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+    mon, sessions, _calc_calls = _make_monitor(
+        wl, cr, sd, no_data_codes={"000001"}
+    )
+    msgs: list[dict] = []
+
+    async def cb(m):
+        msgs.append(m)
+
+    log = await mon.scan("m30", user_id="u1", progress_cb=cb)
+
+    assert log.total == 2 and log.success == 1 and log.failed == 0
+    assert cr.finished[0]["failed_detail"] is None  # 未计入失败明细
+    status_by_code = {m["stock_code"]: m for m in msgs}
+    assert status_by_code["000001"]["status"] == "skipped"
+    assert status_by_code["000001"]["reason"] == "no_kline_data"
+    # 该股 session 已 rollback、未 commit
+    rolled = [s for s in sessions if s.rolled_back]
+    assert len(rolled) == 1
 
 
 async def test_explicit_stock_codes_skip_watchlist():

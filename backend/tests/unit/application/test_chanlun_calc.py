@@ -147,16 +147,18 @@ async def test_m30_path_persists_structure():
         assert all(s.period == "m30" for s in signals)
 
 
-async def test_no_data_returns_empty_without_persist():
+async def test_no_data_raises_for_skip_semantics():
+    """无 K 线数据时抛 ``NoKlineDataError``（监控层据此记 skipped，不误报 success）。"""
+    from app.application.use_cases.chanlun_calc import NoKlineDataError
+
     stock_repo = FakeStockDataRepo(daily=[], m30=[])
     chanlun_repo = FakeChanlunRepo()
     uc = ChanlunCalcUseCase(stock_repo, chanlun_repo, algo_version="1.0.0")
 
-    signals, snapshot, added = await uc.compute_and_persist("600000", "daily")
+    with pytest.raises(NoKlineDataError):
+        await uc.compute_and_persist("600000", "daily")
 
-    assert signals == []
-    assert added == 0
-    # 无数据时不应落库结构（避免空快照覆盖已有快照）
+    # 无数据时不应落库（避免空快照覆盖已有快照）
     assert chanlun_repo.structures == []
     assert chanlun_repo.signals_upserted == []
 

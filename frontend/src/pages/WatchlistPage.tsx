@@ -14,7 +14,7 @@ import { useEventRadarStore } from '../store/eventRadarStore';
 import { stockDataService } from '../services/stockDataService';
 import { eventRadarService } from '../services/eventRadarService';
 import { isMarketOpen } from '../utils/marketTime';
-import SignalBadge from '../components/strategy/SignalBadge';
+import SignalCell from '../components/strategy/SignalCell';
 import { useStrategyStore } from '../store/strategyStore';
 import WatchlistImpactColumn from '../components/event-radar/WatchlistImpactColumn';
 
@@ -57,47 +57,35 @@ const formatRefreshTime = (ts: number | null) => {
 // Component
 // ---------------------------------------------------------------------------
 
-/** 逐股逐周期监控开关（T055）：关闭后徽标显示「停用」。 */
+/** 单周期监控开关（T055）：关闭后该周期列显示「停用」。 */
 const MonitorToggle: React.FC<{
   stockCode: string;
-  dailyStatus?: string;
-  m30Status?: string;
-}> = ({ stockCode, dailyStatus, m30Status }) => {
+  period: 'daily' | 'm30';
+  status?: string;
+}> = ({ stockCode, period, status }) => {
   const updateConfig = useStrategyStore((s) => s.updateConfig);
-  const [loading, setLoading] = useState<null | 'daily' | 'm30'>(null);
+  const [loading, setLoading] = useState(false);
 
-  const toggle = async (period: 'daily' | 'm30', enabled: boolean) => {
-    setLoading(period);
+  const toggle = async (enabled: boolean) => {
+    setLoading(true);
     try {
       await updateConfig(stockCode, { [`${period}_enabled`]: enabled });
       message.success(`${period === 'daily' ? '日 K' : '30 分钟'}监控已${enabled ? '开启' : '关闭'}`);
     } catch (e: any) {
       message.error(e?.message || '更新监控配置失败');
     } finally {
-      setLoading(null);
+      setLoading(false);
     }
   };
 
   return (
-    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4, fontSize: 11 }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#999' }}>
-        日
-        <Switch
-          size="small"
-          checked={dailyStatus !== 'disabled'}
-          loading={loading === 'daily'}
-          onChange={(v) => toggle('daily', v)}
-        />
-      </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#999' }}>
-        30m
-        <Switch
-          size="small"
-          checked={m30Status !== 'disabled'}
-          loading={loading === 'm30'}
-          onChange={(v) => toggle('m30', v)}
-        />
-      </span>
+    <div style={{ textAlign: 'center', marginTop: 2 }}>
+      <Switch
+        size="small"
+        checked={status !== 'disabled'}
+        loading={loading}
+        onChange={(v) => toggle(v)}
+      />
     </div>
   );
 };
@@ -361,28 +349,43 @@ const WatchlistPage: React.FC = () => {
       },
     },
     {
-      title: '信号',
-      key: 'chanlun_signal',
-      width: 150,
+      title: '日K信号',
+      key: 'chanlun_signal_daily',
+      width: 120,
       align: 'center',
       render: (_: unknown, record: WatchlistStock) => {
         const sig = watchlistSignals.find((w) => w.stock_code === record.code);
         return (
           <div>
-            <SignalBadge
+            <SignalCell
+              period="daily"
+              summary={sig?.daily ?? null}
+              status={sig?.daily_status}
               stockCode={record.code}
-              stockName={record.name}
-              daily={sig?.daily ?? null}
-              dailyStatus={sig?.daily_status}
-              m30={sig?.m30 ?? null}
-              m30Status={sig?.m30_status}
               onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
             />
-            <MonitorToggle
+            <MonitorToggle stockCode={record.code} period="daily" status={sig?.daily_status} />
+          </div>
+        );
+      },
+    },
+    {
+      title: '30分钟信号',
+      key: 'chanlun_signal_m30',
+      width: 120,
+      align: 'center',
+      render: (_: unknown, record: WatchlistStock) => {
+        const sig = watchlistSignals.find((w) => w.stock_code === record.code);
+        return (
+          <div>
+            <SignalCell
+              period="m30"
+              summary={sig?.m30 ?? null}
+              status={sig?.m30_status}
               stockCode={record.code}
-              dailyStatus={sig?.daily_status}
-              m30Status={sig?.m30_status}
+              onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
             />
+            <MonitorToggle stockCode={record.code} period="m30" status={sig?.m30_status} />
           </div>
         );
       },
