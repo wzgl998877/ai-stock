@@ -109,16 +109,21 @@ def signal_to_dto(s: ChanlunSignal) -> SignalDTO:
     )
 
 
-def build_monitor(session: AsyncSession) -> ChanlunMonitorUseCase:
-    """从单个 DB session 装配监控 UseCase 及其依赖。"""
-    chanlun_repo = MySQLChanlunRepository(session)
-    stock_data_repo = MySQLStockDataRepository(session)
-    calc = ChanlunCalcUseCase(stock_data_repo=stock_data_repo, chanlun_repo=chanlun_repo)
+def build_monitor(session: AsyncSession, session_factory) -> ChanlunMonitorUseCase:
+    """从主 session 装配监控 UseCase；每股计算用 session_factory 建独立 session。"""
+
+    def _build_calc(s: AsyncSession) -> ChanlunCalcUseCase:
+        return ChanlunCalcUseCase(
+            stock_data_repo=MySQLStockDataRepository(s),
+            chanlun_repo=MySQLChanlunRepository(s),
+        )
+
     return ChanlunMonitorUseCase(
         watchlist_repo=MySQLWatchlistRepository(session),
-        chanlun_calc=calc,
-        chanlun_repo=chanlun_repo,
-        stock_data_repo=stock_data_repo,
+        chanlun_repo=MySQLChanlunRepository(session),
+        algo_version=settings.chanlun_algo_version,
+        session_factory=session_factory,
+        build_calc=_build_calc,
     )
 
 
@@ -423,7 +428,7 @@ async def recalculate(
     async def background() -> None:
         try:
             async with async_session() as session:
-                monitor = build_monitor(session)
+                monitor = build_monitor(session, async_session)
                 # 解析目标股票：显式列表优先，否则取用户全部自选股
                 if body.stock_codes is not None:
                     codes = sorted(set(body.stock_codes))

@@ -4,7 +4,8 @@
 1. 取用户自选股并集（``get_all_items_by_user``，T051 起改读 ``t_strategy_monitor_config``）；
 2. 数据新鲜度检查：结构快照的 ``last_kline_time`` 与当前库中最新 K 线时间相同则记
    ``no_new_data`` 跳过该股（避免重复计算）；
-3. ``asyncio.Semaphore`` 限并发（≤ ``settings.chanlun_concurrency``）；
+3. ``asyncio.Semaphore`` 限并发（≤ ``settings.chanlun_concurrency``）；**每股在独立
+   ``AsyncSession`` 上计算+落库**（``AsyncSession`` 非并发安全，gather 并发下不可共享）；
 4. 全程写 ``run_log``（``running`` → ``done``，含 success/failed 计数与失败明细）。
 
 返回的 ``StrategyRunLog`` 中，``total = success + failed + skipped``（skipped 为新鲜度
@@ -17,6 +18,8 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Awaitable, Callable, Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase
 from app.core.config import settings
@@ -34,15 +37,17 @@ class ChanlunMonitorUseCase:
     def __init__(
         self,
         watchlist_repo: WatchlistRepository,
-        chanlun_calc: ChanlunCalcUseCase,
         chanlun_repo: ChanlunRepository,
-        stock_data_repo: StockDataRepository,
+        algo_version: str,
+        session_factory,
+        build_calc: Callable[[AsyncSession], ChanlunCalcUseCase],
         concurrency: Optional[int] = None,
     ):
         self.watchlist_repo = watchlist_repo
-        self.chanlun_calc = chanlun_calc
         self.chanlun_repo = chanlun_repo
-        self.stock_data_repo = stock_data_repo
+        self.algo_version = algo_version
+        self._session_factory = session_factory
+        self._build_calc = build_calc
         self.concurrency = concurrency or settings.chanlun_concurrency
         self._progress_cb: Optional[Callable[[dict], Awaitable[None]]] = None
 
@@ -78,7 +83,7 @@ class ChanlunMonitorUseCase:
             status="running",
             total=len(codes),
             started_at=started_at,
-            algo_version=self.chanlun_calc.algo_version,
+            algo_version=self.algo_version,
             user_id=user_id,
         )
         log = await self.chanlun_repo.create_run_log(log)
@@ -123,7 +128,7 @@ class ChanlunMonitorUseCase:
             started_at=started_at,
             finished_at=finished_at,
             duration_ms=duration_ms,
-            algo_version=self.chanlun_calc.algo_version,
+            algo_version=self.algo_version,
             user_id=user_id,
         )
 
@@ -131,16 +136,23 @@ class ChanlunMonitorUseCase:
         self, code: str, period: str, sem: asyncio.Semaphore
     ) -> tuple[str, str, Optional[str]]:
         async with sem:
-            try:
-                if await self._is_stale(code, period):
-                    logger.info("chanlun_monitor: %s @ %s 无新数据，跳过", code, period)
-                    kind, reason = "skipped", "no_new_data"
-                else:
-                    await self.chanlun_calc.compute_and_persist(code, period)
-                    kind, reason = "success", None
-            except Exception as e:  # 单股失败不阻断整体扫描
-                logger.warning("chanlun_monitor: %s @ %s 计算失败: %s", code, period, e)
-                kind, reason = "failed", str(e)
+            # 每股独立 session：AsyncSession 非并发安全，gather 并发下不可共享。
+            async with self._session_factory() as session:
+                calc = self._build_calc(session)
+                try:
+                    if await self._is_stale(
+                        calc.chanlun_repo, calc.stock_data_repo, code, period
+                    ):
+                        logger.info("chanlun_monitor: %s @ %s 无新数据，跳过", code, period)
+                        kind, reason = "skipped", "no_new_data"
+                    else:
+                        await calc.compute_and_persist(code, period)
+                        await session.commit()
+                        kind, reason = "success", None
+                except Exception as e:  # 单股失败不阻断整体扫描
+                    await session.rollback()
+                    logger.warning("chanlun_monitor: %s @ %s 计算失败: %s", code, period, e)
+                    kind, reason = "failed", str(e)
             if self._progress_cb is not None:
                 try:
                     await self._progress_cb(
@@ -183,25 +195,33 @@ class ChanlunMonitorUseCase:
             )
         return kept
 
-    async def _is_stale(self, code: str, period: str) -> bool:
+    async def _is_stale(
+        self,
+        chanlun_repo: ChanlunRepository,
+        stock_data_repo: StockDataRepository,
+        code: str,
+        period: str,
+    ) -> bool:
         """结构快照的 ``last_kline_time`` 与当前最新 K 线时间相同 → 无新数据。
 
-        首次计算（无快照）返回 ``False``。
+        首次计算（无快照）返回 ``False``。repo 由调用方传入（每股独立 session）。
         """
-        snapshot = await self.chanlun_repo.get_structure(code, period)
+        snapshot = await chanlun_repo.get_structure(code, period)
         if snapshot is None or snapshot.last_kline_time is None:
             return False
 
-        latest = await self._latest_kline_time(code, period)
+        latest = await self._latest_kline_time(stock_data_repo, code, period)
         if latest is None:
             return False
         return latest == snapshot.last_kline_time
 
-    async def _latest_kline_time(self, code: str, period: str) -> Optional[datetime]:
+    async def _latest_kline_time(
+        self, stock_data_repo: StockDataRepository, code: str, period: str
+    ) -> Optional[datetime]:
         if period == "m30":
-            return await self.stock_data_repo.get_latest_kline_30m_time(code)
+            return await stock_data_repo.get_latest_kline_30m_time(code)
         # daily：取最新交易日（date → 当日午夜 datetime）
-        quotes = await self.stock_data_repo.get_daily(code, period="daily")
+        quotes = await stock_data_repo.get_daily(code, period="daily")
         if not quotes:
             return None
         latest_date = max(q.trade_date for q in quotes if q.trade_date)

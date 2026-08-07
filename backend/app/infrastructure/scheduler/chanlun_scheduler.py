@@ -39,22 +39,26 @@ async def _all_watchlist_codes(session) -> list[str]:
     return sorted({row[0] for row in result.fetchall() if row[0]})
 
 
-def _build_monitor(session):
-    """从单个 DB session 装配监控 UseCase 及其依赖。"""
+def _build_monitor(session, session_factory):
+    """从主 session 装配监控 UseCase；每股计算用 session_factory 建独立 session。"""
     from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase
     from app.application.use_cases.chanlun_monitor import ChanlunMonitorUseCase
     from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
     from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
     from app.infrastructure.repositories.mysql_watchlist_repo import MySQLWatchlistRepository
 
-    chanlun_repo = MySQLChanlunRepository(session)
-    stock_data_repo = MySQLStockDataRepository(session)
-    calc = ChanlunCalcUseCase(stock_data_repo=stock_data_repo, chanlun_repo=chanlun_repo)
+    def _build_calc(s):
+        return ChanlunCalcUseCase(
+            stock_data_repo=MySQLStockDataRepository(s),
+            chanlun_repo=MySQLChanlunRepository(s),
+        )
+
     return ChanlunMonitorUseCase(
         watchlist_repo=MySQLWatchlistRepository(session),
-        chanlun_calc=calc,
-        chanlun_repo=chanlun_repo,
-        stock_data_repo=stock_data_repo,
+        chanlun_repo=MySQLChanlunRepository(session),
+        algo_version=settings.chanlun_algo_version,
+        session_factory=session_factory,
+        build_calc=_build_calc,
     )
 
 
@@ -80,7 +84,7 @@ def setup_scheduler(session_factory):
                 if not codes:
                     logger.info("缠论日线扫描：无自选股，跳过")
                     return
-                monitor = _build_monitor(session)
+                monitor = _build_monitor(session, session_factory)
                 await monitor.scan(
                     "daily", user_id="system",
                     trigger_type="scheduled", stock_codes=codes,
@@ -103,21 +107,24 @@ def setup_scheduler(session_factory):
                     logger.info("缠论 30m 扫描：无自选股，跳过")
                     return
 
-                # 1) 并发拉取最新 30m 行情（单股失败不阻断）
-                stock_data_repo = MySQLStockDataRepository(session)
+                # 1) 并发拉取最新 30m 行情（单股失败不阻断；每股独立 session）
                 sem = asyncio.Semaphore(max(1, settings.chanlun_concurrency))
 
                 async def pull(code: str):
                     async with sem:
-                        try:
-                            await sync_stock_30m(code, stock_data_repo)
-                        except Exception as e:
-                            logger.warning("缠论 30m 拉取 %s 失败: %s", code, e)
+                        async with session_factory() as s:
+                            try:
+                                repo = MySQLStockDataRepository(s)
+                                await sync_stock_30m(code, repo)
+                                await s.commit()
+                            except Exception as e:
+                                await s.rollback()
+                                logger.warning("缠论 30m 拉取 %s 失败: %s", code, e)
 
                 await asyncio.gather(*[pull(c) for c in codes])
 
                 # 2) 扫描计算
-                monitor = _build_monitor(session)
+                monitor = _build_monitor(session, session_factory)
                 await monitor.scan(
                     "m30", user_id="system",
                     trigger_type="scheduled", stock_codes=codes,

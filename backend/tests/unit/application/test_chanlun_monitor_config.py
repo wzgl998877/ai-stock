@@ -24,12 +24,13 @@ class _FakeChanlunRepo:
 
 
 def _build_monitor(repo):
-    # _filter_by_config 仅用到 chanlun_repo，其余依赖可置 None
+    # _filter_by_config 仅用到 chanlun_repo，其余依赖置占位（本测试不触达）
     return ChanlunMonitorUseCase(
         watchlist_repo=None,
-        chanlun_calc=None,
         chanlun_repo=repo,
-        stock_data_repo=None,
+        algo_version="1.0.0",
+        session_factory=None,
+        build_calc=lambda s: None,
     )
 
 
