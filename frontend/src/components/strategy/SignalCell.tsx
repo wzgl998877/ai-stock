@@ -21,14 +21,18 @@ import type { ChanlunPeriod, SignalStatus, SignalSummary } from "../../domain/ty
 
 export const PERIOD_LABEL: Record<ChanlunPeriod, string> = { daily: "日 K", m30: "30m" };
 
-/** "2026-08-05T15:00:00" → "08-05 15:00"（表格紧凑展示） */
-export function fmtSignalTime(t: string | null): string {
+/**
+ * 信号时间格式化：
+ * - 日 K 只展示到日期（当年 MM-DD，跨年 YYYY-MM-DD）；
+ * - 30m 展示到分钟（MM-DD HH:mm / YYYY-MM-DD HH:mm）。
+ */
+export function fmtSignalTime(t: string | null, period: ChanlunPeriod): string {
   if (!t) return "—";
   const s = t.replace("T", " ");
-  // 优先取 MM-DD HH:mm；年份不同的信号保留年份前缀
   const year = new Date().getFullYear();
-  if (s.startsWith(String(year))) return s.slice(5, 16);
-  return s.slice(0, 16);
+  const sameYear = s.startsWith(String(year));
+  if (period === "daily") return sameYear ? s.slice(5, 10) : s.slice(0, 10);
+  return sameYear ? s.slice(5, 16) : s.slice(0, 16);
 }
 
 export interface SignalCellProps {
@@ -99,14 +103,15 @@ export const SignalCell: React.FC<SignalCellProps> = ({
     const historical = summary.is_fresh === false;
     const color = historical ? "#bfbfbf" : SIGNAL_BADGE_COLORS[t];
     const arrow = isBuySignal(t) ? "▲" : "▼";
+    // 纯文字强调：加粗 + 涨跌色，不加底色/边框（保持表格清爽）
     body = (
-      <div style={{ lineHeight: 1.3 }}>
-        <span style={{ color, fontWeight: 600, fontSize: 13 }}>
-          {historical && <span style={{ fontWeight: 400, marginRight: 2 }}>历史</span>}
+      <div style={{ lineHeight: 1.35 }}>
+        <span style={{ color, fontWeight: 700, fontSize: 14 }}>
+          {historical && <span style={{ fontWeight: 400, fontSize: 12, marginRight: 3 }}>历史</span>}
           {arrow} {SIGNAL_TYPE_LABELS[t]}
         </span>
-        <div style={{ color: "#999", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
-          {fmtSignalTime(summary.signal_time)}
+        <div style={{ color: "#999", fontSize: 11, marginTop: 1, fontVariantNumeric: "tabular-nums" }}>
+          {fmtSignalTime(summary.signal_time, period)}
         </div>
       </div>
     );

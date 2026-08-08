@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Modal, Input, Popconfirm, Empty, Spin, Tag, Alert,
-  Table, Pagination, message, Select, Tooltip, Switch,
+  Table, Pagination, message, Select, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
@@ -56,39 +56,6 @@ const formatRefreshTime = (ts: number | null) => {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-/** 单周期监控开关（T055）：关闭后该周期列显示「停用」。 */
-const MonitorToggle: React.FC<{
-  stockCode: string;
-  period: 'daily' | 'm30';
-  status?: string;
-}> = ({ stockCode, period, status }) => {
-  const updateConfig = useStrategyStore((s) => s.updateConfig);
-  const [loading, setLoading] = useState(false);
-
-  const toggle = async (enabled: boolean) => {
-    setLoading(true);
-    try {
-      await updateConfig(stockCode, { [`${period}_enabled`]: enabled });
-      message.success(`${period === 'daily' ? '日 K' : '30 分钟'}监控已${enabled ? '开启' : '关闭'}`);
-    } catch (e: any) {
-      message.error(e?.message || '更新监控配置失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={{ textAlign: 'center', marginTop: 2 }}>
-      <Switch
-        size="small"
-        checked={status !== 'disabled'}
-        loading={loading}
-        onChange={(v) => toggle(v)}
-      />
-    </div>
-  );
-};
 
 const WatchlistPage: React.FC = () => {
   const navigate = useNavigate();
@@ -356,16 +323,13 @@ const WatchlistPage: React.FC = () => {
       render: (_: unknown, record: WatchlistStock) => {
         const sig = watchlistSignals.find((w) => w.stock_code === record.code);
         return (
-          <div>
-            <SignalCell
-              period="daily"
-              summary={sig?.daily ?? null}
-              status={sig?.daily_status}
-              stockCode={record.code}
-              onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
-            />
-            <MonitorToggle stockCode={record.code} period="daily" status={sig?.daily_status} />
-          </div>
+          <SignalCell
+            period="daily"
+            summary={sig?.daily ?? null}
+            status={sig?.daily_status}
+            stockCode={record.code}
+            onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
+          />
         );
       },
     },
@@ -377,16 +341,13 @@ const WatchlistPage: React.FC = () => {
       render: (_: unknown, record: WatchlistStock) => {
         const sig = watchlistSignals.find((w) => w.stock_code === record.code);
         return (
-          <div>
-            <SignalCell
-              period="m30"
-              summary={sig?.m30 ?? null}
-              status={sig?.m30_status}
-              stockCode={record.code}
-              onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
-            />
-            <MonitorToggle stockCode={record.code} period="m30" status={sig?.m30_status} />
-          </div>
+          <SignalCell
+            period="m30"
+            summary={sig?.m30 ?? null}
+            status={sig?.m30_status}
+            stockCode={record.code}
+            onAnalyze={(code) => navigate(`/stock-analysis?code=${code}`)}
+          />
         );
       },
     },

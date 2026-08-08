@@ -19,6 +19,7 @@ import WatchlistPage from "./pages/WatchlistPage";
 import EventRadarPage from "./pages/EventRadarPage";
 import BacktestPage from "./pages/BacktestPage";
 import StrategyMonitorPage from "./pages/StrategyMonitorPage";
+import StrategyMonitorConfigPage from "./pages/StrategyMonitorConfigPage";
 import { useAuthStore } from "./store/authStore";
 import "./styles/global.css";
 
@@ -62,6 +63,7 @@ const AppContent: React.FC = () => {
         <Route path="/event-radar" element={<EventRadarPage />} />
         {/* 模块三：缠论信号 — 监控与回测 */}
         <Route path="/strategy" element={<StrategyMonitorPage />} />
+        <Route path="/strategy/config" element={<StrategyMonitorConfigPage />} />
         <Route path="/strategy/backtest" element={<BacktestPage />} />
         <Route path="*" element={<Navigate to="/analysis" replace />} />
       </Routes>

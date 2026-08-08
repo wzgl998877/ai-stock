@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Card, Radio, Button, Progress, Statistic, Row, Col, Tag, Empty, Spin, Alert, Typography, message,
 } from "antd";
@@ -110,11 +110,8 @@ const StrategyMonitorPage: React.FC = () => {
 
   return (
     <div style={{ padding: 16, maxWidth: 1200, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>缠论策略监控</Title>
-        <Link to="/strategy/backtest">
-          <Button size="small">信号历史回测 →</Button>
-        </Link>
+      <div style={{ marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>缠论信号监控</Title>
       </div>
 
       <Card size="small" style={{ marginBottom: 12 }}>

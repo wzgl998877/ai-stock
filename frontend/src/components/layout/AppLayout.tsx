@@ -15,6 +15,8 @@ import {
   LogoutOutlined,
   BellOutlined,
   LockOutlined,
+  SettingOutlined,
+  LineChartOutlined,
 } from "@ant-design/icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { MenuProps } from "antd";
@@ -245,11 +247,16 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           ),
           disabled: true,
         },
-        {
-          key: "/strategy",
-          icon: <RadarChartOutlined />,
-          label: "策略监控",
-        },
+      ],
+    },
+    {
+      key: "strategy-group",
+      icon: <RadarChartOutlined />,
+      label: "策略监控",
+      children: [
+        { key: "/strategy", icon: <RadarChartOutlined />, label: "信号监控" },
+        { key: "/strategy/backtest", icon: <LineChartOutlined />, label: "信号回测" },
+        { key: "/strategy/config", icon: <SettingOutlined />, label: "监控配置" },
       ],
     },
     {
