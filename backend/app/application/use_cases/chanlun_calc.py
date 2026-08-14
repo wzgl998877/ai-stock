@@ -55,12 +55,13 @@ class ChanlunCalcUseCase:
 
     async def compute_and_persist(
         self, stock_code: str, period: str
-    ) -> tuple[list[ChanlunSignal], StructureSnapshot, int]:
+    ) -> tuple[list[ChanlunSignal], StructureSnapshot, list[ChanlunSignal]]:
         """计算单股单周期并落库。
 
         Returns:
-            ``(signals, snapshot, added)`` —— 信号列表、结构快照、新增信号条数
-            （已存在信号不计；幂等由 ``dedup_key`` 保证）。
+            ``(signals, snapshot, new_signals)`` —— 信号列表、结构快照、
+            **新增的信号实体**（已存在信号不计；幂等由 ``dedup_key`` 保证，
+            新增实体供监控层推送消费）。
 
         Raises:
             NoKlineDataError: 该股票在该周期无 K 线数据（监控层据此记 skipped）。
@@ -80,15 +81,15 @@ class ChanlunCalcUseCase:
             if s.dedup_key is None:
                 s.dedup_key = s.make_dedup_key()
 
-        added = 0
+        new_signals: list[ChanlunSignal] = []
         if signals:
-            added = await self.chanlun_repo.upsert_signals_batch(signals)
+            new_signals = await self.chanlun_repo.upsert_signals_batch(signals)
         await self.chanlun_repo.upsert_structure(snapshot)
         logger.info(
             "chanlun_calc: %s @ %s 产出 %d 信号，新增 %d",
-            stock_code, period, len(signals), added,
+            stock_code, period, len(signals), len(new_signals),
         )
-        return signals, snapshot, added
+        return signals, snapshot, new_signals
 
     # ------------------------------------------------------------------
     # K 线装配

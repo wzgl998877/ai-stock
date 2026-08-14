@@ -12,7 +12,7 @@ import pytest
 
 from app.application.use_cases.chanlun_calc import NoKlineDataError
 from app.application.use_cases.chanlun_monitor import ChanlunMonitorUseCase
-from app.domain.entities.chanlun import StructureSnapshot
+from app.domain.entities.chanlun import ChanlunSignal, StructureSnapshot
 from app.domain.entities.strategy import StrategyRunLog
 from app.domain.entities.watchlist import WatchlistItem
 from app.domain.models.stock_data import StockDailyQuote
@@ -117,7 +117,7 @@ class FakeCalc:
             raise RuntimeError(f"boom {code}")
         if code in self._no_data_codes:
             raise NoKlineDataError(f"{code} @ {period} 无 K 线数据")
-        return [], StructureSnapshot(stock_code=code, period=period), 0
+        return [], StructureSnapshot(stock_code=code, period=period), []
 
 
 def _item(code):
@@ -301,3 +301,92 @@ async def test_each_stock_uses_independent_session():
     assert len(sessions) == 3                          # 每股一个 session
     assert len({s.id for s in sessions}) == 3          # id 互异（非同一共享 session）
     assert all(s.committed for s in sessions)          # 全部成功 → 全 commit
+
+
+# ---------------------------------------------------------------------------
+# 新增信号推送（微信 iLink）
+# ---------------------------------------------------------------------------
+
+def _sig(code: str) -> ChanlunSignal:
+    from datetime import datetime as _dt
+    return ChanlunSignal(
+        stock_code=code, period="daily", signal_type="buy1",
+        structure_level="stroke", signal_time=_dt(2026, 1, 10, 15, 0),
+    )
+
+
+async def test_pusher_called_with_all_new_signals():
+    """本批有新增信号 → pusher 被调一次且收到全部新增信号。"""
+
+    class SigCalc(FakeCalc):
+        async def compute_and_persist(self, code, period):
+            self._calls.append((code, period))
+            return [], StructureSnapshot(stock_code=code, period=period), [_sig(code)]
+
+    wl = FakeWatchlistRepo([_item("600000"), _item("000001")])
+    cr = FakeChanlunRepo()
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+
+    pushed: list[list[ChanlunSignal]] = []
+
+    async def pusher(signals):
+        pushed.append(signals)
+
+    mon, _s, _c = _make_monitor(wl, cr, sd)
+    mon.signal_pusher = pusher
+    # 替换 build_calc 产出带信号的 Fake
+    mon._build_calc = lambda s: SigCalc(s, chanlun_repo=cr, stock_data_repo=sd)
+
+    await mon.scan("daily", user_id="u1")
+
+    assert len(pushed) == 1
+    assert {s.stock_code for s in pushed[0]} == {"600000", "000001"}
+
+
+async def test_pusher_failure_does_not_break_scan():
+    """pusher 抛异常 → scan 仍正常完成（run_log 正确收尾）。"""
+    wl = FakeWatchlistRepo([_item("600000")])
+    cr = FakeChanlunRepo()
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+
+    async def bad_pusher(signals):
+        raise RuntimeError("wechat down")
+
+    mon, _s, _c = _make_monitor(wl, cr, sd)
+    mon._build_calc = lambda s: FakeCalc(s, chanlun_repo=cr, stock_data_repo=sd)
+    mon.signal_pusher = bad_pusher
+
+    log = await mon.scan("daily", user_id="u1")  # 默认 FakeCalc 无新增信号
+
+    assert log.status == "done"
+
+
+async def test_no_new_signals_pusher_not_called():
+    """无新增信号 → pusher 不被调用。"""
+    wl = FakeWatchlistRepo([_item("600000")])
+    cr = FakeChanlunRepo()
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+    calls: list = []
+
+    async def pusher(signals):
+        calls.append(signals)
+
+    mon, _s, _c = _make_monitor(wl, cr, sd)
+    mon.signal_pusher = pusher  # FakeCalc 返回空新增列表
+
+    await mon.scan("daily", user_id="u1")
+
+    assert calls == []
+
+
+async def test_pusher_none_backward_compatible():
+    """signal_pusher=None（默认）→ 扫描行为与旧版一致。"""
+    wl = FakeWatchlistRepo([_item("600000"), _item("000001")])
+    cr = FakeChanlunRepo()
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+    mon, _s, calc_calls = _make_monitor(wl, cr, sd)  # 未注入 pusher
+
+    log = await mon.scan("daily", user_id="u1")
+
+    assert mon.signal_pusher is None
+    assert log.success == 2 and len(calc_calls) == 2

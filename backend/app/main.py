@@ -161,6 +161,34 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("缠论扫描调度器初始化失败（非致命）: %s", e)
 
+    # 微信 iLink 长轮询（刷新 context_token 供缠论信号推送；未启用时跳过）
+    if not settings.wechat_push_enabled or not settings.wechat_ilink_bot_token \
+            or not settings.wechat_ilink_user_id:
+        logger.info("微信 iLink 推送未启用（开关关闭或 token/user_id 未配置）")
+    else:
+        try:
+            from app.application.wechat.ilink_polling_service import (
+                ILinkPollingService,
+                start_polling,
+            )
+            from app.infrastructure.wechat.ilink_client import ILinkBotClient
+            from app.infrastructure.wechat.ilink_token_store import ILinkTokenStore
+
+            _ilink_client = ILinkBotClient(
+                bot_token=settings.wechat_ilink_bot_token,
+                base_url=settings.wechat_ilink_base_url,
+                client_version=settings.wechat_ilink_client_version,
+                poll_timeout=settings.wechat_ilink_poll_timeout + 5,
+            )
+            start_polling(ILinkPollingService(
+                _ilink_client,
+                ILinkTokenStore(),
+                backoff_max=settings.wechat_ilink_backoff_max,
+            ))
+            logger.info("微信 iLink 长轮询已启动")
+        except Exception as e:
+            logger.warning("微信 iLink 长轮询启动失败（非致命）: %s", e)
+
     yield
     # Shutdown
     if hasattr(app.state, "search_service") and app.state.search_service:
@@ -171,6 +199,12 @@ async def lifespan(app: FastAPI):
     if _chanlun_scheduler:
         _chanlun_scheduler.shutdown(wait=False)
         logger.info("缠论扫描调度器已关闭")
+    # 停止微信长轮询（cancel + 等待清理，避免关停期间残留写 Redis）
+    try:
+        from app.application.wechat.ilink_polling_service import stop_polling
+        await stop_polling()
+    except Exception as e:
+        logger.warning("微信 iLink 长轮询停止失败（忽略）: %s", e)
 
 
 app = FastAPI(

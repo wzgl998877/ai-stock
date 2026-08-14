@@ -184,11 +184,11 @@ class MySQLChanlunRepository(ChanlunRepository):
 
     # --- 信号 ---
 
-    async def upsert_signals_batch(self, signals: list[ChanlunSignal]) -> int:
-        """幂等批量写入；已存在的 confirmed 信号不覆盖。返回新增条数。"""
+    async def upsert_signals_batch(self, signals: list[ChanlunSignal]) -> list[ChanlunSignal]:
+        """幂等批量写入；已存在的 confirmed 信号不覆盖。返回新增的信号实体列表。"""
         if not signals:
-            return 0
-        inserted = 0
+            return []
+        inserted: list[ChanlunSignal] = []
         for sig in signals:
             key = sig.dedup_key or sig.make_dedup_key()
             stmt = select(StrategySignalModel).where(StrategySignalModel.dedup_key == key)
@@ -213,7 +213,8 @@ class MySQLChanlunRepository(ChanlunRepository):
                     dedup_key=key,
                 )
             )
-            inserted += 1
+            sig.dedup_key = key
+            inserted.append(sig)
         await self.session.flush()
         return inserted
 

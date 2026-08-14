@@ -170,12 +170,16 @@ def build_monitor(session: AsyncSession, session_factory) -> ChanlunMonitorUseCa
             chanlun_repo=MySQLChanlunRepository(s),
         )
 
+    # 手动重算同样接入微信推送（settings 未启用时为 None，零成本）
+    from app.application.wechat.chanlun_signal_push import build_signal_pusher
+
     return ChanlunMonitorUseCase(
         watchlist_repo=MySQLWatchlistRepository(session),
         chanlun_repo=MySQLChanlunRepository(session),
         algo_version=settings.chanlun_algo_version,
         session_factory=session_factory,
         build_calc=_build_calc,
+        signal_pusher=build_signal_pusher(session_factory),
     )
 
 

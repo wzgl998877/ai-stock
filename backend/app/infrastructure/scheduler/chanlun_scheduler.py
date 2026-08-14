@@ -43,6 +43,7 @@ def _build_monitor(session, session_factory):
     """从主 session 装配监控 UseCase；每股计算用 session_factory 建独立 session。"""
     from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase
     from app.application.use_cases.chanlun_monitor import ChanlunMonitorUseCase
+    from app.application.wechat.chanlun_signal_push import build_signal_pusher
     from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
     from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
     from app.infrastructure.repositories.mysql_watchlist_repo import MySQLWatchlistRepository
@@ -59,6 +60,7 @@ def _build_monitor(session, session_factory):
         algo_version=settings.chanlun_algo_version,
         session_factory=session_factory,
         build_calc=_build_calc,
+        signal_pusher=build_signal_pusher(session_factory),
     )
 
 

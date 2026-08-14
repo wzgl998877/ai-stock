@@ -36,13 +36,13 @@ class FakeChanlunRepo:
     def __init__(self, added_mapper=None):
         self.signals_upserted: list[list] = []
         self.structures: list[StructureSnapshot] = []
-        self.added_mapper = added_mapper  # 可定制返回的新增条数
+        self.added_mapper = added_mapper  # 可定制返回的新增信号列表
 
     async def upsert_signals_batch(self, signals):
         self.signals_upserted.append(signals)
         if self.added_mapper is not None:
             return self.added_mapper(signals)
-        return len(signals)
+        return list(signals)
 
     async def upsert_structure(self, snapshot):
         self.structures.append(snapshot)
@@ -117,7 +117,7 @@ async def test_daily_path_persists_structure_and_signals():
     chanlun_repo = FakeChanlunRepo()
     uc = ChanlunCalcUseCase(stock_repo, chanlun_repo, algo_version="1.0.0")
 
-    signals, snapshot, added = await uc.compute_and_persist("600000", "daily")
+    signals, snapshot, new_signals = await uc.compute_and_persist("600000", "daily")
 
     assert snapshot.stock_code == "600000"
     assert snapshot.period == "daily"
@@ -130,7 +130,8 @@ async def test_daily_path_persists_structure_and_signals():
         assert all(s.dedup_key for s in signals)
         assert all(s.user_id is None for s in signals)  # 全局信号
         assert chanlun_repo.signals_upserted
-        assert added == len(chanlun_repo.signals_upserted[0])
+        # Fake 全量新增 → new_signals 与落库入参一致
+        assert new_signals == chanlun_repo.signals_upserted[0]
 
 
 async def test_m30_path_persists_structure():
@@ -138,13 +139,14 @@ async def test_m30_path_persists_structure():
     chanlun_repo = FakeChanlunRepo()
     uc = ChanlunCalcUseCase(stock_repo, chanlun_repo, algo_version="1.0.0")
 
-    signals, snapshot, added = await uc.compute_and_persist("600000", "m30")
+    signals, snapshot, new_signals = await uc.compute_and_persist("600000", "m30")
 
     assert snapshot.period == "m30"
     assert len(chanlun_repo.structures) == 1
     assert chanlun_repo.structures[0].period == "m30"
     if signals:
         assert all(s.period == "m30" for s in signals)
+        assert isinstance(new_signals, list)
 
 
 async def test_no_data_raises_for_skip_semantics():

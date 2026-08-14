@@ -20,10 +20,11 @@ class ChanlunRepository(ABC):
     # --- 信号 ---
 
     @abstractmethod
-    async def upsert_signals_batch(self, signals: list[ChanlunSignal]) -> int:
-        """幂等批量写入信号（依据 ``dedup_key``）；返回新增条数（已存在不计）。
+    async def upsert_signals_batch(self, signals: list[ChanlunSignal]) -> list[ChanlunSignal]:
+        """幂等批量写入信号（依据 ``dedup_key``）；返回**新增的信号实体**（已存在不计）。
 
         已存在的 ``confirmed`` 信号不被覆盖（收盘确认不重绘）。
+        新增实体供监控层做微信推送等下游消费。
         """
         ...
 

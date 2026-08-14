@@ -75,6 +75,15 @@ class Settings(BaseSettings):
     chanlun_concurrency: int = 10            # 监控扫描并发上限
     chanlun_algo_version: str = "1.0.0"      # 缠论算法版本号（写入信号/结构/回测，保证可回放与一致性）
 
+    # === 微信 iLink Bot 推送（缠论信号） ===
+    wechat_push_enabled: bool = False                   # 推送总开关（token 未配置时强制视为关闭）
+    wechat_ilink_bot_token: str = ""                    # iLink Bot Token（Bearer）
+    wechat_ilink_user_id: str = ""                      # 接收人 user_id（xxx@im.wechat 格式）
+    wechat_ilink_base_url: str = "https://ilinkai.weixin.qq.com"
+    wechat_ilink_client_version: int = 196608           # iLink-App-ClientVersion 头（0x30000）
+    wechat_ilink_poll_timeout: int = 35                 # 长轮询挂起秒数（客户端超时 = 此值 + 5）
+    wechat_ilink_backoff_max: int = 60                  # 长轮询异常退避封顶（秒）
+
     # === 邮件 (SMTP) ===
     smtp_host: str = "smtp.qq.com"
     smtp_port: int = 465

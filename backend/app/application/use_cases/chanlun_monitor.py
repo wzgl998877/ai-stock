@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase, NoKlineDataError
 from app.core.config import settings
+from app.domain.entities.chanlun import ChanlunSignal
 from app.domain.entities.strategy import StrategyRunLog
 from app.domain.repositories.chanlun_repo import ChanlunRepository
 from app.domain.repositories.stock_data_repo import StockDataRepository
@@ -42,6 +43,7 @@ class ChanlunMonitorUseCase:
         session_factory,
         build_calc: Callable[[AsyncSession], ChanlunCalcUseCase],
         concurrency: Optional[int] = None,
+        signal_pusher: Optional[Callable[[list[ChanlunSignal]], Awaitable[None]]] = None,
     ):
         self.watchlist_repo = watchlist_repo
         self.chanlun_repo = chanlun_repo
@@ -50,6 +52,8 @@ class ChanlunMonitorUseCase:
         self._build_calc = build_calc
         self.concurrency = concurrency or settings.chanlun_concurrency
         self._progress_cb: Optional[Callable[[dict], Awaitable[None]]] = None
+        # 新增信号推送器（微信等）；None = 不推送。推送失败不影响扫描结果。
+        self.signal_pusher = signal_pusher
 
     async def scan(
         self,
@@ -98,7 +102,7 @@ class ChanlunMonitorUseCase:
         skipped = sum(1 for r in results if r[0] == "skipped")
         failed_detail = [
             {"stock_code": c, "reason": reason}
-            for kind, c, reason in results
+            for kind, c, reason, *_ in results
             if kind == "failed"
         ]
 
@@ -112,6 +116,16 @@ class ChanlunMonitorUseCase:
             failed_detail=failed_detail or None,
             duration_ms=duration_ms,
         )
+
+        # 本批新增信号聚合推送（run_log 收尾后执行，不持任何事务；
+        # 双重失败安全：pusher 内部全捕获 + 此处再兜底一层）
+        if self.signal_pusher is not None:
+            all_new = [s for r in results for s in r[3]]
+            if all_new:
+                try:
+                    await self.signal_pusher(all_new)
+                except Exception:
+                    logger.warning("缠论信号推送失败（不影响扫描结果）", exc_info=True)
 
         logger.info(
             "chanlun_monitor[%s/%s]: total=%d success=%d failed=%d skipped=%d (%dms)",
@@ -134,9 +148,10 @@ class ChanlunMonitorUseCase:
 
     async def _scan_one(
         self, code: str, period: str, sem: asyncio.Semaphore
-    ) -> tuple[str, str, Optional[str]]:
+    ) -> tuple[str, str, Optional[str], list[ChanlunSignal]]:
         async with sem:
             # 每股独立 session：AsyncSession 非并发安全，gather 并发下不可共享。
+            new_signals: list[ChanlunSignal] = []
             async with self._session_factory() as session:
                 calc = self._build_calc(session)
                 try:
@@ -146,7 +161,7 @@ class ChanlunMonitorUseCase:
                         logger.info("chanlun_monitor: %s @ %s 无新数据，跳过", code, period)
                         kind, reason = "skipped", "no_new_data"
                     else:
-                        await calc.compute_and_persist(code, period)
+                        _, _, new_signals = await calc.compute_and_persist(code, period)
                         await session.commit()
                         kind, reason = "success", None
                 except NoKlineDataError:
@@ -164,7 +179,7 @@ class ChanlunMonitorUseCase:
                     )
                 except Exception:
                     logger.debug("chanlun_monitor: progress_cb 失败", exc_info=True)
-            return (kind, code, reason)
+            return (kind, code, reason, new_signals)
 
     async def _filter_by_config(
         self, codes: list[str], period: str, user_id: str
