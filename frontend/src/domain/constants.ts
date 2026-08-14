@@ -262,14 +262,14 @@ export const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   sell3: "三类卖点",
 };
 
-/** 信号徽标颜色（买绿 / 卖红，沿用 A 股 K 线箭头习惯） */
+/** 信号徽标颜色（买红 / 卖绿，符合 A 股红涨绿跌习惯：买点看涨、卖点看跌） */
 export const SIGNAL_BADGE_COLORS: Record<SignalType, string> = {
-  buy1: "#16c79a",
-  buy2: "#16c79a",
-  buy3: "#16c79a",
-  sell1: "#ea2261",
-  sell2: "#ea2261",
-  sell3: "#ea2261",
+  buy1: "#ea2261",
+  buy2: "#ea2261",
+  buy3: "#ea2261",
+  sell1: "#16c79a",
+  sell2: "#16c79a",
+  sell3: "#16c79a",
 };
 
 /** 徽标状态中文文案 */

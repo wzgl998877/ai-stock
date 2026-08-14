@@ -219,7 +219,7 @@ function buildDailyOption(
   // --- 缠论图层（T038）：买卖点 markPoint + 笔/线段 markLine + 中枢 markArea ---
   const chanlunMarks: any = {};
   if (chanlunVisible) {
-    // 买卖点标注（买绿▲在 K 线下方，卖红▼在上方，角标 1/2/3）
+    // 买卖点标注（买红▲在 K 线下方，卖绿▼在上方，角标 1/2/3）
     if (signalMarks && signalMarks.length > 0) {
       chanlunMarks.markPoint = {
         symbol: 'arrow',
@@ -231,7 +231,7 @@ function buildDailyOption(
             coord: [dateKey(m.time), m.price],
             symbolRotate: buy ? 0 : 180,
             symbolOffset: [0, buy ? 12 : -12],
-            itemStyle: { color: buy ? '#16c79a' : '#ea2261' },
+            itemStyle: { color: buy ? '#ea2261' : '#16c79a' },
             value: String(m.level),
           };
         }),

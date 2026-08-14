@@ -41,7 +41,7 @@ describe('fmtSignalTime', () => {
 });
 
 describe('SignalCell', () => {
-  it('新鲜买点：绿色箭头 + 类别文案 + 时间', () => {
+  it('新鲜买点：红色箭头 + 类别文案 + 时间', () => {
     render(
       <SignalCell
         period="daily"
@@ -61,7 +61,7 @@ describe('SignalCell', () => {
     expect(screen.queryByText('08-05 15:00')).toBeNull();
   });
 
-  it('卖点渲染红色方向箭头与类别', () => {
+  it('卖点渲染绿色方向箭头与类别', () => {
     render(
       <SignalCell
         period="m30"

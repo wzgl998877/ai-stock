@@ -1,13 +1,24 @@
 """自选股路由"""
 
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.core.deps import CurrentUser, get_current_user
-from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
-from app.infrastructure.repositories.mysql_watchlist_repo import MySQLWatchlistRepository
+from app.application.sync.sync_executor import _get_lock
+from app.application.sync.watchlist_batch_sync import launch_batch_sync
 from app.application.use_cases.watchlist import WatchlistUseCase
+from app.application.use_cases.watchlist_sync import WatchlistSyncUseCase
+from app.core.database import async_session, get_db
+from app.core.deps import CurrentUser, get_current_user
+from app.domain.models.stock_data import DataType, SourceType, SyncStatus, SyncTask
+from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
+from app.infrastructure.repositories.mysql_sync_task_repo import MySQLSyncTaskRepository
+from app.infrastructure.repositories.mysql_watchlist_repo import MySQLWatchlistRepository
+
+# watchlist:sync 的全局单飞锁 key
+_WATCHLIST_SYNC_LOCK_KEY = "watchlist:sync"
 
 router = APIRouter(prefix="/api/v1/watchlist", tags=["watchlist"])
 
@@ -120,3 +131,106 @@ async def remove_stock(
     uc, db = uc_db
     await uc.remove_stock(current_user.user_id, group_id, stock_code)
     await db.commit()
+
+
+@router.post("/sync")
+async def sync_watchlist_groups(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """按自选分组批量同步日K + 30m 行情（异步后台任务）。
+
+    请求体：``{"group_ids": [1, 2, 3]}``，对选中分组内的股票跨分组去重后，
+    在后台并发拉取最近 1 年日K（写 ``t_stock_daily_quote``）与 30m（写 ``t_stock_kline_30m``），
+    并清除对应 Redis 查询缓存。缠论计算直读 DB，落库即生效。
+
+    端点本身毫秒级返回（仅创建任务记录 + 启动后台 task）；进度可在「数据同步页」
+    通过 ``t_sync_task`` 记录查看。同一时刻只允许一个 watchlist 批量同步任务（全局单飞锁）。
+    """
+    group_ids = body.get("group_ids") or []
+    if not isinstance(group_ids, list) or not group_ids:
+        raise HTTPException(status_code=400, detail="group_ids 不能为空")
+
+    # 全局单飞：已有 watchlist 批量同步在跑则拒绝
+    lock = _get_lock(_WATCHLIST_SYNC_LOCK_KEY)
+    if lock.locked():
+        raise HTTPException(status_code=409, detail="已有自选股同步任务在执行，请稍后再试")
+
+    # 收集去重股票代码
+    wl_repo = MySQLWatchlistRepository(db)
+    sync_uc = WatchlistSyncUseCase(wl_repo)
+    codes = await sync_uc.collect_unique_codes(current_user.user_id, group_ids)
+    if not codes:
+        raise HTTPException(status_code=400, detail="所选分组内暂无股票")
+
+    # 创建 t_sync_task 记录并提交（必须提交，否则后台独立 session 看不到）
+    task_repo = MySQLSyncTaskRepository(db)
+    task = SyncTask(
+        task_id=str(uuid.uuid4()),
+        source_type=SourceType.SINA,
+        data_type=DataType.DAILY_QUOTE,
+        status=SyncStatus.PENDING,
+        total_count=len(codes),
+    )
+    task = await task_repo.create(task)
+    await db.commit()
+
+    async def _update_cb(
+        task_id: str,
+        status: str,
+        success: int = 0,
+        fail: int = 0,
+        processed: int = 0,
+        error: str | None = None,
+    ) -> None:
+        """桥接回调：把简短参数映射到 update_status 的真实签名。
+        用独立 session 写库；终态（completed/failed）释放锁。"""
+        try:
+            async with async_session() as s:
+                tr = MySQLSyncTaskRepository(s)
+                await tr.update_status(
+                    task_id,
+                    SyncStatus(status),
+                    start_time=datetime.now() if status == "running" else None,
+                    processed_count=processed,
+                    success_count=success,
+                    fail_count=fail,
+                    error_message=error,
+                )
+                await s.commit()
+        except Exception:
+            # 任务记录更新失败不应影响数据已落库的事实
+            pass
+        finally:
+            if status in ("completed", "failed"):
+                if lock.locked():
+                    lock.release()
+
+    # 获取锁后启动后台任务
+    await lock.acquire()
+    try:
+        launch_batch_sync(task.task_id, codes, async_session, _update_cb)
+    except Exception:
+        # 启动后台任务本身失败（非后台任务内部异常）：必须释放锁，否则后续同步永远 409
+        if lock.locked():
+            lock.release()
+        # 同步任务记录标记为失败（独立 session，避免污染当前请求 session）
+        try:
+            async with async_session() as s:
+                await MySQLSyncTaskRepository(s).update_status(
+                    task.task_id, SyncStatus.FAILED, error_message="启动后台任务失败",
+                )
+                await s.commit()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="启动后台同步任务失败")
+
+    return {
+        "data": {
+            "task_id": task.task_id,
+            "total": len(codes),
+            "groups": len(group_ids),
+            "message": "已开始后台同步",
+        }
+    }

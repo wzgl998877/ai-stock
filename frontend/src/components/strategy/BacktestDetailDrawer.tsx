@@ -91,7 +91,7 @@ export const BacktestDetailDrawer: React.FC<BacktestDetailDrawerProps> = ({
       render: (_: unknown, r: BacktestSignalDetailItem) => {
         const v = (r as any)[winAttr] as number | null;
         if (v == null) return <Text type="secondary">—</Text>;
-        const color = v >= 0 ? "#16c79a" : "#ea2261";
+        const color = v >= 0 ? "#ea2261" : "#16c79a";
         return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{(v * 100).toFixed(2)}%</span>;
       },
     },

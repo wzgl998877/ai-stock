@@ -56,9 +56,9 @@ class BacktestSummary:
     signal_type: str
     window: int                               # 5/10/20/60
     sample_count: int = 0
-    win_rate: Optional[Decimal] = None        # DECIMAL(8,6)
-    avg_return: Optional[Decimal] = None
-    median_return: Optional[Decimal] = None
-    profit_loss_ratio: Optional[Decimal] = None
+    win_rate: Optional[Decimal] = None        # DECIMAL(8,6)；卖点按「跌为赢」计
+    avg_return: Optional[Decimal] = None      # 卖点为卖方视角（真实收益取反）
+    median_return: Optional[Decimal] = None   # 卖点同上取反
+    profit_loss_ratio: Optional[Decimal] = None  # 卖点同上取反
     note: Optional[str] = None                # sample_insufficient / window_incomplete / None
     id: Optional[int] = None

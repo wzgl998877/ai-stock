@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
-  ReloadOutlined, ClockCircleOutlined,
+  ReloadOutlined, ClockCircleOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useWatchlistStore, type WatchlistStock } from '../store/watchlistStore';
@@ -62,7 +62,7 @@ const WatchlistPage: React.FC = () => {
   const {
     groups, loading, refreshing, error, lastRefreshTime,
     fetchGroups, createGroup, renameGroup,
-    deleteGroup, removeStock, addStock, refreshQuotes,
+    deleteGroup, removeStock, addStock, refreshQuotes, syncGroups, syncing,
   } = useWatchlistStore();
 
   const { stockImpacts, setStockImpacts } = useEventRadarStore();
@@ -170,6 +170,24 @@ const WatchlistPage: React.FC = () => {
   const handleManualRefresh = useCallback(() => {
     refreshQuotes();
   }, [refreshQuotes]);
+
+  const handleSyncCurrentGroup = useCallback(async () => {
+    // 自选股页：用户已在某个分组内，直接同步该分组（日K + 30m）
+    if (!selectedGroupId) {
+      message.warning('请先在左侧选择一个分组');
+      return;
+    }
+    const groupName = groups.find((g) => g.id === selectedGroupId)?.name ?? '';
+    try {
+      const data = await syncGroups([selectedGroupId]);
+      message.success({
+        content: `已开始后台同步「${groupName}」：${data.total} 只股票（日K + 30m），预计数分钟完成，可在「数据同步页」查看进度。`,
+        duration: 6,
+      });
+    } catch (e: any) {
+      message.error(e?.message || '启动同步失败');
+    }
+  }, [selectedGroupId, groups, syncGroups]);
 
   // -----------------------------------------------------------------------
   // Derived data
@@ -629,6 +647,18 @@ const WatchlistPage: React.FC = () => {
                 style={{ color: '#533afd' }}
               >
                 刷新
+              </Button>
+            </Tooltip>
+            <Tooltip title={selectedGroupId ? '后台同步当前分组的日K + 30m，落库后缠论即可使用' : '请先在左侧选择分组'}>
+              <Button
+                type="primary"
+                size="small"
+                icon={<SyncOutlined spin={syncing} />}
+                loading={syncing}
+                disabled={!selectedGroupId}
+                onClick={handleSyncCurrentGroup}
+              >
+                同步数据
               </Button>
             </Tooltip>
             <Input

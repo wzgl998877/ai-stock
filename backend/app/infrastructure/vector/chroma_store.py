@@ -1,6 +1,7 @@
 """ChromaDB 存储封装 — 管理向量集合的 CRUD 操作"""
 
 import logging
+import threading
 from typing import Optional
 
 import chromadb
@@ -9,18 +10,27 @@ logger = logging.getLogger(__name__)
 
 
 class ChromaVectorStore:
-    """ChromaDB 向量存储封装"""
+    """ChromaDB 向量存储封装。
+
+    所有访问 ChromaDB（Rust 后端）的操作都用 ``_lock`` 串行化。
+    背景：ChromaDB 1.5.x 的 Rust 后端在多线程并发 query/add 时会段错误
+    （事件采集批量入库与 RAG 检索并发时复现），直接拖垮整个进程。
+    向量库本就不是高吞吐场景，串行化的性能损失可忽略，换取进程稳定性。
+    """
 
     def __init__(self, persist_dir: str = "./data/vector_db"):
         self._client = chromadb.PersistentClient(path=persist_dir)
+        # RLock 可重入：delete_by_filter 内部调用 get_by_filter + delete，会重入同一把锁
+        self._lock = threading.RLock()
         logger.info("ChromaDB 初始化完成: %s", persist_dir)
 
     def get_or_create_collection(self, name: str):
-        """获取或创建集合"""
-        return self._client.get_or_create_collection(
-            name=name,
-            metadata={"hnsw:space": "cosine"},
-        )
+        """获取或创建集合（线程安全）"""
+        with self._lock:
+            return self._client.get_or_create_collection(
+                name=name,
+                metadata={"hnsw:space": "cosine"},
+            )
 
     def add_documents(
         self,
@@ -31,13 +41,14 @@ class ChromaVectorStore:
         documents: list[str],
     ) -> None:
         """批量添加文档到集合"""
-        collection = self.get_or_create_collection(collection_name)
-        collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            metadatas=metadatas,
-            documents=documents,
-        )
+        with self._lock:
+            collection = self.get_or_create_collection(collection_name)
+            collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                metadatas=metadatas,
+                documents=documents,
+            )
         logger.debug("ChromaDB 写入 %d 条到 %s", len(ids), collection_name)
 
     def query(
@@ -52,17 +63,18 @@ class ChromaVectorStore:
         Returns:
             [{"id": str, "distance": float, "metadata": dict, "document": str}, ...]
         """
-        collection = self.get_or_create_collection(collection_name)
-        kwargs = {
-            "query_embeddings": [query_embedding],
-            "n_results": top_k,
-        }
-        if where:
-            kwargs["where"] = where
+        with self._lock:
+            collection = self.get_or_create_collection(collection_name)
+            kwargs = {
+                "query_embeddings": [query_embedding],
+                "n_results": top_k,
+            }
+            if where:
+                kwargs["where"] = where
 
-        results = collection.query(**kwargs)
+            results = collection.query(**kwargs)
 
-        # 解析 ChromaDB 返回结构
+        # 解析 ChromaDB 返回结构（纯 Python 计算，无需持锁）
         formatted = []
         if results and results["ids"] and results["ids"][0]:
             ids = results["ids"][0]
@@ -82,8 +94,9 @@ class ChromaVectorStore:
 
     def delete(self, collection_name: str, ids: list[str]) -> None:
         """从集合中删除文档"""
-        collection = self.get_or_create_collection(collection_name)
-        collection.delete(ids=ids)
+        with self._lock:
+            collection = self.get_or_create_collection(collection_name)
+            collection.delete(ids=ids)
         logger.debug("ChromaDB 删除 %d 条 from %s", len(ids), collection_name)
 
     def update(
@@ -94,13 +107,14 @@ class ChromaVectorStore:
         metadata: Optional[dict] = None,
     ) -> None:
         """更新集合中的文档向量或元数据"""
-        collection = self.get_or_create_collection(collection_name)
-        kwargs = {"ids": [doc_id]}
-        if embedding is not None:
-            kwargs["embeddings"] = [embedding]
-        if metadata is not None:
-            kwargs["metadatas"] = [metadata]
-        collection.update(**kwargs)
+        with self._lock:
+            collection = self.get_or_create_collection(collection_name)
+            kwargs = {"ids": [doc_id]}
+            if embedding is not None:
+                kwargs["embeddings"] = [embedding]
+            if metadata is not None:
+                kwargs["metadatas"] = [metadata]
+            collection.update(**kwargs)
         logger.debug("ChromaDB 更新 %s in %s", doc_id, collection_name)
 
     def get_by_filter(
@@ -109,8 +123,9 @@ class ChromaVectorStore:
         where: dict,
     ) -> list[dict]:
         """按 metadata 条件查询文档，返回 [{"id": ..., "metadata": ...}, ...]"""
-        collection = self.get_or_create_collection(collection_name)
-        results = collection.get(where=where)
+        with self._lock:
+            collection = self.get_or_create_collection(collection_name)
+            results = collection.get(where=where)
         return [
             {"id": id_, "metadata": meta}
             for id_, meta in zip(results["ids"], results["metadatas"] or [])
@@ -132,7 +147,8 @@ class ChromaVectorStore:
     def delete_collection(self, collection_name: str) -> bool:
         """删除整个集合，返回是否成功"""
         try:
-            self._client.delete_collection(collection_name)
+            with self._lock:
+                self._client.delete_collection(collection_name)
             logger.info("ChromaDB 集合已删除: %s", collection_name)
             return True
         except Exception as e:

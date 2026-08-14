@@ -2,8 +2,8 @@
  * 回测汇总表（T047）。
  *
  * 矩阵：行=信号类型（一/二/三类买卖），列=观察窗口（5/10/20/60 日），单元格=胜率。
- * 胜率 >50% 绿 / <50% 红；样本 <10 标「样本不足」；点击单元格打开明细 Drawer。
- * 表头挂基准涨跌 + 三条免责声明（FR-016）。数字 tabular-nums（DESIGN.md）。
+ * 胜率统一红色呈现（卖点已按「跌为赢」计，与买点同为「越高越好」）；样本 <10 标「样本不足」；
+ * 点击单元格打开明细 Drawer。表头挂基准涨跌 + 三条免责声明（FR-016）。数字 tabular-nums（DESIGN.md）。
  */
 
 import React, { useMemo, useState } from "react";
@@ -37,10 +37,9 @@ interface BacktestSummaryTableProps {
 }
 
 function winColor(wr: number | null | undefined): string {
+  // 胜率统一红色（买/卖均为「越高越好」）；无数据/无样本保留灰
   if (wr == null) return "#8c8c8c";
-  if (wr > 0.5) return "#16c79a";
-  if (wr < 0.5) return "#ea2261";
-  return "#8c8c8c";
+  return "#ea2261";
 }
 
 export const BacktestSummaryTable: React.FC<BacktestSummaryTableProps> = ({

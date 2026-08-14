@@ -8,7 +8,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Card, Radio, Checkbox, Button, Progress, Alert, Empty, Spin, Typography, message,
+  Card, Radio, Checkbox, Button, Progress, Alert, Empty, Spin, Typography, message, Tag,
 } from "antd";
 import {
   runBacktest,
@@ -53,17 +53,24 @@ const BacktestPage: React.FC = () => {
   const [drawerFilter, setDrawerFilter] = useState<BacktestDetailFilter | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchReports = useCallback(async () => {
+  const fetchReports = useCallback(async (): Promise<BacktestReportListItem[]> => {
     try {
       const res = await getReports({ page_size: 10 });
       setReports(res.items);
+      return res.items;
     } catch {
       setReports([]);
+      return [];
     }
   }, []);
 
   useEffect(() => {
-    fetchReports();
+    // 进入页面：拉取历史报告，若有则直接展示最新一条（无需手动点）
+    fetchReports().then((items) => {
+      if (items.length > 0) loadReport(items[0].report_id);
+    });
+    // loadReport 由 useCallback 稳定引用，仅首屏自动加载一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchReports]);
 
   const loadReport = useCallback(async (id: number) => {
@@ -188,20 +195,55 @@ const BacktestPage: React.FC = () => {
         )}
       </Card>
 
-      {reports.length > 0 && (
-        <Card size="small" title="历史报告">
-          {reports.map((r) => (
-            <a
-              key={r.report_id}
-              onClick={() => loadReport(r.report_id)}
-              style={{ display: "inline-block", marginRight: 16, fontSize: 13, fontVariantNumeric: "tabular-nums" }}
-            >
-              {r.range_label} · {r.stock_count}股 · {r.signal_total}信号 ·{" "}
-              {r.create_time ? r.create_time.replace("T", " ").slice(0, 16) : ""}
-            </a>
-          ))}
-        </Card>
-      )}
+      <Card size="small" title="历史报告" style={{ marginBottom: 12 }}>
+        {reports.length > 0 ? (
+          <>
+            <div style={{ marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                点击任一条目切换查看；列表按生成时间倒序，最新在最上。
+              </Text>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {reports.map((r) => {
+                const active = r.report_id === lastReportId;
+                const statusTag = (
+                  r.status === "failed" ? { color: "error", text: "失败" } :
+                  r.status === "running" ? { color: "processing", text: "进行中" } :
+                  { color: "success", text: "完成" }
+                );
+                return (
+                  <div
+                    key={r.report_id}
+                    onClick={() => loadReport(r.report_id)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      gap: 12, padding: "8px 12px", borderRadius: 6, cursor: "pointer",
+                      border: `1px solid ${active ? "#533afd" : "#e5edf5"}`,
+                      background: active ? "#f3f1ff" : "#fafbfc",
+                      transition: "background 0.15s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <Tag color="purple" style={{ margin: 0 }}>{r.range_label}</Tag>
+                      <span style={{ fontSize: 13, color: "#061b31", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                        {r.create_time ? r.create_time.replace("T", " ").slice(0, 16) : "—"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                      <span style={{ fontSize: 12, color: "#64748d", fontVariantNumeric: "tabular-nums" }}>
+                        {r.stock_count} 股 · {r.signal_total} 信号
+                      </span>
+                      <Tag color={statusTag.color} style={{ margin: 0 }}>{statusTag.text}</Tag>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <Empty description="暂无历史报告，发起回测后将自动生成并展示最新结果" />
+        )}
+      </Card>
 
       <div style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
         {STRATEGY_DISCLAIMER_LONG}

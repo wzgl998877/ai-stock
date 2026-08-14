@@ -154,7 +154,8 @@ async def test_aggregate_window_incomplete_note():
 
 async def test_aggregate_profit_loss_ratio():
     uc = _make_uc()
-    # 足量样本（12 条）使 note 不为 sample_insufficient；ret_5：盈亏各半
+    # sell1、ret_5 真实收益盈亏各半。卖点取反后：原「赢 0.10」变卖方亏损 0.10，
+    # 原「亏 0.05」变卖方盈利 0.05 → avg_win=0.05, avg_loss=0.10 → plr=0.5
     wins = [Decimal("0.10")] * 6
     losses = [Decimal("-0.05")] * 6
     details = [_detail("daily", "sell1", ret5=w) for w in wins] + [
@@ -162,9 +163,22 @@ async def test_aggregate_profit_loss_ratio():
     ]
     summaries = uc._aggregate(1, details)
     w5 = next(s for s in summaries if s.window == 5)
-    # avg_win=0.10, avg_loss=0.05 → plr=2.0
-    assert w5.profit_loss_ratio == _q6(Decimal("2.0"))
+    assert w5.profit_loss_ratio == _q6(Decimal("0.5"))
     assert w5.note is None  # 12 样本全部有效，无 incomplete
+
+
+async def test_aggregate_sell_win_rate_inverts():
+    """卖点按「跌为赢」：真实收益为负（卖对方向）应计入胜场。"""
+    uc = _make_uc()
+    # sell1：8 条真实负收益（卖对）+ 2 条真实正收益（卖错）→ 卖方视角胜率 0.8
+    details = [_detail("daily", "sell1", ret20=Decimal("-0.06")) for _ in range(8)]
+    details += [_detail("daily", "sell1", ret20=Decimal("0.04")) for _ in range(2)]
+    summaries = uc._aggregate(1, details)
+    w20 = next(s for s in summaries if s.window == 20)
+    assert w20.sample_count == 10
+    assert w20.win_rate == _q6(Decimal("0.8"))
+    # avg 卖方视角：取反后 (0.06*8 - 0.04*2)/10 = 0.04
+    assert w20.avg_return == _q6(Decimal("0.04"))
 
 
 async def test_aggregate_empty_window_yields_zero_sample():

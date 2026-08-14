@@ -73,10 +73,10 @@ class BacktestSummaryCell(BaseModel):
     signal_type: str
     window: int
     sample: int
-    win_rate: Optional[Decimal] = None
-    avg_return: Optional[Decimal] = None
-    median_return: Optional[Decimal] = None
-    profit_loss_ratio: Optional[Decimal] = None
+    win_rate: Optional[Decimal] = None        # 卖点按「跌为赢」计
+    avg_return: Optional[Decimal] = None      # 卖点为卖方视角（真实收益取反）
+    median_return: Optional[Decimal] = None   # 卖点同上取反
+    profit_loss_ratio: Optional[Decimal] = None  # 卖点同上取反
     note: Optional[str] = None
 
 

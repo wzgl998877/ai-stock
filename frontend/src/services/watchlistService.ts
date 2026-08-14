@@ -23,6 +23,11 @@ export const watchlistService = {
 
   removeStock: (groupId: number, stockCode: string) =>
     api.delete(`${BASE}/${groupId}/stocks/${stockCode}`).then((res) => res.data),
+
+  /** 按自选分组批量同步日K + 30m 行情（异步后台任务）。
+   *  端点毫秒级返回任务 id；进度在「数据同步页」查看。 */
+  syncByGroups: (groupIds: number[]) =>
+    api.post('/api/v1/watchlist/sync', { group_ids: groupIds }).then((res) => res.data),
 };
 
 export const stockQuoteService = {

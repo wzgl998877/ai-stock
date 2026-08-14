@@ -26,6 +26,7 @@ interface WatchlistState {
   groups: WatchlistGroup[];
   loading: boolean;
   refreshing: boolean;
+  syncing: boolean;
   error: string | null;
   lastRefreshTime: number | null;
 
@@ -37,12 +38,15 @@ interface WatchlistState {
   removeStock: (groupId: number, stockCode: string) => Promise<void>;
   loadQuotes: () => Promise<void>;
   refreshQuotes: () => Promise<void>;
+  /** 按分组批量同步：返回后端 {task_id,total,groups,message}，抛错时含 409 等。 */
+  syncGroups: (groupIds: number[]) => Promise<any>;
 }
 
 export const useWatchlistStore = create<WatchlistState>((set, get) => ({
   groups: [],
   loading: false,
   refreshing: false,
+  syncing: false,
   error: null,
   lastRefreshTime: null,
 
@@ -152,6 +156,18 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
       set({ groups: res.data.groups || [] });
     } catch (e: any) {
       set({ error: e.message });
+    }
+  },
+
+  syncGroups: async (groupIds: number[]) => {
+    set({ syncing: true, error: null });
+    try {
+      const res = await watchlistService.syncByGroups(groupIds);
+      set({ syncing: false });
+      return res.data; // {task_id, total, groups, message}
+    } catch (e: any) {
+      set({ syncing: false, error: e.message || '启动同步失败' });
+      throw e; // 让页面区分 409「已有任务在执行」等
     }
   },
 }));

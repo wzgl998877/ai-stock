@@ -31,7 +31,7 @@ export const ReturnDistributionChart: React.FC<ReturnDistributionChartProps> = (
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
     if (lo === hi) {
-      return { bins: [lo], counts: [vals.length], colors: [lo >= 0 ? "#16c79a" : "#ea2261"] };
+      return { bins: [lo], counts: [vals.length], colors: [lo >= 0 ? "#ea2261" : "#16c79a"] };
     }
     const step = (hi - lo) / BIN_COUNT;
     const edges = Array.from({ length: BIN_COUNT + 1 }, (_, i) => lo + i * step);
@@ -43,7 +43,7 @@ export const ReturnDistributionChart: React.FC<ReturnDistributionChartProps> = (
       if (idx < 0) idx = 0;
       cs[idx] += 1;
     }
-    const cols = centers.map((c) => (c >= 0 ? "#16c79a" : "#ea2261"));
+    const cols = centers.map((c) => (c >= 0 ? "#ea2261" : "#16c79a"));
     return { bins: centers, counts: cs, colors: cols };
   }, [returns]);
 

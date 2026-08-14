@@ -180,9 +180,9 @@ describe('KLineChart', () => {
     const candlestickSeries = optionArg.series?.find((s: any) => s.type === 'candlestick');
     expect(candlestickSeries.markPoint).toBeDefined();
     expect(candlestickSeries.markPoint.data).toHaveLength(2);
-    // 买绿 ▲ / 卖红 ▼
-    expect(candlestickSeries.markPoint.data[0].itemStyle.color).toBe('#16c79a');
-    expect(candlestickSeries.markPoint.data[1].itemStyle.color).toBe('#ea2261');
+    // 买红 ▲ / 卖绿 ▼
+    expect(candlestickSeries.markPoint.data[0].itemStyle.color).toBe('#ea2261');
+    expect(candlestickSeries.markPoint.data[1].itemStyle.color).toBe('#16c79a');
     // 卖点箭头翻转 180°
     expect(candlestickSeries.markPoint.data[1].symbolRotate).toBe(180);
     // coord 取日期前 10 字符对齐 x 轴

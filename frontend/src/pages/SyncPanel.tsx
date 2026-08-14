@@ -4,6 +4,7 @@ import { useSyncStore } from "../store/syncStore";
 import DataSourceSelector, { type SyncFormData } from "../components/sync/DataSourceSelector";
 import SyncProgress from "../components/sync/SyncProgress";
 import SyncHistory from "../components/sync/SyncHistory";
+import WatchlistBatchSyncCard from "../components/sync/WatchlistBatchSyncCard";
 import { syncService } from "../services/syncService";
 
 const { Content } = Layout;
@@ -90,6 +91,8 @@ const SyncPanel: React.FC = () => {
         isSyncing={syncStatus === "running"}
         availableSources={availableSources}
       />
+
+      <WatchlistBatchSyncCard />
 
       <SyncProgress
         status={syncStatus}

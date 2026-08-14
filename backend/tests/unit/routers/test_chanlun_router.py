@@ -153,3 +153,36 @@ def test_entity_to_dto_conversions():
     mdto = signal_to_mark_dto(sig, "daily")
     assert mdto.signal_type == "buy2" and mdto.level == 2
     assert mdto.time == datetime(2026, 1, 3)
+
+
+def test_latest_signal_time_picks_newer_of_daily_and_m30():
+    """watchlist-signals 排序键：daily / m30 取较新者；无信号返回 datetime.min（排末尾）。"""
+    from app.application.dtos.chanlun_dto import SignalSummaryDTO, WatchlistSignalItem
+    from app.routers.chanlun import _latest_signal_time
+
+    def item(code, d_time=None, m_time=None):
+        def summ(t):
+            return SignalSummaryDTO(signal_type="buy1", signal_time=t) if t else None
+        return WatchlistSignalItem(
+            stock_code=code, stock_name=code,
+            daily=summ(d_time), m30=summ(m_time),
+            daily_status="monitored", m30_status="monitored",
+        )
+
+    # daily 较新
+    a = item("A", d_time=datetime(2026, 8, 10), m_time=datetime(2026, 8, 9))
+    assert _latest_signal_time(a) == datetime(2026, 8, 10)
+    # m30 较新
+    b = item("B", d_time=datetime(2026, 8, 9), m_time=datetime(2026, 8, 12, 10, 30))
+    assert _latest_signal_time(b) == datetime(2026, 8, 12, 10, 30)
+    # 仅一个周期
+    assert _latest_signal_time(item("C", d_time=datetime(2026, 8, 5))) == datetime(2026, 8, 5)
+    # 无信号 → datetime.min（排序时落末尾）
+    assert _latest_signal_time(item("D")) == datetime.min
+
+    # 降序排序：刚出信号的排最前，无信号的排最后
+    ordered = sorted([item("old", d_time=datetime(2026, 8, 1)),
+                      item("none"),
+                      item("new", d_time=datetime(2026, 8, 12))],
+                     key=_latest_signal_time, reverse=True)
+    assert [it.stock_code for it in ordered] == ["new", "old", "none"]

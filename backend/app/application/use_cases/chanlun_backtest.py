@@ -219,6 +219,10 @@ class ChanlunBacktestUseCase:
 
         - 样本 < 10 → ``note=sample_insufficient``；
         - 该类型信号总数 > 该窗口有效样本 → ``note=window_incomplete``（近期信号未来窗越界）。
+
+        买卖方视角：明细 ``ret_*`` 永远是真实绝对收益（涨为正、跌为负，与 K 线一致）。
+        此处对**卖点**统计量按卖方视角取反——胜率「跌为赢」、avg/中位/盈亏比以
+        「卖对方向」为正，使汇总表卖点的胜率/avg 与「卖对=赚」的直觉一致；买点不变。
         """
         by_group: dict[tuple[str, str], list[BacktestSignalDetail]] = defaultdict(list)
         for d in details:
@@ -227,10 +231,11 @@ class ChanlunBacktestUseCase:
         summaries: list[BacktestSummary] = []
         for (period, stype), group in by_group.items():
             total = len(group)
+            is_sell = stype.startswith("sell")
             for n in WINDOWS:
                 attr = f"ret_{n}"
-                samples = [getattr(d, attr) for d in group if getattr(d, attr) is not None]
-                sc = len(samples)
+                raw = [getattr(d, attr) for d in group if getattr(d, attr) is not None]
+                sc = len(raw)
                 if sc == 0:
                     summaries.append(
                         BacktestSummary(
@@ -239,6 +244,9 @@ class ChanlunBacktestUseCase:
                         )
                     )
                     continue
+
+                # 卖点取反：卖方视角下「卖对」= 真实下跌
+                samples = [(-r if is_sell else r) for r in raw]
 
                 wins = [r for r in samples if r > 0]
                 losses = [r for r in samples if r < 0]

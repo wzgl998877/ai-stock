@@ -183,6 +183,23 @@ def build_monitor(session: AsyncSession, session_factory) -> ChanlunMonitorUseCa
 # GET /watchlist-signals
 # ---------------------------------------------------------------------------
 
+def _latest_signal_time(it: "WatchlistSignalItem") -> datetime:
+    """取某只股票「最新一次信号」时间（daily / m30 较新者），无信号返回 ``datetime.min``。
+
+    用于 ``watchlist-signals`` 按信号出现时间排序的 key：刚出信号的股票排最前，
+    无信号的排末尾。signal_time 统一转 naive（兼容 DB naive 与带 tz 两种存法）。
+    """
+    times = [
+        t.replace(tzinfo=None) if t is not None else None
+        for t in (
+            it.daily.signal_time if it.daily else None,
+            it.m30.signal_time if it.m30 else None,
+        )
+    ]
+    valid = [t for t in times if t is not None]
+    return max(valid) if valid else datetime.min
+
+
 def _period_status(code, summary, period, cfg_map):
     """结合逐股监控配置推断徽标状态（T055）：关闭→disabled 且隐藏信号。"""
     cfg = cfg_map.get(code)
@@ -240,6 +257,10 @@ async def get_watchlist_signals(
             daily_status=d_status,
             m30_status=m_status,
         ))
+
+    # 按「最新信号时间」降序：daily / m30 取较新者，无信号者排末尾。
+    out_items.sort(key=_latest_signal_time, reverse=True)
+
     response = WatchlistSignalsResponse(items=out_items)
     result = jsonable(response.model_dump())
     await redis_cache.set(cache_key, result, ttl=WATCHLIST_SIGNALS_TTL)
