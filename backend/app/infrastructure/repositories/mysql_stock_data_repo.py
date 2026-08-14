@@ -386,11 +386,17 @@ class MySQLStockDataRepository(StockDataRepository):
 
             code = batch[0].code
             period = batch[0].period
+            data_source = batch[0].data_source
 
-            # 先删除该 (code, period) 在日期范围内的所有旧记录
+            # 先删除该 (code, period, data_source) 在日期范围内的旧记录。
+            # data_source 必须精确匹配：唯一索引 uk_code_date_source_period 上
+            # 若只用 (code, period, trade_date) 范围删，InnoDB 会给相邻区间（含
+            # 其他 data_source 的记录）加 next-key/gap lock，并发 upsert 不同股票时
+            # gap lock 互相重叠引发死锁（1213）。
             stmt = sql_delete(StockDailyQuoteModel).where(
                 StockDailyQuoteModel.code == code,
                 StockDailyQuoteModel.period == period,
+                StockDailyQuoteModel.data_source == data_source,
                 StockDailyQuoteModel.trade_date.in_(dates),
             )
             await self.session.execute(stmt)
