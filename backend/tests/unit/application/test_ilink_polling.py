@@ -90,7 +90,7 @@ async def test_one_round_updates_cursor_and_token():
     assert len(client.acks) == 1
     to, text, ct = client.acks[0]
     assert to == "u@im.wechat" and ct == "CT1"
-    assert "已收到" in text
+    assert "在呢" in text
 
 
 async def test_bot_echo_message_skipped():

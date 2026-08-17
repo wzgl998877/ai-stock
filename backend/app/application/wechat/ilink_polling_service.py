@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 _BACKOFF_INITIAL = 5.0
 
 # 入站消息回执文案（指令功能上线前的占位应答）
-ACK_TEXT = "✅ ai-stock 已收到你的消息（链路正常）。当前为信号单向推送，指令功能开发中。"
+ACK_TEXT = "在呢～我在线上盯着盘，缠论一出新信号就喊你 📡"
 
 
 async def _sleep(seconds: float) -> None:
