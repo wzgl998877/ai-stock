@@ -249,7 +249,8 @@ async def get_report_details(
     window: Optional[int] = Query(None, ge=5, le=60),
     stock_code: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    # 上限 2000：报告详情页需一次拉全量明细在前端做盈亏/分档统计（T048 页面化）
+    page_size: int = Query(20, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):

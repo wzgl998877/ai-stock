@@ -18,6 +18,7 @@ import StockDetailPage from "./pages/StockDetailPage";
 import WatchlistPage from "./pages/WatchlistPage";
 import EventRadarPage from "./pages/EventRadarPage";
 import BacktestPage from "./pages/BacktestPage";
+import BacktestReportDetailPage from "./pages/BacktestReportDetailPage";
 import StrategyMonitorPage from "./pages/StrategyMonitorPage";
 import StrategyMonitorConfigPage from "./pages/StrategyMonitorConfigPage";
 import { useAuthStore } from "./store/authStore";
@@ -65,6 +66,7 @@ const AppContent: React.FC = () => {
         <Route path="/strategy" element={<StrategyMonitorPage />} />
         <Route path="/strategy/config" element={<StrategyMonitorConfigPage />} />
         <Route path="/strategy/backtest" element={<BacktestPage />} />
+        <Route path="/strategy/backtest/report/:reportId" element={<BacktestReportDetailPage />} />
         <Route path="*" element={<Navigate to="/analysis" replace />} />
       </Routes>
     </AppLayout>

@@ -2,11 +2,12 @@
  * 回测页（T046）。
  *
  * 选区间（1/3/5y）+ 周期 → 发起回测（SSE 进度）→ 完成展示汇总表（T047）→
- * 点击单元格看明细 Drawer（T048）；并支持切换历史报告。
+ * 点击单元格跳转报告详情页（T048，``/strategy/backtest/report/:id``）；并支持切换历史报告。
  * 所有网络经 ``strategyService``（宪章前端红线）。
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card, Radio, Checkbox, Button, Progress, Alert, Empty, Spin, Typography, message, Tag,
 } from "antd";
@@ -28,7 +29,6 @@ import type {
   StrategySSEEvent,
 } from "../domain/types";
 import BacktestSummaryTable from "../components/strategy/BacktestSummaryTable";
-import BacktestDetailDrawer, { type BacktestDetailFilter } from "../components/strategy/BacktestDetailDrawer";
 
 const { Text, Title } = Typography;
 
@@ -38,6 +38,7 @@ const PERIOD_OPTS = [
 ];
 
 const BacktestPage: React.FC = () => {
+  const navigate = useNavigate();
   const [range, setRange] = useState<BacktestRange>("3y");
   const [periods, setPeriods] = useState<ChanlunPeriod[]>(["daily", "m30"]);
   const [running, setRunning] = useState(false);
@@ -48,9 +49,6 @@ const BacktestPage: React.FC = () => {
   const [reportLoading, setReportLoading] = useState(false);
   const [reports, setReports] = useState<BacktestReportListItem[]>([]);
   const [lastReportId, setLastReportId] = useState<number | null>(null);
-
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerFilter, setDrawerFilter] = useState<BacktestDetailFilter | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchReports = useCallback(async (): Promise<BacktestReportListItem[]> => {
@@ -136,8 +134,10 @@ const BacktestPage: React.FC = () => {
   };
 
   const onCellClick = (period: ChanlunPeriod, signal_type: any, window: any) => {
-    setDrawerFilter({ period, signal_type, window });
-    setDrawerOpen(true);
+    if (lastReportId == null) return;
+    navigate(
+      `/strategy/backtest/report/${lastReportId}?period=${period}&signal_type=${signal_type}&window=${window}`,
+    );
   };
 
   const progressPct = total > 0 ? Math.round((done / total) * 100) : running ? 0 : 0;
@@ -248,13 +248,6 @@ const BacktestPage: React.FC = () => {
       <div style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
         {STRATEGY_DISCLAIMER_LONG}
       </div>
-
-      <BacktestDetailDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        reportId={lastReportId}
-        filter={drawerFilter}
-      />
     </div>
   );
 };
