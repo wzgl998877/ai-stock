@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 _BACKOFF_INITIAL = 5.0
 
+# 入站消息回执文案（指令功能上线前的占位应答）
+ACK_TEXT = "✅ ai-stock 已收到你的消息（链路正常）。当前为信号单向推送，指令功能开发中。"
+
 
 async def _sleep(seconds: float) -> None:
     """模块级薄封装，便于单元测试 patch（避免 patch 全局 asyncio.sleep 波及测试自身）。"""
@@ -78,7 +81,7 @@ class ILinkPollingService:
                 backoff = min(backoff * 2, self.backoff_max)
 
     async def _handle_message(self, msg: dict) -> None:
-        """处理一条入站消息：刷新 context_token + 预留指令扩展点。
+        """处理一条入站消息：刷新 context_token → 回执 → 预留指令扩展点。
 
         ``message_type == 1`` 为用户消息（携带可回传的 context_token）；
         其他为 bot 自身消息回显，跳过。
@@ -90,6 +93,12 @@ class ILinkPollingService:
         if user_id and context_token:
             await self.store.set_context_token(user_id, context_token)
             logger.info("iLink 收到用户消息（from=%s，context_token 已刷新）", user_id)
+            # 立即回执：让用户感知链路已通（指令功能上线前避免"发消息没反应"困惑）。
+            # 回执失败不影响 token 刷新与后续轮询。
+            try:
+                await self.client.send_message(user_id, ACK_TEXT, context_token)
+            except Exception:
+                logger.warning("iLink 回执发送失败（忽略）", exc_info=True)
         # TODO(指令扩展): 解析 text，路由到缠论重算等指令处理器
         logger.debug("iLink 入站消息: %s", msg)
 
