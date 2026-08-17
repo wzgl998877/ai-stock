@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Set
 
 from app.domain.entities.impact_article import ImpactArticle
 
@@ -10,6 +10,9 @@ class ImpactArticleRepository(ABC):
 
     @abstractmethod
     async def get_by_url_hash(self, url_hash: str) -> Optional[ImpactArticle]: ...
+
+    @abstractmethod
+    async def get_existing_hashes(self, hashes: List[str]) -> Set[str]: ...
 
     @abstractmethod
     async def list_by_event(self, event_id: int) -> List[ImpactArticle]: ...

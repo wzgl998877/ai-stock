@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.domain.entities.impact_event import ImpactEvent
 from app.domain.services.search_result_merger import merge_chunk_results
@@ -161,7 +162,9 @@ class EventRadarUseCase:
             logger.info("未采集到新文章")
             return {"crawled": 0, "new_events": 0}
 
-        existing_hashes = set()
+        # 跨批次去重：滚动列表相邻批次高度重叠，须先查 DB 已有 url_hash（表上有唯一索引）
+        batch_hashes = [calc_url_hash(a.url) for a in articles if a.url]
+        existing_hashes = await self.article_repo.get_existing_hashes(batch_hashes)
         existing_titles = []
 
         new_count = 0
@@ -197,9 +200,25 @@ class EventRadarUseCase:
                 first_seen_at=datetime.now(),
                 last_seen_at=datetime.now(),
             )
-            event = await self.event_repo.create(event)
+            try:
+                # SAVEPOINT：撞唯一索引时仅回滚本条（含已 flush 的事件），不中断整批
+                async with self.event_repo.session.begin_nested():
+                    event = await self.event_repo.create(event)
+                    impact_article = ImpactArticle(
+                        event_id=event.event_id,
+                        title=article.title,
+                        content=article.content[:500],
+                        source=article.source,
+                        url=article.url,
+                        url_hash=result["url_hash"] or calc_url_hash(article.url),
+                        published_at=article.published_at,
+                    )
+                    await self.article_repo.create(impact_article)
+            except IntegrityError:
+                logger.warning("文章 url_hash 撞唯一索引，回滚并跳过: %s", article.title[:50])
+                continue
 
-            # 生成事件 embedding 写入向量数据库
+            # 生成事件 embedding 写入向量数据库（MySQL 落库成功后才写，避免回滚残留幽灵向量）
             if self.vector_search_repo and self.embedding_service and self.embedding_service.is_ready():
                 try:
                     embed_text = f"{event.title}\n{event.summary or ''}"
@@ -223,17 +242,6 @@ class EventRadarUseCase:
                     )
                 except Exception as e:
                     logger.warning("事件 embedding 写入失败(event_id=%s): %s", event.event_id, e)
-
-            impact_article = ImpactArticle(
-                event_id=event.event_id,
-                title=article.title,
-                content=article.content[:500],
-                source=article.source,
-                url=article.url,
-                url_hash=result["url_hash"] or calc_url_hash(article.url),
-                published_at=article.published_at,
-            )
-            await self.article_repo.create(impact_article)
 
             existing_hashes.add(impact_article.url_hash)
             existing_titles.append(article.title)

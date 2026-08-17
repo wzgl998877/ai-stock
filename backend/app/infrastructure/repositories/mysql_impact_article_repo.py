@@ -1,6 +1,6 @@
 """MySQL ImpactArticle Repository"""
 
-from typing import Optional, List
+from typing import Optional, List, Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,14 @@ class MySQLImpactArticleRepository(ImpactArticleRepository):
         result = await self.session.execute(stmt)
         model = result.scalar_one_or_none()
         return _to_entity(model) if model else None
+
+    async def get_existing_hashes(self, hashes: List[str]) -> Set[str]:
+        """批量查询已存在的 url_hash（跨批次去重用）"""
+        if not hashes:
+            return set()
+        stmt = select(ImpactArticleModel.url_hash).where(ImpactArticleModel.url_hash.in_(hashes))
+        result = await self.session.execute(stmt)
+        return {row[0] for row in result.fetchall()}
 
     async def list_by_event(self, event_id: int) -> List[ImpactArticle]:
         stmt = (
