@@ -62,8 +62,11 @@ export const ReturnDistributionChart: React.FC<ReturnDistributionChartProps> = (
         formatter: (params: any) => {
           const p = params[0];
           if (!p) return "";
-          const pct = ((p.value as number) / Math.max(1, counts.reduce((a, b) => a + b, 0)) * 100).toFixed(0);
-          return `收益 ${(p.name as number) * 100 >= 0 ? "+" : ""}${((p.name as number) * 100).toFixed(1)}%<br/>${p.value} 笔 (${pct}%)`;
+          const total = counts.reduce((a, b) => a + b, 0);
+          const pct = ((p.value as number) / Math.max(1, total) * 100).toFixed(0);
+          // 刻度 label 是字符串（如 "5.3%"），须按 dataIndex 回查数值，否则 NaN
+          const v = bins[p.dataIndex] ?? 0;
+          return `收益 ${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%<br/>${p.value} 笔 (${pct}%)`;
         },
       },
       grid: { left: 40, right: 16, top: 16, bottom: 28 },

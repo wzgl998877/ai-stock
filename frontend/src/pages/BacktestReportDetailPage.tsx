@@ -182,6 +182,9 @@ const BacktestReportDetailPage: React.FC = () => {
     },
     {
       title: "信号时间", dataIndex: "signal_time", width: 140,
+      defaultSortOrder: "descend",
+      sorter: (a: BacktestSignalDetailItem, b: BacktestSignalDetailItem) =>
+        String(a.signal_time).localeCompare(String(b.signal_time)),
       render: (t: string) => (t ? t.replace("T", " ").slice(0, 16) : "—"),
     },
     {
