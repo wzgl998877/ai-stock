@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 _BACKOFF_INITIAL = 5.0
 
 # 入站消息回执文案（指令功能上线前的占位应答）
-ACK_TEXT = "在呢～我在线上盯着盘，缠论一出新信号就喊你 📡"
+ACK_TEXT = "在呢，有什么问题随时找我 👌"
 
 
 async def _sleep(seconds: float) -> None:
