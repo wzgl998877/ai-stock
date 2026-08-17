@@ -64,6 +64,61 @@ def _build_monitor(session, session_factory):
     )
 
 
+async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) -> None:
+    """并发拉取最近 N 天日K并落库（单股失败不阻断；每股独立 session）。
+
+    日线定时扫描的数据前置：拉取 → 清洗 → ``upsert_daily_batch`` → 清
+    ``stock:daily:{code}:*`` 缓存。窗口取 30 自然日（≈20 个交易日），
+    覆盖节假日与短时停机；更长缺口由手动「自选股批量同步」（365 天）兜底。
+    """
+    import asyncio as _asyncio
+    from datetime import datetime as _dt, timedelta as _td
+
+    from app.application.sync.sina_sync_client import SinaSyncClient
+    from app.application.sync.sync_executor import _clear_kline_cache
+    from app.domain.services.data_cleaner import clean_daily_quote
+    from app.infrastructure.repositories.mysql_stock_data_repo import (
+        MySQLStockDataRepository,
+    )
+
+    end_date = _dt.now().strftime("%Y-%m-%d")
+    start_date = (_dt.now() - _td(days=days)).strftime("%Y-%m-%d")
+    sem = _asyncio.Semaphore(max(1, settings.chanlun_concurrency))
+
+    async def pull(code: str) -> None:
+        async with sem:
+            # 同步库用 to_thread 包裹，避免阻塞事件循环（对标 watchlist_batch_sync）
+            client = SinaSyncClient()
+            raw = await _asyncio.to_thread(
+                client.fetch_daily_quote,
+                code=code, start_date=start_date,
+                end_date=end_date, period="daily",
+            )
+            quotes = []
+            for r in raw:
+                try:
+                    quotes.append(clean_daily_quote(r, "sina"))
+                except Exception as e:
+                    logger.warning("缠论日线拉取 %s 脏数据跳过: %s", code, e)
+            if quotes:
+                async with session_factory() as s:
+                    try:
+                        repo = MySQLStockDataRepository(s)
+                        await repo.upsert_daily_batch(quotes)
+                        await _clear_kline_cache(code, "daily")
+                        await s.commit()
+                    except Exception as e:
+                        await s.rollback()
+                        logger.warning("缠论日线拉取 %s 失败: %s", code, e)
+
+    results = await _asyncio.gather(
+        *[pull(c) for c in codes], return_exceptions=True
+    )
+    for code, r in zip(codes, results):
+        if isinstance(r, Exception):
+            logger.warning("缠论日线拉取 %s 失败: %s", code, r)
+
+
 def setup_scheduler(session_factory):
     """初始化并返回 APScheduler 实例（不自动启动）。"""
     global _scheduler
@@ -86,6 +141,12 @@ def setup_scheduler(session_factory):
                 if not codes:
                     logger.info("缠论日线扫描：无自选股，跳过")
                     return
+
+                # 1) 并发拉取最近 N 天日K（此前只扫不拉，数据靠手动同步，
+                #    导致定时扫描长期 stale 跳过、信号出不来——对标 scan_m30 修正）
+                await _pull_daily_quotes(session_factory, codes)
+
+                # 2) 扫描计算
                 monitor = _build_monitor(session, session_factory)
                 await monitor.scan(
                     "daily", user_id="system",

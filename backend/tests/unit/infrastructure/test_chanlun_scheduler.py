@@ -48,3 +48,151 @@ def test_m30_trigger_covers_eight_points():
             assert triggered is None or not (triggered.hour == h and triggered.minute == m), (
                 f"期望 {(h, m)} 不命中，实际命中 {triggered}"
             )
+
+
+# ---------------------------------------------------------------------------
+# _pull_daily_quotes：日线定时扫描的数据前置拉取
+# ---------------------------------------------------------------------------
+
+import pytest
+from unittest.mock import patch
+
+pytestmark_pull = pytest.mark.asyncio
+
+
+class _FakeSession:
+    def __init__(self):
+        self.committed = False
+        self.rolled_back = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def commit(self):
+        self.committed = True
+
+    async def rollback(self):
+        self.rolled_back = True
+
+
+class _FakeRepo:
+    instances = []
+
+    def __init__(self, session):
+        self.session = session
+        self.upserted = []
+        _FakeRepo.instances.append(self)
+
+    async def upsert_daily_batch(self, quotes):
+        self.upserted.append(quotes)
+
+
+@pytest.mark.asyncio
+async def test_pull_daily_quotes_upserts_and_clears_cache():
+    """正常路径：拉取 → 清洗 → upsert → 清缓存 → commit。"""
+    _FakeRepo.instances = []
+    sessions = []
+
+    def factory():
+        s = _FakeSession()
+        sessions.append(s)
+        return s
+
+    raw = [{"code": "600000", "trade_date": "2026-08-14", "close": "10.0"}]
+
+    class _FakeSina:
+        def fetch_daily_quote(self, code, start_date, end_date, period="daily"):
+            return raw
+
+    cleared = []
+
+    async def fake_clear(code, period):
+        cleared.append((code, period))
+
+    with patch("app.application.sync.sina_sync_client.SinaSyncClient", _FakeSina), \
+         patch("app.domain.services.data_cleaner.clean_daily_quote", side_effect=lambda r, s: r), \
+         patch(
+             "app.infrastructure.repositories.mysql_stock_data_repo.MySQLStockDataRepository",
+             _FakeRepo,
+         ), \
+         patch("app.application.sync.sync_executor._clear_kline_cache", fake_clear):
+        from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+        await _pull_daily_quotes(factory, ["600000", "000001"])
+
+    assert len(_FakeRepo.instances) == 2
+    assert all(inst.upserted == [raw] for inst in _FakeRepo.instances)
+    assert set(cleared) == {("600000", "daily"), ("000001", "daily")}
+    assert len(sessions) == 2 and all(s.committed for s in sessions)
+
+
+@pytest.mark.asyncio
+async def test_pull_daily_quotes_single_failure_not_blocking():
+    """单股网络异常 → 记 warning，不影响其他股；落库异常走 rollback。"""
+    _FakeRepo.instances = []
+    sessions = []
+
+    def factory():
+        s = _FakeSession()
+        sessions.append(s)
+        return s
+
+    class _FakeSina:
+        def fetch_daily_quote(self, code, start_date, end_date, period="daily"):
+            if code == "BAD001":
+                raise RuntimeError("network down")
+            return [{"code": code, "trade_date": "2026-08-14"}]
+
+    class _FailingRepo:
+        def __init__(self, session):
+            self.session = session
+
+        async def upsert_daily_batch(self, quotes):
+            raise RuntimeError("db error")
+
+    with patch("app.application.sync.sina_sync_client.SinaSyncClient", _FakeSina), \
+         patch("app.domain.services.data_cleaner.clean_daily_quote", side_effect=lambda r, s: r), \
+         patch(
+             "app.infrastructure.repositories.mysql_stock_data_repo.MySQLStockDataRepository",
+             _FailingRepo,
+         ), \
+         patch("app.application.sync.sync_executor._clear_kline_cache"):
+        from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+        await _pull_daily_quotes(factory, ["BAD001", "600000"])  # 不抛
+
+    # BAD001 网络异常在 gather 结果里被记日志；600000 落库失败 rollback
+    assert sessions[0].rolled_back is True
+
+
+@pytest.mark.asyncio
+async def test_pull_daily_quotes_dirty_rows_skipped():
+    """清洗失败的脏数据跳过；全部脏 → 不开 session 落库。"""
+    _FakeRepo.instances = []
+    sessions = []
+
+    def factory():
+        s = _FakeSession()
+        sessions.append(s)
+        return s
+
+    class _FakeSina:
+        def fetch_daily_quote(self, code, start_date, end_date, period="daily"):
+            return [{"bad": "row"}]
+
+    def dirty_cleaner(r, s):
+        raise ValueError("dirty")
+
+    with patch("app.application.sync.sina_sync_client.SinaSyncClient", _FakeSina), \
+         patch("app.domain.services.data_cleaner.clean_daily_quote", dirty_cleaner), \
+         patch(
+             "app.infrastructure.repositories.mysql_stock_data_repo.MySQLStockDataRepository",
+             _FakeRepo,
+         ), \
+         patch("app.application.sync.sync_executor._clear_kline_cache"):
+        from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+        await _pull_daily_quotes(factory, ["600000"])
+
+    assert sessions == []      # 无净数据 → 未开 session
+    assert _FakeRepo.instances == []
