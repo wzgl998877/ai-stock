@@ -219,6 +219,23 @@ def setup_scheduler(session_factory):
         replace_existing=True,
     )
 
+    # 微信 iLink 心跳保活：每天 08:30 / 20:30 发一条消息「使用」context_token，
+    # 防其 ~24h 过期导致信号推送中断（含周末——周一盘前 token 必须活着）
+    async def wechat_keepalive():
+        from app.application.wechat.ilink_keepalive import build_keepalive
+
+        uc = build_keepalive()
+        if uc is None:
+            return
+        await uc.send()
+
+    scheduler.add_job(
+        wechat_keepalive,
+        CronTrigger(hour="8,20", minute="30"),
+        id="wechat_ilink_keepalive",
+        replace_existing=True,
+    )
+
     _scheduler = scheduler
     return scheduler
 

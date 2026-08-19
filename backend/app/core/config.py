@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     wechat_ilink_client_version: int = 196608           # iLink-App-ClientVersion 头（0x30000）
     wechat_ilink_poll_timeout: int = 35                 # 长轮询挂起秒数（客户端超时 = 此值 + 5）
     wechat_ilink_backoff_max: int = 60                  # 长轮询异常退避封顶（秒）
+    wechat_keepalive_enabled: bool = True               # 心跳保活（定时发消息维持 context_token，防 24h 过期）
 
     # === 邮件 (SMTP) ===
     smtp_host: str = "smtp.qq.com"
