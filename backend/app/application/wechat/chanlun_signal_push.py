@@ -3,8 +3,14 @@
 推送链路：监控扫描聚合本批新增信号 → ``format_signals_message`` 拼一条消息 →
 经 ``ILinkBotClient.send_message`` 发给配置的接收人。
 
+推送结果回写：每次尝试（success / skipped / failed）都把结果与网关返回的
+``message_id`` 落到 ``t_strategy_signal``（经 ``result_writer`` 回调，由装配层
+建独立 session 完成并 commit）——网关 ret=0 不等于实际送达，表级记录是与
+推送日志对账的唯一证据。
+
 失败安全边界：``push`` 全程捕获异常只记 warning——推送失败绝不影响信号落库
-主流程（监控层调用点还有一层 try/except 兜底）。
+主流程（监控层调用点还有一层 try/except 兜底）；推送结果回写失败同样只记
+warning。
 """
 
 from __future__ import annotations
@@ -21,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 # 名称查找器：给定股票代码列表，返回 {stock_code: stock_name}
 NameLookup = Callable[[list[str]], Awaitable[dict[str, str]]]
+# 推送结果回写器：(signal_ids, push_status, message_id) → None
+PushResultWriter = Callable[[list[int], str, Optional[str]], Awaitable[None]]
 # 推送器签名（监控层注入）
 SignalPusher = Callable[[list[ChanlunSignal]], Awaitable[None]]
 
@@ -74,14 +82,26 @@ class ChanlunSignalPushUseCase:
         store: ILinkTokenStore,
         to_user_id: str,
         name_lookup: Optional[NameLookup] = None,
+        result_writer: Optional[PushResultWriter] = None,
     ):
         self.client = client
         self.store = store
         self.to_user_id = to_user_id
         self.name_lookup = name_lookup
+        self.result_writer = result_writer
+
+    async def _record(self, ids: list[int], status: str, message_id: Optional[str]) -> None:
+        """回写推送结果；失败只记 warning（不影响任何主流程）。"""
+        if self.result_writer is None or not ids:
+            return
+        try:
+            await self.result_writer(ids, status, message_id)
+        except Exception:
+            logger.warning("推送结果回写失败（status=%s）", status, exc_info=True)
 
     async def push(self, new_signals: list[ChanlunSignal]) -> None:
         """聚合推送本批新增信号。任何失败只记日志，不向上抛。"""
+        ids = [s.id for s in new_signals if s.id is not None]
         try:
             if not new_signals:
                 return
@@ -101,13 +121,18 @@ class ChanlunSignalPushUseCase:
                     "微信推送跳过：无 %s 的 context_token（需接收人先给 bot 发送一条消息激活）",
                     self.to_user_id,
                 )
+                await self._record(ids, "skipped", None)
                 return
 
             text = format_signals_message(new_signals, names)
-            await self.client.send_message(self.to_user_id, text, context_token)
-            logger.info("缠论信号已推送微信：%d 条新增", len(new_signals))
+            message_id = await self.client.send_message(self.to_user_id, text, context_token)
+            logger.info(
+                "缠论信号已推送微信：%d 条新增（message_id=%s）", len(new_signals), message_id
+            )
+            await self._record(ids, "success", message_id or None)
         except Exception:
             logger.warning("缠论信号微信推送失败（不影响信号落库）", exc_info=True)
+            await self._record(ids, "failed", None)
 
 
 def build_signal_pusher(session_factory) -> Optional[SignalPusher]:
@@ -135,6 +160,21 @@ def build_signal_pusher(session_factory) -> Optional[SignalPusher]:
         store=ILinkTokenStore(),
         to_user_id=settings.wechat_ilink_user_id,
     )
+
+    async def _write_push_result(
+        ids: list[int], status: str, message_id: Optional[str]
+    ) -> None:
+        """推送结果回写：独立 session + 显式 commit（写操作规范）。"""
+        from app.infrastructure.repositories.mysql_chanlun_repo import (
+            MySQLChanlunRepository,
+        )
+
+        async with session_factory() as s:
+            repo = MySQLChanlunRepository(s)
+            await repo.update_push_result(ids, status, message_id)
+            await s.commit()
+
+    uc.result_writer = _write_push_result
 
     async def _lookup_names(codes: list[str]) -> dict[str, str]:
         from sqlalchemy import bindparam, text as sql_text

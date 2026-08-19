@@ -121,6 +121,10 @@ class ChanlunSignal:
     algo_version: str = ""
     status: str = "confirmed"
     invalidated_reason: Optional[str] = None
+    # 微信推送结果（success / skipped / failed；None=未尝试）
+    push_status: Optional[str] = None
+    push_message_id: Optional[str] = None
+    push_time: Optional[datetime] = None
     user_id: Optional[str] = None
     dedup_key: Optional[str] = None
     id: Optional[int] = None

@@ -31,6 +31,10 @@ class SignalDTO(BaseModel):
     status: str = "confirmed"
     invalidated_reason: Optional[str] = None
     algo_version: str = ""
+    # 微信推送结果（success / skipped / failed；None=未尝试）
+    push_status: Optional[str] = None
+    push_message_id: Optional[str] = None
+    push_time: Optional[datetime] = None
 
 
 class SignalListResponse(BaseModel):

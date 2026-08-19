@@ -117,6 +117,17 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({ stockCode 
         ),
     },
     {
+      title: "微信推送",
+      dataIndex: "push_status",
+      width: 90,
+      render: (v: SignalHistoryItem["push_status"]) => {
+        if (v === "success") return <Text type="success" style={{ fontSize: 12 }}>已推送</Text>;
+        if (v === "failed") return <Text type="danger" style={{ fontSize: 12 }}>推送失败</Text>;
+        if (v === "skipped") return <Text type="warning" style={{ fontSize: 12 }}>未激活跳过</Text>;
+        return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+      },
+    },
+    {
       title: "失效原因",
       dataIndex: "invalidated_reason",
       render: (r: string | null) => (r ? <Text type="secondary" style={{ fontSize: 12 }}>{r}</Text> : "—"),

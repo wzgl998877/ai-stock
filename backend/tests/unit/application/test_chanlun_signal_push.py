@@ -30,14 +30,16 @@ def _sig(**kw) -> ChanlunSignal:
 
 
 class FakeClient:
-    def __init__(self, fail: Optional[Exception] = None):
+    def __init__(self, fail: Optional[Exception] = None, message_id: str = "MSG-001"):
         self.sent: list[tuple[str, str, str]] = []
         self.fail = fail
+        self.message_id = message_id
 
     async def send_message(self, to_user_id, text, context_token):
         if self.fail:
             raise self.fail
         self.sent.append((to_user_id, text, context_token))
+        return self.message_id
 
 
 class FakeStore:
@@ -144,3 +146,68 @@ async def test_push_name_lookup_failure_falls_back():
     uc = ChanlunSignalPushUseCase(client, FakeStore(), "u@im.wechat", name_lookup=lookup)
     await uc.push([_sig()])
     assert "600519" in client.sent[0][1]
+
+
+# ---------------------------------------------------------------------------
+# 推送结果回写（push_status / push_message_id）
+# ---------------------------------------------------------------------------
+
+class FakeResultWriter:
+    def __init__(self, fail: Optional[Exception] = None):
+        self.calls: list[tuple[list[int], str, Optional[str]]] = []
+        self.fail = fail
+
+    async def __call__(self, ids, status, message_id):
+        if self.fail:
+            raise self.fail
+        self.calls.append((list(ids), status, message_id))
+
+
+async def test_push_success_records_message_id():
+    writer = FakeResultWriter()
+    s1, s2 = _sig(id=11), _sig(stock_code="000858", id=12)
+    uc = ChanlunSignalPushUseCase(
+        FakeClient(), FakeStore(), "u@im.wechat", result_writer=writer
+    )
+    await uc.push([s1, s2])
+    assert writer.calls == [([11, 12], "success", "MSG-001")]
+
+
+async def test_push_skip_without_token_records_skipped():
+    writer = FakeResultWriter()
+    uc = ChanlunSignalPushUseCase(
+        FakeClient(), FakeStore(token=None), "u@im.wechat", result_writer=writer
+    )
+    await uc.push([_sig(id=21)])
+    assert writer.calls == [([21], "skipped", None)]
+
+
+async def test_push_send_failure_records_failed():
+    writer = FakeResultWriter()
+    uc = ChanlunSignalPushUseCase(
+        FakeClient(fail=ILinkContextError("prepare failed", code=-2)),
+        FakeStore(),
+        "u@im.wechat",
+        result_writer=writer,
+    )
+    await uc.push([_sig(id=31)])
+    assert writer.calls == [([31], "failed", None)]
+
+
+async def test_push_without_signal_ids_not_recorded():
+    writer = FakeResultWriter()
+    uc = ChanlunSignalPushUseCase(
+        FakeClient(), FakeStore(), "u@im.wechat", result_writer=writer
+    )
+    await uc.push([_sig()])  # id=None（如推送器未走 upsert 回填路径）
+    assert writer.calls == []
+
+
+async def test_push_result_writer_failure_swallowed():
+    writer = FakeResultWriter(fail=RuntimeError("db down"))
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(
+        client, FakeStore(), "u@im.wechat", result_writer=writer
+    )
+    await uc.push([_sig(id=41)])  # 回写失败不影响发送结果，也不向上抛
+    assert len(client.sent) == 1

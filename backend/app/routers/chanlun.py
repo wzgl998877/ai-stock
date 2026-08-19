@@ -158,6 +158,9 @@ def signal_to_dto(s: ChanlunSignal) -> SignalDTO:
         status=s.status,
         invalidated_reason=s.invalidated_reason,
         algo_version=s.algo_version,
+        push_status=s.push_status,
+        push_message_id=s.push_message_id,
+        push_time=s.push_time,
     )
 
 

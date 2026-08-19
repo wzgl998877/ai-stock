@@ -53,6 +53,20 @@ class ChanlunRepository(ABC):
         """将该股该周期所有 ``confirmed`` 信号标记为 ``invalidated``；返回受影响行数。"""
         ...
 
+    @abstractmethod
+    async def update_push_result(
+        self,
+        signal_ids: list[int],
+        status: str,
+        message_id: Optional[str] = None,
+    ) -> int:
+        """批量回写信号微信推送结果（success / skipped / failed）。
+
+        ``message_id`` 为网关受理返回的消息 ID（成功时记录，其余传 None）；
+        同时落 ``push_time``。返回受影响行数。
+        """
+        ...
+
     # --- 结构快照 ---
 
     @abstractmethod

@@ -429,6 +429,10 @@ export interface SignalHistoryItem {
   algo_version: string;
   status: "confirmed" | "invalidated";
   invalidated_reason: string | null;
+  /** 微信推送结果：success=已推送 / skipped=跳过(无token) / failed=发送失败 / null=未尝试 */
+  push_status: "success" | "skipped" | "failed" | null;
+  push_message_id: string | null;
+  push_time: string | null;
 }
 
 /** 计算任务状态（日线 / m30） */

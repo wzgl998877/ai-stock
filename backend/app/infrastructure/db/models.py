@@ -751,7 +751,10 @@ class StrategySignalModel(Base):
 
     __tablename__ = "t_strategy_signal"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # with_variant：SQLite 下 BIGINT 主键不自增（单测用内存 SQLite 跑该表），MySQL 行为不变
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
     user_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     stock_code: Mapped[str] = mapped_column(String(10), nullable=False)
     period: Mapped[str] = mapped_column(String(8), nullable=False)
@@ -764,6 +767,11 @@ class StrategySignalModel(Base):
     invalidated_reason: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="")
     dedup_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    # 微信推送结果（success / skipped / failed；NULL=未尝试，如推送功能未启用）
+    push_status: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    # 网关返回的消息 ID（ret=0 受理成功时记录；与推送日志对账用）
+    push_message_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    push_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
     update_time: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now

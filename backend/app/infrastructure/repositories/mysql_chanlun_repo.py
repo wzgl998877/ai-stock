@@ -141,6 +141,9 @@ def _signal_to_entity(m: StrategySignalModel) -> ChanlunSignal:
         invalidated_reason=m.invalidated_reason,
         algo_version=m.algo_version,
         dedup_key=m.dedup_key,
+        push_status=m.push_status,
+        push_message_id=m.push_message_id,
+        push_time=m.push_time,
         create_time=m.create_time,
         update_time=m.update_time,
     )
@@ -185,10 +188,14 @@ class MySQLChanlunRepository(ChanlunRepository):
     # --- 信号 ---
 
     async def upsert_signals_batch(self, signals: list[ChanlunSignal]) -> list[ChanlunSignal]:
-        """幂等批量写入；已存在的 confirmed 信号不覆盖。返回新增的信号实体列表。"""
+        """幂等批量写入；已存在的 confirmed 信号不覆盖。返回新增的信号实体列表。
+
+        flush 后把自增 ``id`` 回填到实体——下游（微信推送结果回写）需要按 id 定位行。
+        """
         if not signals:
             return []
         inserted: list[ChanlunSignal] = []
+        added: list[tuple[ChanlunSignal, StrategySignalModel]] = []
         for sig in signals:
             key = sig.dedup_key or sig.make_dedup_key()
             stmt = select(StrategySignalModel).where(StrategySignalModel.dedup_key == key)
@@ -197,25 +204,27 @@ class MySQLChanlunRepository(ChanlunRepository):
             if existing is not None:
                 # 已确认信号不重绘；仅当原为 invalidated 不回退
                 continue
-            self.session.add(
-                StrategySignalModel(
-                    user_id=sig.user_id,
-                    stock_code=sig.stock_code,
-                    period=sig.period,
-                    signal_type=sig.signal_type,
-                    structure_level=sig.structure_level,
-                    signal_time=sig.signal_time,
-                    confirmed_at=sig.confirmed_at,
-                    trigger_price=sig.trigger_price,
-                    status=sig.status or "confirmed",
-                    invalidated_reason=sig.invalidated_reason,
-                    algo_version=sig.algo_version,
-                    dedup_key=key,
-                )
+            model = StrategySignalModel(
+                user_id=sig.user_id,
+                stock_code=sig.stock_code,
+                period=sig.period,
+                signal_type=sig.signal_type,
+                structure_level=sig.structure_level,
+                signal_time=sig.signal_time,
+                confirmed_at=sig.confirmed_at,
+                trigger_price=sig.trigger_price,
+                status=sig.status or "confirmed",
+                invalidated_reason=sig.invalidated_reason,
+                algo_version=sig.algo_version,
+                dedup_key=key,
             )
+            self.session.add(model)
             sig.dedup_key = key
             inserted.append(sig)
+            added.append((sig, model))
         await self.session.flush()
+        for sig, model in added:
+            sig.id = model.id
         return inserted
 
     async def get_signals(
@@ -276,6 +285,30 @@ class MySQLChanlunRepository(ChanlunRepository):
                 StrategySignalModel.status == "confirmed",
             )
             .values(status="invalidated", invalidated_reason=reason, update_time=datetime.now())
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount or 0
+
+    async def update_push_result(
+        self,
+        signal_ids: list[int],
+        status: str,
+        message_id: Optional[str] = None,
+    ) -> int:
+        """批量回写推送结果；同时落 push_time（对账证据链）。"""
+        if not signal_ids:
+            return 0
+        now = datetime.now()
+        stmt = (
+            update(StrategySignalModel)
+            .where(StrategySignalModel.id.in_(signal_ids))
+            .values(
+                push_status=status,
+                push_message_id=message_id or None,
+                push_time=now,
+                update_time=now,
+            )
         )
         result = await self.session.execute(stmt)
         await self.session.flush()
