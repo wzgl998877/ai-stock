@@ -128,6 +128,24 @@ class ILinkBotClient:
         )
         return str(payload.get("message_id") or "")
 
+    async def send_text_with_fallback(
+        self, to_user_id: str, text: str, context_token: str
+    ) -> str:
+        """带 token 发送；``ret=-2``（token 过期）时降级为 tokenless 重试一次。
+
+        iLink 网关允许空 ``context_token`` 的降级发送（对标 hermes-agent
+        PR #17432 对同类问题的修复；2026-08-19 本服务实测 tokenless 请求
+        正常返回 message_id）。供信号推送/心跳等**主动消息**场景使用；
+        回执等「回复」场景天然持有新鲜 token，直接用 ``send_message``。
+        """
+        try:
+            return await self.send_message(to_user_id, text, context_token)
+        except ILinkContextError:
+            logger.warning(
+                "context_token 失效（ret=-2），降级 tokenless 重试: %s", to_user_id
+            )
+            return await self.send_message(to_user_id, text, "")
+
     # ------------------------------------------------------------------
     # 内部
     # ------------------------------------------------------------------

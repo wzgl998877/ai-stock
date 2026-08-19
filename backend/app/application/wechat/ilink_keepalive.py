@@ -53,7 +53,9 @@ class ILinkKeepaliveUseCase:
                 return False
 
             text = HEARTBEAT_TEXT.format(date=datetime.now().strftime("%m-%d %H:%M"))
-            message_id = await self.client.send_message(self.to_user_id, text, context_token)
+            message_id = await self.client.send_text_with_fallback(
+                self.to_user_id, text, context_token
+            )
             logger.info("iLink 心跳已发送（message_id=%s）", message_id)
             return True
         except Exception:

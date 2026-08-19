@@ -24,6 +24,9 @@ class FakeClient:
         self.sent.append((to_user_id, text, context_token))
         return "MSG-KA"
 
+    async def send_text_with_fallback(self, to_user_id, text, context_token):
+        return await self.send_message(to_user_id, text, context_token)
+
 
 class FakeStore:
     def __init__(self, token: Optional[str] = "CTX"):

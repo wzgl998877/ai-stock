@@ -118,3 +118,51 @@ async def test_ret_zero_and_missing_both_pass():
         client = ILinkBotClient(bot_token="tok")
         msgs, buf = await client.get_updates("")
         assert msgs == [] and buf == "b"
+
+
+# ---------------------------------------------------------------------------
+# send_text_with_fallback：ret=-2 时降级 tokenless 重试
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_fallback_success_first_try():
+    """token 正常时不降级（单次调用，token 原样携带）。"""
+    patched = _mock_http_client(_mock_response({"ret": 0, "message_id": "M1"}))
+    with patch("app.infrastructure.wechat.ilink_client.httpx.AsyncClient", patched):
+        client = ILinkBotClient(bot_token="tok")
+        mid = await client.send_text_with_fallback("u", "t", "CTX")
+
+    assert mid == "M1"
+    assert patched._client.post.call_count == 1
+    body = patched._client.post.call_args.kwargs["json"]
+    assert body["msg"]["context_token"] == "CTX"
+
+
+@pytest.mark.asyncio
+async def test_fallback_retries_tokenless_on_stale_token():
+    """ret=-2（token 过期）→ 空 token 重试一次并成功。"""
+    responses = [
+        _mock_response({"ret": -2, "errmsg": "prepare failed"}),
+        _mock_response({"ret": 0, "message_id": "M2"}),
+    ]
+    patched = _mock_http_client(responses[0])
+    patched._client.post = AsyncMock(side_effect=responses)
+    with patch("app.infrastructure.wechat.ilink_client.httpx.AsyncClient", patched):
+        client = ILinkBotClient(bot_token="tok")
+        mid = await client.send_text_with_fallback("u", "t", "CTX")
+
+    assert mid == "M2"
+    assert patched._client.post.call_count == 2
+    second = patched._client.post.call_args_list[1].kwargs["json"]
+    assert second["msg"]["context_token"] == ""  # 降级：空 token
+
+
+@pytest.mark.asyncio
+async def test_fallback_no_retry_on_auth_error():
+    """ret=-14（bot 会话过期）不降级——需人工重新扫码，重试无意义。"""
+    patched = _mock_http_client(_mock_response({"ret": -14, "errmsg": "expired"}))
+    with patch("app.infrastructure.wechat.ilink_client.httpx.AsyncClient", patched):
+        client = ILinkBotClient(bot_token="tok")
+        with pytest.raises(ILinkAuthError):
+            await client.send_text_with_fallback("u", "t", "CTX")
+    assert patched._client.post.call_count == 1

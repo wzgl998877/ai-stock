@@ -125,7 +125,9 @@ class ChanlunSignalPushUseCase:
                 return
 
             text = format_signals_message(new_signals, names)
-            message_id = await self.client.send_message(self.to_user_id, text, context_token)
+            message_id = await self.client.send_text_with_fallback(
+                self.to_user_id, text, context_token
+            )
             logger.info(
                 "缠论信号已推送微信：%d 条新增（message_id=%s）", len(new_signals), message_id
             )
