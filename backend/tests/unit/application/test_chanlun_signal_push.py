@@ -93,6 +93,35 @@ def test_format_missing_price_and_time():
     assert "None" not in text
 
 
+def test_format_confirmed_later_two_lines():
+    """确认时刻晚于信号位置（尾盘信号次日确认）→ 两行格式。"""
+    s = _sig(
+        signal_time=datetime(2026, 8, 19, 15, 0),
+        confirmed_at=datetime(2026, 8, 20, 10, 0),
+    )
+    text = format_signals_message([s], {"600519": "贵州茅台"})
+    assert (
+        "1. 600519 贵州茅台 二买(笔) 1700.00\n"
+        "   信号 08-19 15:00 · 确认于 08-20 10:00" in text
+    )
+
+
+def test_format_confirmed_same_time_single_line():
+    """confirmed_at == signal_time（即时确认/历史数据）→ 维持单行格式。"""
+    s = _sig(confirmed_at=datetime(2026, 8, 14, 14, 30))
+    text = format_signals_message([s])
+    assert "600519 二买(笔) 1700.00 08-14 14:30" in text
+    assert "确认于" not in text
+
+
+def test_format_confirmed_none_single_line():
+    """confirmed_at 缺省（None）→ 维持单行格式。"""
+    s = _sig(confirmed_at=None)
+    text = format_signals_message([s])
+    assert "600519 二买(笔) 1700.00 08-14 14:30" in text
+    assert "确认于" not in text
+
+
 # ---------------------------------------------------------------------------
 # push 用例
 # ---------------------------------------------------------------------------

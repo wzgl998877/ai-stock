@@ -93,8 +93,14 @@ class StockDataRepository(ABC):
         ...
 
     @abstractmethod
-    async def get_latest_kline_30m_time(self, code: str) -> Optional[datetime]:
-        """获取某股最新的 30m trade_time（监控数据新鲜度检查用）"""
+    async def get_latest_kline_30m_time(
+        self, code: str, closed_before: Optional[datetime] = None
+    ) -> Optional[datetime]:
+        """获取某股最新的 30m trade_time（监控数据新鲜度检查用）。
+
+        ``closed_before`` 给定时只统计 ``trade_time <= closed_before`` 的行
+        （排除盘中 forming K 线，与缠论计算的剔除口径一致）。
+        """
         ...
 
     # --- Financial Data ---

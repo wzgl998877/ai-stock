@@ -60,15 +60,25 @@ def format_signals_message(
         level = LEVEL_LABELS.get(s.structure_level, s.structure_level or "")
         price = f"{s.trigger_price:.2f}" if s.trigger_price is not None else ""
         ts = s.signal_time.strftime("%m-%d %H:%M") if s.signal_time else ""
+        # 确认时刻晚于信号位置（分型右肩 K 线收盘才可确认，常见于尾盘信号）时
+        # 拆两行展示，避免「昨天 15:00 的信号今天才推」的困惑
+        need_second_line = (
+            s.confirmed_at is not None
+            and s.signal_time is not None
+            and s.confirmed_at != s.signal_time
+        )
         first = f"{i}. {head} {label}"
         if level:
             first += f"({level})"
         parts = [first]
         if price:
             parts.append(price)
-        if ts:
+        if ts and not need_second_line:
             parts.append(ts)
         lines.append(" ".join(parts))
+        if need_second_line:
+            confirmed_ts = s.confirmed_at.strftime("%m-%d %H:%M")
+            lines.append(f"   信号 {ts} · 确认于 {confirmed_ts}")
     lines.append("—— ai-stock 缠论监控，仅供参考，不构成投资建议")
     return "\n".join(lines)
 

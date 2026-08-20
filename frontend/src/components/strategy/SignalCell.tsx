@@ -65,6 +65,11 @@ function tooltipContent(
         <div style={{ fontSize: 12, lineHeight: 1.6 }}>
           <div>类型：{SIGNAL_TYPE_LABELS[summary!.signal_type!]}</div>
           <div>时间：{summary!.signal_time?.replace("T", " ").slice(0, 16) ?? "—"}</div>
+          {summary!.confirmed_at &&
+            summary!.signal_time &&
+            summary!.confirmed_at.slice(0, 16) !== summary!.signal_time.slice(0, 16) && (
+              <div>确认于：{summary!.confirmed_at.replace("T", " ").slice(0, 16)}</div>
+            )}
           {summary!.trigger_price != null && <div>触发价：{summary!.trigger_price}</div>}
         </div>
       )}

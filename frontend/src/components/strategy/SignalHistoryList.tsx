@@ -86,7 +86,19 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({ stockCode 
       title: "时间",
       dataIndex: "signal_time",
       width: 150,
-      render: (t: string) => fmtTime(t),
+      render: (t: string, record: SignalHistoryItem) => {
+        const main = fmtTime(t);
+        // 确认时刻晚于信号位置（分型右肩 K 线收盘才可确认，常见于尾盘信号）
+        const confirmedLater =
+          record.confirmed_at && t && record.confirmed_at.slice(0, 16) !== t.slice(0, 16);
+        if (!confirmedLater) return main;
+        return (
+          <div>
+            <div>{main}</div>
+            <div style={{ color: "#999", fontSize: 11 }}>确认于 {fmtTime(record.confirmed_at)}</div>
+          </div>
+        );
+      },
     },
     {
       title: "触发价",

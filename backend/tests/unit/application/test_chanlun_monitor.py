@@ -87,16 +87,21 @@ class FakeChanlunRepo:
 
 
 class FakeStockDataRepo:
-    def __init__(self, latest_daily=None, latest_m30=None):
+    def __init__(self, latest_daily=None, latest_m30=None, m30_times=None):
         self.latest_daily = latest_daily  # date
         self.latest_m30 = latest_m30      # datetime
+        # 显式 30m 时间戳列表（含 forming 行时用；模拟 repo 的 closed_before 过滤）
+        self.m30_times = m30_times
 
     async def get_daily(self, code, start_date=None, end_date=None, period="daily"):
         if self.latest_daily is None:
             return []
         return [StockDailyQuote(code=code, trade_date=self.latest_daily, period="daily", close_price=10)]
 
-    async def get_latest_kline_30m_time(self, code):
+    async def get_latest_kline_30m_time(self, code, closed_before=None):
+        if self.m30_times is not None:
+            eligible = [t for t in self.m30_times if closed_before is None or t <= closed_before]
+            return max(eligible) if eligible else None
         return self.latest_m30
 
 
@@ -263,6 +268,46 @@ async def test_m30_scan_uses_30m_freshness():
 
     assert calc_calls == []
     assert log.success == 0
+
+
+async def test_m30_stale_ignores_forming_kline(monkeypatch):
+    """盘中 forming K 线不触发重算：快照=最后已收盘 10:00，库中最新为 10:30 forming。
+
+    stale 判断须与 ``_load_m30_bars`` 的剔除口径一致（closed_before=now 过滤），
+    否则盘中每次扫描都因 forming 行判「有新数据」而重算。
+    """
+    from datetime import timedelta
+    now = datetime(2026, 8, 20, 10, 6)
+    import app.application.use_cases.chanlun_monitor as m
+    monkeypatch.setattr(m, "datetime", _FakeDatetime(now))
+
+    snapshot = StructureSnapshot(
+        stock_code="600000", period="m30",
+        last_kline_time=now - timedelta(minutes=6),  # 10:00 已收盘
+    )
+    cr = FakeChanlunRepo(structures={("600000", "m30"): snapshot})
+    wl = FakeWatchlistRepo([_item("600000")])
+    sd = FakeStockDataRepo(m30_times=[
+        now - timedelta(minutes=6),   # 10:00 已收盘（与快照相同）
+        now + timedelta(minutes=24),  # 10:30 forming（时间戳为未来）
+    ])
+    mon, _sessions, calc_calls = _make_monitor(wl, cr, sd)
+
+    log = await mon.scan("m30", user_id="u1")
+
+    # forming 行被排除 → 最新已收盘 10:00 == 快照 → stale 跳过
+    assert calc_calls == []
+    assert log.success == 0
+
+
+class _FakeDatetime:
+    """monkeypatch ``datetime`` 的最小替身：仅支持 ``now()``（monitor 用法单一）。"""
+
+    def __init__(self, fixed):
+        self._fixed = fixed
+
+    def now(self):
+        return self._fixed
 
 
 async def test_progress_cb_invoked_per_stock():

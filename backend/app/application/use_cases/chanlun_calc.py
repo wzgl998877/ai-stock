@@ -7,8 +7,11 @@
 3. 调 ``ChanlunService.compute_all`` 产出信号 + 结构快照（纯函数，无 IO）；
 4. 信号幂等落库（``dedup_key``，已确认信号不覆盖）+ 结构快照覆盖式 upsert。
 
-⚠️ 未收盘 K 线剔除由**监控调度时机**保证（收盘后触发，见 ``chanlun_monitor``）；
-   本用例只读取「当前库中最新」序列并计算，不在引擎外重复做收盘判定。
+⚠️ 未收盘 K 线剔除：m30 由 ``_load_m30_bars`` 显式过滤（``trade_time <= now``，
+   30m K 线时间戳=周期结束时点）——数据源盘中返回的 forming K 线即使已落库
+   也不参与计算，避免临时形态触发信号（定型后推翻的重绘风险）。
+   日线仍依赖调度时机（15:40 收盘后触发）；盘中手动重算日线时当天未收盘
+   K 线会参与计算，属已知边界，不在缠论引擎外重复判定。
 """
 
 from __future__ import annotations
@@ -110,9 +113,13 @@ class ChanlunCalcUseCase:
 
     async def _load_m30_bars(self, stock_code: str) -> list[KlineBar]:
         quotes = await self.stock_data_repo.get_kline_30m(stock_code)
+        # 30m K 线时间戳 = 周期结束时点：trade_time <= now 即已收盘。
+        # 数据源盘中返回的 forming K 线（时间戳为未来时点）剔除，不参与计算。
+        now = datetime.now()
         rows = [
             (q.trade_time, q.open_price, q.high_price, q.low_price, q.close_price, q.volume)
             for q in quotes
+            if q.trade_time is not None and q.trade_time <= now
         ]
         return self._assemble_bars(rows)
 

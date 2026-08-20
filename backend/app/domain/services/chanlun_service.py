@@ -328,11 +328,22 @@ class ChanlunService:
         - 一类：相邻同向线段，后者创新极值且背驰 → 趋势末端转折。
         - 二类：一类之后的第一次反向回调不破一类点 → 回调底/顶。
         - 三类：中枢突破后回踩不进中枢 → 回踩底/顶。
+
+        ``confirmed_at`` = 理论最早确认时刻：信号依赖的确认分型，其右肩 K 线
+        （包含处理后序列 ``bars[end_idx + 1]``）的收盘时刻——分型须有右侧 K
+        线才能成立（``find_fractals``），尾盘信号的右肩要到下一根 K 线收盘才
+        出现，故 ``confirmed_at`` 常晚于 ``signal_time``。
         """
         signals: list[ChanlunSignal] = []
         cb = [b for b in bis if b.confirmed]
 
-        def _add(signal_type: str, when, price: Decimal) -> None:
+        def _add(signal_type: str, when, price: Decimal, end_idx: Optional[int] = None) -> None:
+            # 分型必有右肩 K 线（否则 find_fractals 不产出），end_idx+1 越界仅防御
+            confirmed = (
+                bars[end_idx + 1].time
+                if end_idx is not None and end_idx + 1 < len(bars)
+                else when
+            )
             signals.append(
                 ChanlunSignal(
                     stock_code=stock_code,
@@ -340,7 +351,7 @@ class ChanlunService:
                     signal_type=signal_type,
                     structure_level="segment",
                     signal_time=when,
-                    confirmed_at=when,
+                    confirmed_at=confirmed,
                     trigger_price=price,
                     algo_version=algo_version,
                     status="confirmed",
@@ -357,7 +368,7 @@ class ChanlunService:
                 curr_s.start.kline_index, curr_s.end.kline_index,
                 Direction.DOWN,
             ):
-                _add("buy1", curr_s.end.time, curr_s.end.price)
+                _add("buy1", curr_s.end.time, curr_s.end.price, curr_s.end.kline_index)
 
         up_segs = [s for s in segments if s.direction == Direction.UP]
         for k in range(1, len(up_segs)):
@@ -368,7 +379,7 @@ class ChanlunService:
                 curr_s.start.kline_index, curr_s.end.kline_index,
                 Direction.UP,
             ):
-                _add("sell1", curr_s.end.time, curr_s.end.price)
+                _add("sell1", curr_s.end.time, curr_s.end.price, curr_s.end.kline_index)
 
         # --- 二类买卖点（一类后回调不破一类点） ---
         for sig in list(signals):
@@ -381,14 +392,14 @@ class ChanlunService:
                     if bi.direction != Direction.DOWN:
                         continue
                     if bi.end.kline_index > anchor_idx and bi.end.price > sig.trigger_price:
-                        _add("buy2", bi.end.time, bi.end.price)
+                        _add("buy2", bi.end.time, bi.end.price, bi.end.kline_index)
                         break
             elif sig.signal_type == "sell1":
                 for bi in cb:
                     if bi.direction != Direction.UP:
                         continue
                     if bi.end.kline_index > anchor_idx and bi.end.price < sig.trigger_price:
-                        _add("sell2", bi.end.time, bi.end.price)
+                        _add("sell2", bi.end.time, bi.end.price, bi.end.kline_index)
                         break
 
         # --- 三类买卖点（中枢突破回踩不进中枢） ---
@@ -404,13 +415,13 @@ class ChanlunService:
                     # 找紧随其后的向下回调笔
                     nxt = ChanlunService._next_bi(cb, bi)
                     if nxt is not None and nxt.direction == Direction.DOWN and nxt.end.price > zs.zg:
-                        _add("buy3", nxt.end.time, nxt.end.price)
+                        _add("buy3", nxt.end.time, nxt.end.price, nxt.end.kline_index)
                         break
                 # 向下跌破 ZD 后反弹不进 ZD
                 if bi.direction == Direction.DOWN and bi.end.price < zs.zd:
                     nxt = ChanlunService._next_bi(cb, bi)
                     if nxt is not None and nxt.direction == Direction.UP and nxt.end.price < zs.zd:
-                        _add("sell3", nxt.end.time, nxt.end.price)
+                        _add("sell3", nxt.end.time, nxt.end.price, nxt.end.kline_index)
                         break
 
         # 多中枢可能在同一根 K 线回踩触发同类买卖点（buy3/sell3）；同位置信号视为

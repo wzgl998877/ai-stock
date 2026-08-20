@@ -526,10 +526,21 @@ class MySQLStockDataRepository(StockDataRepository):
         result = await self.session.execute(stmt)
         return [_to_kline_30m(m) for m in result.scalars().all()]
 
-    async def get_latest_kline_30m_time(self, code: str) -> Optional[datetime]:
+    async def get_latest_kline_30m_time(
+        self, code: str, closed_before: Optional[datetime] = None
+    ) -> Optional[datetime]:
+        """最新 30m K 线时间；``closed_before`` 给定时只统计已收盘行。
+
+        30m K 线时间戳=周期结束时点，盘中落库的 forming 行时间戳为未来时点；
+        传 ``closed_before=now`` 可将其排除（与 ``chanlun_calc._load_m30_bars``
+        的剔除口径一致，供 stale 判断使用）。
+        """
+        conditions = [StockKline30mModel.code == code]
+        if closed_before is not None:
+            conditions.append(StockKline30mModel.trade_time <= closed_before)
         stmt = (
             select(StockKline30mModel.trade_time)
-            .where(StockKline30mModel.code == code)
+            .where(and_(*conditions))
             .order_by(StockKline30mModel.trade_time.desc())
             .limit(1)
         )

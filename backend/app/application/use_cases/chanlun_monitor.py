@@ -238,7 +238,12 @@ class ChanlunMonitorUseCase:
         self, stock_data_repo: StockDataRepository, code: str, period: str
     ) -> Optional[datetime]:
         if period == "m30":
-            return await stock_data_repo.get_latest_kline_30m_time(code)
+            # 只统计已收盘 K 线（排除 forming 行）：与 chanlun_calc._load_m30_bars
+            # 的剔除口径一致，否则快照 last_kline_time（不含 forming）永不相等，
+            # 盘中每次扫描都会重算
+            return await stock_data_repo.get_latest_kline_30m_time(
+                code, closed_before=datetime.now()
+            )
         # daily：取最新交易日（date → 当日午夜 datetime）
         quotes = await stock_data_repo.get_daily(code, period="daily")
         if not quotes:

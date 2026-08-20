@@ -188,3 +188,54 @@ async def test_dirty_rows_filtered():
     bars = await uc._load_bars("600000", "daily")
 
     assert len(bars) == 9  # 丢弃 1 行
+
+
+async def test_m30_forming_kline_excluded():
+    """未收盘 forming K 线（trade_time > now）不进入引擎。
+
+    数据源盘中返回的 30m K 线时间戳为周期结束时点（未来时点），
+    参与计算会用临时形态触发信号（定型后可推翻的重绘风险）。
+    """
+    quotes = _synth_m30()
+    last_closed = quotes[-1].trade_time
+    quotes.append(
+        StockKline30m(
+            code="600000",
+            trade_time=datetime.now() + timedelta(minutes=24),  # forming 中
+            open_price=Decimal("10"),
+            high_price=Decimal("10.5"),
+            low_price=Decimal("9.8"),
+            close_price=Decimal("10.3"),
+            volume=Decimal(500),
+        )
+    )
+    stock_repo = FakeStockDataRepo(m30=quotes)
+    uc = ChanlunCalcUseCase(stock_repo, FakeChanlunRepo(), algo_version="1.0.0")
+
+    bars = await uc._load_bars("600000", "m30")
+
+    assert all(b.time <= datetime.now() for b in bars)
+    assert bars[-1].time == last_closed  # forming 行被剔除，末根为最后已收盘 K 线
+
+
+async def test_m30_boundary_trade_time_equals_now_kept():
+    """边界：trade_time == now 视为已收盘（<= 判定），保留。"""
+    quotes = _synth_m30()
+    edge = datetime.now()
+    quotes.append(
+        StockKline30m(
+            code="600000",
+            trade_time=edge,
+            open_price=Decimal("10"),
+            high_price=Decimal("10.5"),
+            low_price=Decimal("9.8"),
+            close_price=Decimal("10.3"),
+            volume=Decimal(500),
+        )
+    )
+    stock_repo = FakeStockDataRepo(m30=quotes)
+    uc = ChanlunCalcUseCase(stock_repo, FakeChanlunRepo(), algo_version="1.0.0")
+
+    bars = await uc._load_bars("600000", "m30")
+
+    assert bars[-1].time == edge
