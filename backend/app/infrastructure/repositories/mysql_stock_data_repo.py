@@ -369,10 +369,11 @@ class MySQLStockDataRepository(StockDataRepository):
         await self.session.flush()
 
     async def upsert_daily_batch(self, quotes: List[StockDailyQuote]) -> None:
-        """先删除后插入，避免不同数据源产生重复记录。
+        """先删除后插入，保持「一个股票一个交易日一条数据」。
 
-        同一批次数据必然来自同一 (code, period)，按日期范围先清除旧数据再插入新数据，
-        确保每个交易日只有一条记录。
+        同一批次数据必然来自同一 (code, period)，按日期范围先清除旧数据再插入
+        （删除不区分 data_source——同步即全源覆盖，n8o9p0q1r2s3 起
+        uk_code_date_period 不含 data_source）。
         """
         if not quotes:
             return
@@ -386,17 +387,14 @@ class MySQLStockDataRepository(StockDataRepository):
 
             code = batch[0].code
             period = batch[0].period
-            data_source = batch[0].data_source
 
-            # 先删除该 (code, period, data_source) 在日期范围内的旧记录。
-            # data_source 必须精确匹配：唯一索引 uk_code_date_source_period 上
-            # 若只用 (code, period, trade_date) 范围删，InnoDB 会给相邻区间（含
-            # 其他 data_source 的记录）加 next-key/gap lock，并发 upsert 不同股票时
-            # gap lock 互相重叠引发死锁（1213）。
+            # 删除条件 (code, period, trade_date IN ...) 精确命中唯一索引
+            # uk_code_date_period 前缀，锁范围收敛在该股自身日期区间内
+            # （2026-08 前旧索引含 data_source 时曾因 next-key/gap lock
+            # 交叉引发死锁 1213，收敛到新索引后不再发生）。
             stmt = sql_delete(StockDailyQuoteModel).where(
                 StockDailyQuoteModel.code == code,
                 StockDailyQuoteModel.period == period,
-                StockDailyQuoteModel.data_source == data_source,
                 StockDailyQuoteModel.trade_date.in_(dates),
             )
             await self.session.execute(stmt)
@@ -428,10 +426,11 @@ class MySQLStockDataRepository(StockDataRepository):
         end_date: Optional[str] = None,
         period: str = "daily",
     ) -> List[StockDailyQuote]:
-        conditions = [
-            StockDailyQuoteModel.code == code,
-            StockDailyQuoteModel.period == period,
-        ]
+        """获取历史K线（按 trade_date 升序）。
+
+        n8o9p0q1r2s3 起「一天一条」语义：唯一索引不含 data_source，
+        直接返回该 (code, period) 的全部行，不再做数据源优先级挑选。
+        """
         conditions = [
             StockDailyQuoteModel.code == code,
             StockDailyQuoteModel.period == period,
@@ -447,33 +446,30 @@ class MySQLStockDataRepository(StockDataRepository):
             .order_by(StockDailyQuoteModel.trade_date.asc())
         )
         result = await self.session.execute(stmt)
-        all_quotes = result.scalars().all()
+        return [_to_daily_quote(q) for q in result.scalars().all()]
 
-        if not all_quotes:
-            return []
+    async def get_latest_daily_date(
+        self, code: str, period: str = "daily", source: Optional[str] = None
+    ) -> Optional[date]:
+        """某股最新日 K 日期（日线增量拉取用）。
 
-        # Group by data_source
-        by_source: dict[str, list] = {}
-        for q in all_quotes:
-            by_source.setdefault(q.data_source, []).append(q)
-
-        # Pick highest priority source
-        sources = []
-        for src in by_source:
-            try:
-                sources.append(SourceType(src))
-            except ValueError:
-                continue
-
-        best = get_highest_priority_source(sources)
-        if best:
-            best_str = best.value
-            if best_str in by_source:
-                return [_to_daily_quote(q) for q in by_source[best_str]]
-
-        # Fallback: return first source
-        first_key = list(by_source.keys())[0]
-        return [_to_daily_quote(q) for q in by_source[first_key]]
+        n8o9p0q1r2s3 起一天一条（data_source 不参与唯一性），``source`` 过滤
+        仅用于拉取侧对账（如确认 sina 是否已覆盖到某日），读取侧一般不传。
+        """
+        conditions = [
+            StockDailyQuoteModel.code == code,
+            StockDailyQuoteModel.period == period,
+        ]
+        if source:
+            conditions.append(StockDailyQuoteModel.data_source == source)
+        stmt = (
+            select(StockDailyQuoteModel.trade_date)
+            .where(and_(*conditions))
+            .order_by(StockDailyQuoteModel.trade_date.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     # --- 30 分钟 K 线（缠论模块三） ---
 

@@ -1,7 +1,7 @@
 """Repository interface for stock data (basic info, quotes, K-line, financial)."""
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 from app.domain.models.stock_data import (
     StockBasicInfo,
@@ -73,6 +73,17 @@ class StockDataRepository(ABC):
         period: str = "daily",
     ) -> List[StockDailyQuote]:
         """获取历史K线（返回优先级最高的数据源）"""
+        ...
+
+    @abstractmethod
+    async def get_latest_daily_date(
+        self, code: str, period: str = "daily", source: Optional[str] = None
+    ) -> Optional[date]:
+        """某股最新日 K 日期（日线增量拉取判断缺口用；无数据返回 None）。
+
+        ``source`` 给定时只看该数据源（增量落库按 source 幂等，
+        与 ``upsert_daily_batch`` 的删除范围一致）。
+        """
         ...
 
     # --- 30 分钟 K 线（缠论模块三，独立表 t_stock_kline_30m） ---
