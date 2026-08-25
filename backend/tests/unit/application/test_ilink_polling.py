@@ -176,3 +176,48 @@ async def test_start_and_stop_polling_clean_shutdown():
         await stop_polling()
 
     assert task.cancelled() or task.done()
+
+
+# ---------------------------------------------------------------------------
+# specs/010 T013：指令助手挂接（wechat_cmd_enabled 时走网关，未开启保留占位回执）
+# ---------------------------------------------------------------------------
+
+async def test_cmd_enabled_routes_to_gateway(monkeypatch):
+    from app.application.wechat import command_gateway
+    from app.application.wechat.ilink_polling_service import ILinkPollingService
+    from app.core.config import settings
+
+    client = FakeClient([])
+    store = FakeStore()
+    handled: list[dict] = []
+
+    async def _fake_handle(msg, client):
+        handled.append(msg)
+
+    monkeypatch.setattr(settings, "wechat_cmd_enabled", True)
+    # polling 内为函数内 import：patch 源模块（command_gateway）属性即生效
+    monkeypatch.setattr(command_gateway, "handle_command_message", _fake_handle)
+
+    svc = ILinkPollingService(client, store)
+    msg = {"message_type": 1, "from_user_id": "u@im.wechat",
+           "context_token": "CT", "client_id": "c1"}
+    await svc._handle_message(msg)
+
+    assert len(handled) == 1                      # 消息进入指令网关
+    assert client.acks == []                      # 不再发占位回执
+    assert store.tokens.get("u@im.wechat") == "CT"  # token 刷新不受影响
+
+
+async def test_cmd_disabled_keeps_legacy_ack(monkeypatch):
+    from app.application.wechat.ilink_polling_service import ILinkPollingService
+    from app.core.config import settings
+
+    client = FakeClient([])
+    store = FakeStore()
+    monkeypatch.setattr(settings, "wechat_cmd_enabled", False)
+
+    svc = ILinkPollingService(client, store)
+    msg = {"message_type": 1, "from_user_id": "u@im.wechat", "context_token": "CT"}
+    await svc._handle_message(msg)
+
+    assert client.acks == [("u@im.wechat", "在呢，有什么问题随时找我 👌", "CT")]

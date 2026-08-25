@@ -405,7 +405,9 @@ class StockDailyQuoteModel(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("code", "trade_date", "data_source", "period", name="uk_code_date_source_period"),
+        # 一天一条（n8o9p0q1r2s3）：data_source 为审计字段不参与唯一性。
+        # 同步即全源覆盖（upsert_daily_batch 删除条件不含 data_source）。
+        UniqueConstraint("code", "trade_date", "period", name="uk_code_date_period"),
     )
 
 
@@ -927,4 +929,39 @@ class BacktestSummaryModel(Base):
             "report_id", "period", "signal_type", "window",
             name="uq_bs_report_window",
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 23. t_wechat_command（微信指令助手，specs/010）
+# ---------------------------------------------------------------------------
+
+class WeChatCommandModel(Base):
+    """一条微信指令的全生命周期记录：接收→解析→执行→推送（specs/010 data-model）。"""
+
+    __tablename__ = "t_wechat_command"
+
+    # with_variant：MySQL BigInteger；SQLite（单测）需 Integer 才能 rowid 自增
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    # 真机实测 client_id 为 92 字符长格式（mmassistant_bypmsg_inbox_...@weclaw_...），128 留余量
+    msg_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_text: Mapped[str] = mapped_column(String(512), nullable=False)
+    tool_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    params_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    progress: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    push_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    __table_args__ = (
+        Index("idx_wcmd_user_time", "user_id", "create_time"),
+        Index("idx_wcmd_status", "status"),
     )

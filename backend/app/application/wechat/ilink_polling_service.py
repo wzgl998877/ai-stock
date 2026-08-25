@@ -20,6 +20,7 @@ from app.infrastructure.wechat.ilink_client import (
     ILinkError,
 )
 from app.infrastructure.wechat.ilink_token_store import ILinkTokenStore
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +82,14 @@ class ILinkPollingService:
                 backoff = min(backoff * 2, self.backoff_max)
 
     async def _handle_message(self, msg: dict) -> None:
-        """处理一条入站消息：刷新 context_token → 回执 → 预留指令扩展点。
+        """处理一条入站消息：刷新 context_token → 回执/指令处理。
 
         ``message_type == 1`` 为用户消息（携带可回传的 context_token）；
         其他为 bot 自身消息回显，跳过。
+
+        指令助手开启（``wechat_cmd_enabled``）时，消息交由 command_gateway
+        处理（鉴权/去重/路由/执行/回复，specs/010）；未开启时保留原占位回执。
+        指令处理异常在网关内部消化，不影响本轮询循环。
         """
         if msg.get("message_type") != 1:
             return
@@ -93,13 +98,20 @@ class ILinkPollingService:
         if user_id and context_token:
             await self.store.set_context_token(user_id, context_token)
             logger.info("iLink 收到用户消息（from=%s，context_token 已刷新）", user_id)
-            # 立即回执：让用户感知链路已通（指令功能上线前避免"发消息没反应"困惑）。
-            # 回执失败不影响 token 刷新与后续轮询。
-            try:
-                await self.client.send_message(user_id, ACK_TEXT, context_token)
-            except Exception:
-                logger.warning("iLink 回执发送失败（忽略）", exc_info=True)
-        # TODO(指令扩展): 解析 text，路由到缠论重算等指令处理器
+            if settings.wechat_cmd_enabled:
+                # 指令链路：网关内部消化全部异常（research D1）
+                try:
+                    from app.application.wechat.command_gateway import handle_command_message
+
+                    await handle_command_message(msg, self.client)
+                except Exception:
+                    logger.warning("iLink 指令处理异常（忽略，不影响轮询）", exc_info=True)
+            else:
+                # 立即回执：让用户感知链路已通（指令功能未开启时）。
+                try:
+                    await self.client.send_message(user_id, ACK_TEXT, context_token)
+                except Exception:
+                    logger.warning("iLink 回执发送失败（忽略）", exc_info=True)
         logger.debug("iLink 入站消息: %s", msg)
 
 

@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     wechat_ilink_backoff_max: int = 60                  # 长轮询异常退避封顶（秒）
     wechat_keepalive_enabled: bool = True               # 心跳保活（定时发消息维持 context_token，防 24h 过期）
 
+    # === 微信指令助手（iLink 消息驱动系统功能，specs/010） ===
+    wechat_cmd_enabled: bool = False                    # 指令功能总开关（与推送开关独立）
+    wechat_cmd_authorized_users: str = ""               # 授权白名单（逗号分隔；空则回落 wechat_ilink_user_id 本人）
+    wechat_cmd_llm_timeout: int = 10                    # 意图解析 LLM 超时秒数（超时走规则降级链）
+
     # === 邮件 (SMTP) ===
     smtp_host: str = "smtp.qq.com"
     smtp_port: int = 465

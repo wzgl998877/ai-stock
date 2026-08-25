@@ -186,6 +186,25 @@ async def lifespan(app: FastAPI):
                 backoff_max=settings.wechat_ilink_backoff_max,
             ))
             logger.info("微信 iLink 长轮询已启动")
+
+            # 微信指令助手（specs/010）：启动扫尾 + 装配日志（research D9/D10）
+            if settings.wechat_cmd_enabled:
+                try:
+                    from app.application.wechat.command_gateway import _authorized_user_ids
+                    from app.core.database import async_session
+                    from app.infrastructure.repositories.mysql_wechat_command_repo import (
+                        MySQLWeChatCommandRepository,
+                    )
+
+                    async with async_session() as s:
+                        cleaned = await MySQLWeChatCommandRepository(s).fail_orphans()
+                        await s.commit()
+                    logger.info(
+                        "微信指令助手已启用（授权 %d 人，孤儿指令清理 %d 条）",
+                        len(_authorized_user_ids()), cleaned,
+                    )
+                except Exception as e:
+                    logger.warning("微信指令助手启动扫尾失败（非致命）: %s", e)
         except Exception as e:
             logger.warning("微信 iLink 长轮询启动失败（非致命）: %s", e)
 
