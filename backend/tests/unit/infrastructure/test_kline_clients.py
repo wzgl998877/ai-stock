@@ -133,6 +133,58 @@ class TestTencentKlineClient:
         assert result[0]["trade_date"] == "2026-05-06"
 
     @pytest.mark.anyio
+    async def test_m30_kline_parsing(self):
+        """m30 分钟线解析（mkline 接口；时间戳 202608251500 → 区间结束时刻）。"""
+        payload = {
+            "code": 0,
+            "msg": "",
+            "data": {
+                "sz002940": {
+                    "m30": [
+                        ["202608251430", "25.54", "25.75", "25.90", "25.54", "10754.00"],
+                        ["202608251500", "25.75", "25.82", "25.88", "25.75", "10574.00"],
+                    ]
+                }
+            }
+        }
+        mock_resp = _mock_response(json.dumps(payload))
+
+        client = TencentKlineClient()
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = await client.fetch("002940", "m30")
+
+        assert len(result) == 2
+        first = result[0]
+        assert first["trade_date"] == "2026-08-25 14:30:00"  # 与新浪 m30 口径一致
+        assert first["open"] == 25.54 and first["close"] == 25.75
+        assert first["high"] == 25.90 and first["low"] == 25.54  # 注意 close 在 high 前
+        assert result[1]["trade_date"] == "2026-08-25 15:00:00"
+
+    @pytest.mark.anyio
+    async def test_m30_empty_returns_empty(self):
+        """m30 无数据返回空列表（降级方判定"真无数据"的依据）。"""
+        payload = {"code": 0, "msg": "", "data": {"sz002940": {}}}
+        mock_resp = _mock_response(json.dumps(payload))
+
+        client = TencentKlineClient()
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = await client.fetch("002940", "m30")
+
+        assert result == []
+
+    @pytest.mark.anyio
     async def test_empty_response_returns_empty(self):
         """空数据返回空列表。"""
         payload = {"code": 0, "msg": "", "data": {"sz000858": {}}}

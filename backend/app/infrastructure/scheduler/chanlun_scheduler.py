@@ -65,11 +65,18 @@ def _build_monitor(session, session_factory):
 
 
 async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) -> None:
-    """并发拉取最近 N 天日K并落库（单股失败不阻断；每股独立 session）。
+    """并发拉取日K并落库（单股失败不阻断；每股独立 session）。
 
     日线定时扫描的数据前置：拉取 → 清洗 → ``upsert_daily_batch`` → 清
-    ``stock:daily:{code}:*`` 缓存。窗口取 30 自然日（≈20 个交易日），
-    覆盖节假日与短时停机；更长缺口由手动「自选股批量同步」（365 天）兜底。
+    ``stock:daily:{code}:*`` 缓存。
+
+    增量策略（2026-08-25 新浪 456 封禁后改造）：库中已有该股日K时，
+    拉取窗口从「最近 30 自然日」缩为「库内最新日期 → 今天」，把新浪
+    ``datalen`` 从 ~300 根降到个位数~几十根，大幅缩小请求体积。
+    无数据时维持 30 自然日窗口（≈20 个交易日）做回补；更长缺口由手动
+    「自选股批量同步」（365 天）兜底。
+
+    降级链：新浪拉不到（空返回，含被限流）→ 腾讯日K兜底（2026-08-25）。
     """
     import asyncio as _asyncio
     from datetime import datetime as _dt, timedelta as _td
@@ -77,23 +84,40 @@ async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) 
     from app.application.sync.sina_sync_client import SinaSyncClient
     from app.application.sync.sync_executor import _clear_kline_cache
     from app.domain.services.data_cleaner import clean_daily_quote
+    from app.infrastructure.market.tencent_kline_client import TencentKlineClient
     from app.infrastructure.repositories.mysql_stock_data_repo import (
         MySQLStockDataRepository,
     )
 
-    end_date = _dt.now().strftime("%Y-%m-%d")
-    start_date = (_dt.now() - _td(days=days)).strftime("%Y-%m-%d")
+    today = _dt.now().date()
+    end_date = today.strftime("%Y-%m-%d")
+    default_start = (today - _td(days=days)).strftime("%Y-%m-%d")
     sem = _asyncio.Semaphore(max(1, settings.chanlun_concurrency))
+
+    async def _fetch_daily_raw(code: str, start: str, end: str) -> list[dict]:
+        """新浪 → 腾讯降级。腾讯无 start/end 参数，返回后按日期窗口过滤。"""
+        raw = await _asyncio.to_thread(
+            SinaSyncClient().fetch_daily_quote,
+            code=code, start_date=start, end_date=end, period="daily",
+        )
+        if raw:
+            return raw
+        logger.info("缠论日线拉取：新浪无数据/被限流，降级腾讯 code=%s", code)
+        # 增量缺口换算条数：自然日 → 交易日近似（×5/7）+ 余量；至少 10
+        gap_days = (_dt.strptime(end, "%Y-%m-%d") - _dt.strptime(start, "%Y-%m-%d")).days
+        count = max(10, int(gap_days * 5 / 7) + 5)
+        rows = await TencentKlineClient().fetch(code, period="daily", count=count)
+        return [r for r in rows if start <= r.get("trade_date", "") <= end]
 
     async def pull(code: str) -> None:
         async with sem:
-            # 同步库用 to_thread 包裹，避免阻塞事件循环（对标 watchlist_batch_sync）
-            client = SinaSyncClient()
-            raw = await _asyncio.to_thread(
-                client.fetch_daily_quote,
-                code=code, start_date=start_date,
-                end_date=end_date, period="daily",
-            )
+            # 增量窗口：库内最新日K之后 → 今天；无历史则默认窗口。
+            # 不按 source 过滤：n8o9p0q1r2s3 起一天一条，任何源的数据都算数
+            async with session_factory() as s:
+                repo = MySQLStockDataRepository(s)
+                latest = await repo.get_latest_daily_date(code, period="daily")
+            start = latest.strftime("%Y-%m-%d") if latest else default_start
+            raw = await _fetch_daily_raw(code, start, end_date)
             quotes = []
             for r in raw:
                 try:

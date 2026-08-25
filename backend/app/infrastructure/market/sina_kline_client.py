@@ -6,7 +6,7 @@
 import json
 import logging
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import httpx
 
@@ -52,12 +52,15 @@ class SinaKlineClient:
             "?symbol={code}&scale={scale}&datalen={count}"
         )
 
-    async def fetch(self, code: str, period: str = "daily") -> List[Dict]:
+    async def fetch(self, code: str, period: str = "daily", count: Optional[int] = None) -> List[Dict]:
         """获取K线数据。
 
         Args:
             code: 纯数字股票代码，如 "000858"。
             period: "m30" / "daily" / "weekly" / "monthly"。
+            count: 拉取条数；None 用 ``_COUNT_MAP`` 默认值（如 m30 全量回补 1500）。
+                增量同步时传小值（如 20）缩小响应体积——新浪按 IP 限流（456 封禁），
+                datalen 越大越容易被封（2026-08-25 生产事故：36 股 × 8 时点 × 1500 根被封）。
 
         Returns:
             标准格式列表: [{trade_date, open, high, low, close, volume, amount}, ...]
@@ -68,9 +71,9 @@ class SinaKlineClient:
         """
         prefixed = _prefix_code(code)
         scale = _SCALE_MAP.get(period, 240)
-        count = _COUNT_MAP.get(period, 500)
+        datalen = max(1, count if count is not None else _COUNT_MAP.get(period, 500))
 
-        url = self._base_url.format(code=prefixed, scale=scale, count=count)
+        url = self._base_url.format(code=prefixed, scale=scale, count=datalen)
         headers = {"Referer": "https://finance.sina.com"}
 
         try:

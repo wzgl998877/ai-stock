@@ -83,7 +83,10 @@ class SinaSyncClient:
             datalen = min(days // 7 + 10, 1950)
         else:
             datalen = min(days // 30 + 10, 1950)
-        datalen = max(datalen, 60)
+        # 下限 10 根（非交易日近似换算），兼顾：增量同步缺口小（几天）时请求体积小，
+        # 且停牌/节假日多日无新行时仍能取到窗口内数据。此前下限 60 根对增量场景
+        # 偏大（新浪按 IP 限流，datalen 越大越易被封，见 2026-08-25 456 封禁事故）。
+        datalen = max(datalen, 10)
 
         prefixed = _prefix_code(code)
         url = (
