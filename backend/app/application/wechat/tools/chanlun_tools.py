@@ -75,9 +75,9 @@ class RunChanlunTool(WeChatTool):
     name = "run_chanlun"
     domain = "strategy"
     description = (
-        "对股票执行缠论计算并产出买卖点信号，默认 30 分钟级别，也可指定日线级别。"
-        "示例：「跑缠论」算全部自选股 30m；「缠论 002940」只算指定股票 30m；"
-        "「缠论 日线」或「缠论 日线 002940」跑日线（用于补 15:40 定时扫描漏算的日线）；"
+        "对股票执行缠论计算并产出买卖点信号。不带周期时 30m 和日线都算；"
+        "也可只指定其一。示例：「跑缠论」全部自选股双周期；「缠论 002940」只算该股"
+        "（双周期）；「缠论 日线」或「缠论 30分钟 002940」只跑指定周期；"
         "「帮我把自选股的缠论都过一遍」。"
     )
     parameters = {
@@ -88,8 +88,8 @@ class RunChanlunTool(WeChatTool):
         },
         "period": {
             "type": "string",
-            "enum": ["daily", "m30"],
-            "description": "K线周期；默认 m30（30分钟）；日线补跑用 daily",
+            "enum": ["daily", "m30", "all"],
+            "description": "K线周期；留空/传 all 时 30m+日线都算；只跑单周期传 daily 或 m30",
         },
     }
     kind = "slow"
@@ -110,17 +110,21 @@ class RunChanlunTool(WeChatTool):
             MySQLStockDataRepository,
         )
 
-        # 0) 周期归一化：规则层 period_str / LLM 层 period → "daily"/"m30"；
-        #    不带周期缺省 m30（保持既有行为）；非法值回引导文案不执行
+        # 0) 周期归一化：规则层 period_str / LLM 层 period → 周期列表；
+        #    不带周期 = 30m + 日线双跑（用户主诉"怕漏"，默认路径必须覆盖日线，
+        #    2026-08-26 修正：此前默认只跑 30m，日线漏算无手动兜底入口）；
+        #    非法值回引导文案不执行
         period_raw = str(
             ctx.params.get("period") or ctx.params.get("period_str") or ""
         ).strip().lower()
         if period_raw and period_raw not in _PERIOD_ALIASES:
             return ToolResult(summary=(
-                f"暂不支持的周期：「{period_raw}」。目前支持「日线」和「30分钟」（默认），"
-                "例如「缠论 日线」或「缠论 002940」。"
+                f"暂不支持的周期：「{period_raw}」。目前支持「日线」和「30分钟」，"
+                "不带周期则两个都算，例如「缠论 日线」或「跑缠论」。"
             ))
-        period = _PERIOD_ALIASES.get(period_raw, "m30")
+        periods = (
+            [_PERIOD_ALIASES[period_raw]] if period_raw else ["m30", "daily"]
+        )
 
         # 1) 目标股票：参数指定 or 自选股并集。
         # 规则层捕获 codes_str（"全部"/"自选"/"002940,000333"），LLM 层产 codes 数组——统一归一化
@@ -175,45 +179,53 @@ class RunChanlunTool(WeChatTool):
                 f"日线补数完成 {len(codes) - len(failed)}/{len(codes)}"
             )
 
-        # 2) 按周期补数（跳过补数失败的股票）
-        if period == "daily":
-            await pull_daily(codes)
-        else:
-            await pull_m30(codes)
-
-        # 3) 缠论计算（trigger_type="manual" 溯源）。
+        # 2) + 3) 逐周期：补数 → scan（每轮一条 run_log，摘要逐周期一行）
         #    user_id 传 "wechat"：t_strategy_run_log.user_id 为 String(32)（按系统 uuid
         #    设计），微信 openid 37 字符会 1406；对标定时扫描传 "system" 的先例，
         #    完整溯源（msg_id/原文/微信 user_id）已在 t_wechat_command 记录。
-        ok_codes = [c for c in codes if c not in {f["code"] for f in failed_items}]
-        run_log = None
-        if ok_codes:
-            async with ctx.session_factory() as session:
-                monitor = _build_monitor(session, ctx.session_factory)
-                run_log = await monitor.scan(
-                    period, user_id="wechat",
-                    trigger_type="manual", stock_codes=ok_codes,
-                )
-                await session.commit()
+        run_logs: list[tuple[str, object]] = []  # (period_label, run_log)
+        failed_before = 0  # 本轮周期开始时 failed_items 已有长度
+        for period in periods:
+            if period == "daily":
+                await pull_daily(codes)
+            else:
+                await pull_m30(codes)
+            # 各周期独立失败集合：30m 拉数失败的股只跳过 30m 轮，日线轮照常算，
+            # 反之亦然——只看本轮新增的失败，不累计上一轮的
+            failed_now = {f["code"] for f in failed_items[failed_before:]}
+            failed_before = len(failed_items)
+            ok_codes = [c for c in codes if c not in failed_now]
+            if ok_codes:
+                async with ctx.session_factory() as session:
+                    monitor = _build_monitor(session, ctx.session_factory)
+                    log = await monitor.scan(
+                        period, user_id="wechat",
+                        trigger_type="manual", stock_codes=ok_codes,
+                    )
+                    await session.commit()
+                    run_logs.append((_PERIOD_LABELS[period], log))
 
-        # 4) 摘要（统计 + 失败明细 + 免责尾注）
-        if run_log is None:
-            summary = (
-                f"缠论 {_PERIOD_LABELS[period]}计算未执行："
-                f"{len(codes)} 只股票数据全部拉取失败。"
+        # 4) 摘要（逐周期一行统计 + 免责尾注）
+        lines = []
+        for label, log in run_logs:
+            skipped = log.total - log.success - log.failed
+            lines.append(
+                f"缠论 {label}计算完成：共 {log.total} 只，"
+                f"成功 {log.success}、失败 {log.failed}、无新数据跳过 {skipped}。"
             )
+        if not lines:
+            summary = f"缠论计算未执行：{len(codes)} 只股票数据全部拉取失败。"
         else:
-            skipped = run_log.total - run_log.success - run_log.failed
-            summary = (
-                f"缠论 {_PERIOD_LABELS[period]}计算完成：共 {run_log.total} 只，"
-                f"成功 {run_log.success}、失败 {run_log.failed}、无新数据跳过 {skipped}。\n"
-                "新信号（如有）已单独推送；详情可在网页端信号页查看。"
+            summary = "\n".join(lines) + (
+                "\n新信号（如有）已单独推送；详情可在网页端信号页查看。"
             )
         return ToolResult(
             summary=summary + DISCLAIMER_SUFFIX,
-            succeeded=run_log.success if run_log else 0,
+            succeeded=sum(log.success for _, log in run_logs),
             failed_items=failed_items,
-            meta={"run_log_id": run_log.id if run_log else None},
+            meta={
+                "run_log_ids": [log.id for _, log in run_logs],
+            },
         )
 
 

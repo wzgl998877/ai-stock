@@ -98,24 +98,38 @@ def chanlun_env(monkeypatch):
 
 
 async def test_run_chanlun_full_watchlist(monkeypatch, chanlun_env):
-    monitor, pulled, _, _, _ = chanlun_env
+    monitor, pulled, _, daily_calls, _ = chanlun_env
     tool = registry.get("run_chanlun")
     result = await tool.execute(_ctx({}))
 
     assert monitor.calls[0]["trigger_type"] == "manual"     # 溯源区分定时扫描
-    assert monitor.calls[0]["period"] == "m30"
-    assert monitor.calls[0]["stock_codes"] == ["002940", "000333", "600132"]
     assert monitor.calls[0]["user_id"] == "wechat"          # 系统短标识（run_log 列宽 String(32)）
     assert sorted(pulled) == ["000333", "002940", "600132"]
+    assert daily_calls and sorted(daily_calls[0]) == ["000333", "002940", "600132"]
     assert "成功 2" in result.summary and DISCLAIMER_SUFFIX in result.summary
+
+
+async def test_run_chanlun_default_runs_both_periods(chanlun_env):
+    """不带周期 → 30m + 日线双跑（用户主诉"怕漏"，默认路径必须覆盖日线）。"""
+    monitor, _, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({}))
+
+    assert [c["period"] for c in monitor.calls] == ["m30", "daily"]
+    assert daily_calls                                          # 日线补数也触发
+    # 两轮 scan 各自一份 stock_codes（FakeMonitor 每次 scan 全量返回，此处只验证顺序与次数）
+    assert all(c["trigger_type"] == "manual" for c in monitor.calls)
+    assert "30m" in result.summary and "日线" in result.summary
 
 
 async def test_run_chanlun_single_code_via_pattern_params(chanlun_env):
     monitor, pulled, _, _, _ = chanlun_env
     tool = registry.get("run_chanlun")
-    result = await tool.execute(_ctx({"codes_str": "002940"}))  # 规则层捕获形态
+    await tool.execute(_ctx({"codes_str": "002940"}))  # 规则层捕获形态
 
-    assert monitor.calls[0]["stock_codes"] == ["002940"]    # 只算指定股票
+    # 不带周期 → 双跑：两轮 scan 都只算指定股票
+    assert [c["period"] for c in monitor.calls] == ["m30", "daily"]
+    assert all(c["stock_codes"] == ["002940"] for c in monitor.calls)
     assert pulled == ["002940"]
 
 
@@ -166,12 +180,35 @@ async def test_run_chanlun_daily_via_llm_period_param(chanlun_env):
 
 
 async def test_run_chanlun_default_is_m30(chanlun_env):
+    """显式指定 30m → 只跑 30m，日线补数不触发。"""
     monitor, _, _, daily_calls, _ = chanlun_env
     tool = registry.get("run_chanlun")
-    await tool.execute(_ctx({}))                          # 不带周期 → 默认 30m
+    await tool.execute(_ctx({"period_str": "30分钟"}))
 
-    assert monitor.calls[0]["period"] == "m30"
+    assert [c["period"] for c in monitor.calls] == ["m30"]
     assert not daily_calls                                # 日线补数不应触发
+
+
+async def test_run_chanlun_invalid_period_guidance(chanlun_env):
+    monitor, _, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"period": "weekly"}))
+
+    assert "暂不支持的周期" in result.summary
+    assert not monitor.calls and not daily_calls          # 不产生任何计算/补数
+
+
+async def test_run_chanlun_m30_pull_failure_not_blocked(chanlun_env):
+    """30m 补数失败的单股只在 30m 轮跳过，日线轮不受污染（各周期独立 failed 集合）。"""
+    monitor, _, fail_codes, _, _ = chanlun_env
+    fail_codes.add("600132")
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"codes_str": "002940,600132"}))
+
+    periods = {c["period"]: c["stock_codes"] for c in monitor.calls}
+    assert periods["m30"] == ["002940"]                   # 30m 失败股不进该轮
+    assert periods["daily"] == ["002940", "600132"]       # 日线未失败照常进
+    assert any(f["code"] == "600132" for f in result.failed_items)
 
 
 async def test_run_chanlun_daily_pull_failure_not_blocked(chanlun_env):
@@ -182,15 +219,6 @@ async def test_run_chanlun_daily_pull_failure_not_blocked(chanlun_env):
 
     assert monitor.calls[0]["stock_codes"] == ["002940", "000333"]  # 失败股不进计算
     assert any(f["code"] == "600132" for f in result.failed_items)
-
-
-async def test_run_chanlun_invalid_period_guidance(chanlun_env):
-    monitor, _, _, daily_calls, _ = chanlun_env
-    tool = registry.get("run_chanlun")
-    result = await tool.execute(_ctx({"period": "weekly"}))
-
-    assert "暂不支持的周期" in result.summary
-    assert not monitor.calls and not daily_calls          # 不产生任何计算/补数
 
 
 # ---------------------------------------------------------------------------

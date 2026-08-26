@@ -69,7 +69,7 @@ description: "微信指令助手实施任务清单"
 ### Implementation
 
 - [x] T016 [P] [US1] 创建 `backend/app/application/wechat/tools/chanlun_tools.py`：`RunChanlunTool`（slow, lock_key="chanlun", patterns 见 data-model.md §2）——执行体 = 逐股 `sync_stock_30m`（独立 session + Semaphore，照抄 chanlun_scheduler.scan_m30 内层）→ `ChanlunMonitorUseCase.scan("m30", user_id=发起人, trigger_type="manual", stock_codes=目标)`；progress 回调写 "n/m"；摘要模板（成功数/失败明细/出信号股票与类型/无信号明说 + 免责尾注，research D7/D11）
-- [x] T016a [US1] `RunChanlunTool` 支持日线周期（research D7 预留的 P2 增强，2026-08-26）：pattern 合并支持 `缠论 日线 [代码]`（不带周期默认仍 m30）；LLM 层 `period` enum 参数；daily 补数复用 `_pull_daily_quotes`（签名改为返回失败 code 列表，scheduler 调用点零破坏）；`scan(period, ...)` 参数化；非法周期回引导文案。测试：`test_intent_router.py` 3 个 pattern 用例 + `test_wechat_tools.py` 5 个周期用例
+- [x] T016a [US1] `RunChanlunTool` 支持日线周期（research D7 预留的 P2 增强，2026-08-26）：pattern 合并支持 `缠论 日线 [代码]`；LLM 层 `period` enum 参数；daily 补数复用 `_pull_daily_quotes`（签名改为返回失败 code 列表，scheduler 调用点零破坏）；`scan(period, ...)` 参数化；非法周期回引导文案。**默认语义修正（同日二审）**：不带周期时 30m+日线双跑（用户主诉"怕漏"，默认只跑 30m 使日线漏算无手动兜底），逐周期独立补数/scan/摘要行、失败集合各轮独立。测试：`test_intent_router.py` 3 个 pattern 用例 + `test_wechat_tools.py` 周期用例（含双跑/单跑/失败隔离）
 - [x] T017 [US1] 在 `backend/app/application/wechat/tools/__init__.py` 注册 `RunChanlunTool`，真机联调 quickstart §4 步骤 2/4/6 并把观察结果记入本任务描述（ACK 时延、执行时长、摘要样例）【代码+单测完成 2026-08-21；真机联调待部署后执行】
 
 **Checkpoint**: US1 独立可用——微信可跑缠论并收到结果，MVP 价值达成
