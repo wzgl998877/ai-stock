@@ -64,8 +64,8 @@ def _build_monitor(session, session_factory):
     )
 
 
-async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) -> None:
-    """并发拉取日K并落库（单股失败不阻断；每股独立 session）。
+async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) -> list[str]:
+    """并发拉取日K并落库（单股失败不阻断；每股独立 session），返回失败 code 列表。
 
     日线定时扫描的数据前置：拉取 → 清洗 → ``upsert_daily_batch`` → 清
     ``stock:daily:{code}:*`` 缓存。
@@ -77,6 +77,9 @@ async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) 
     「自选股批量同步」（365 天）兜底。
 
     降级链：新浪拉不到（空返回，含被限流）→ 腾讯日K兜底（2026-08-25）。
+
+    返回值：拉取失败的股票代码列表（微信「缠论 日线」指令复用本函数时
+    用来产出失败明细；定时扫描调用点忽略返回值）。
     """
     import asyncio as _asyncio
     from datetime import datetime as _dt, timedelta as _td
@@ -109,31 +112,38 @@ async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) 
         rows = await TencentKlineClient().fetch(code, period="daily", count=count)
         return [r for r in rows if start <= r.get("trade_date", "") <= end]
 
+    failed: list[str] = []
+
     async def pull(code: str) -> None:
         async with sem:
             # 增量窗口：库内最新日K之后 → 今天；无历史则默认窗口。
             # 不按 source 过滤：n8o9p0q1r2s3 起一天一条，任何源的数据都算数
-            async with session_factory() as s:
-                repo = MySQLStockDataRepository(s)
-                latest = await repo.get_latest_daily_date(code, period="daily")
-            start = latest.strftime("%Y-%m-%d") if latest else default_start
-            raw = await _fetch_daily_raw(code, start, end_date)
-            quotes = []
-            for r in raw:
-                try:
-                    quotes.append(clean_daily_quote(r, "sina"))
-                except Exception as e:
-                    logger.warning("缠论日线拉取 %s 脏数据跳过: %s", code, e)
-            if quotes:
+            try:
                 async with session_factory() as s:
+                    repo = MySQLStockDataRepository(s)
+                    latest = await repo.get_latest_daily_date(code, period="daily")
+                start = latest.strftime("%Y-%m-%d") if latest else default_start
+                raw = await _fetch_daily_raw(code, start, end_date)
+                quotes = []
+                for r in raw:
                     try:
-                        repo = MySQLStockDataRepository(s)
-                        await repo.upsert_daily_batch(quotes)
-                        await _clear_kline_cache(code, "daily")
-                        await s.commit()
+                        quotes.append(clean_daily_quote(r, "sina"))
                     except Exception as e:
-                        await s.rollback()
-                        logger.warning("缠论日线拉取 %s 失败: %s", code, e)
+                        logger.warning("缠论日线拉取 %s 脏数据跳过: %s", code, e)
+                if quotes:
+                    async with session_factory() as s:
+                        try:
+                            repo = MySQLStockDataRepository(s)
+                            await repo.upsert_daily_batch(quotes)
+                            await _clear_kline_cache(code, "daily")
+                            await s.commit()
+                        except Exception as e:
+                            await s.rollback()
+                            logger.warning("缠论日线拉取 %s 失败: %s", code, e)
+                            failed.append(code)
+            except Exception as e:
+                logger.warning("缠论日线拉取 %s 失败: %s", code, e)
+                failed.append(code)
 
     results = await _asyncio.gather(
         *[pull(c) for c in codes], return_exceptions=True
@@ -141,6 +151,8 @@ async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) 
     for code, r in zip(codes, results):
         if isinstance(r, Exception):
             logger.warning("缠论日线拉取 %s 失败: %s", code, r)
+            failed.append(code)
+    return failed
 
 
 def setup_scheduler(session_factory):

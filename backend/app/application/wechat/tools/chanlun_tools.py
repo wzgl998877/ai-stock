@@ -1,8 +1,9 @@
 """缠论指令工具（specs/010 US1/US2）。
 
-- ``RunChanlunTool``（slow）：30m 补数 → 全量/指定股票缠论重算，复用
-  ``chanlun_scheduler.scan_m30`` 的编排范式与 ``ChanlunMonitorUseCase.scan``
-  （``trigger_type="manual"`` 与定时扫描溯源区分，research D7）；
+- ``RunChanlunTool``（slow）：30m/日线补数 → 全量/指定股票缠论重算，复用
+  ``chanlun_scheduler.scan_m30`` / ``scan_daily`` 的编排范式与
+  ``ChanlunMonitorUseCase.scan``（``trigger_type="manual"`` 与定时扫描溯源区分，
+  research D7；日线为 D7 预留的 P2 增强，2026-08-26 落地）；
 - ``ChanlunStatusTool``（fast，纯规则）：当前缠论任务进度 / 最近一次结果。
 """
 
@@ -20,6 +21,14 @@ from app.application.wechat.tools.base import (
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# 周期别名归一化：规则层 period_str（日线/日K/30分钟/30m）与 LLM 层 period
+# （daily/m30）统一映射到 scan() 的周期标识；缺省 m30（保持既有行为）
+_PERIOD_ALIASES = {
+    "日线": "daily", "日k": "daily", "daily": "daily",
+    "30分钟": "m30", "30m": "m30", "m30": "m30",
+}
+_PERIOD_LABELS = {"daily": "日线", "m30": "30m"}
 
 
 async def _all_watchlist_codes(session) -> list[str]:
@@ -61,13 +70,14 @@ def _build_monitor(session, session_factory):
 
 
 class RunChanlunTool(WeChatTool):
-    """跑缠论（US1）。"""
+    """跑缠论（US1；日线周期为 D7 预留 P2 增强）。"""
 
     name = "run_chanlun"
     domain = "strategy"
     description = (
-        "对股票执行缠论 30 分钟级别计算并产出买卖点信号。"
-        "示例：「跑缠论」算全部自选股；「缠论 002940」只算指定股票；"
+        "对股票执行缠论计算并产出买卖点信号，默认 30 分钟级别，也可指定日线级别。"
+        "示例：「跑缠论」算全部自选股 30m；「缠论 002940」只算指定股票 30m；"
+        "「缠论 日线」或「缠论 日线 002940」跑日线（用于补 15:40 定时扫描漏算的日线）；"
         "「帮我把自选股的缠论都过一遍」。"
     )
     parameters = {
@@ -76,18 +86,41 @@ class RunChanlunTool(WeChatTool):
             "items": {"type": "string", "pattern": "^\\d{6}$"},
             "description": "股票代码列表；留空则计算全部自选股",
         },
+        "period": {
+            "type": "string",
+            "enum": ["daily", "m30"],
+            "description": "K线周期；默认 m30（30分钟）；日线补跑用 daily",
+        },
     }
     kind = "slow"
     lock_key = "chanlun"
     risk = "read_only"
-    usage = "跑缠论 / 缠论 002940"
-    patterns = [r"^(?:跑|执行|算)?缠论$", r"^缠论\s+(?P<codes_str>全部|自选|\d{6}(?:\s*,\s*\d{6})*)$"]
+    usage = "跑缠论 / 缠论 002940 / 缠论 日线"
+    # 单条合并 pattern：周期与代码均可选、周期在前（「缠论 002940 日线」语序
+    # 不进规则层，交给 LLM 层，FR-005/006 分层设计本意）
+    patterns = [
+        r"^(?:跑|执行|算)?缠论"
+        r"(?:\s+(?P<period_str>日线|日K|30分钟|30m))?"
+        r"(?:\s+(?P<codes_str>全部|自选|\d{6}(?:\s*,\s*\d{6})*))?$"
+    ]
 
     async def execute(self, ctx: ToolContext) -> ToolResult:
         from app.application.sync.chanlun_30m_sync import sync_stock_30m
         from app.infrastructure.repositories.mysql_stock_data_repo import (
             MySQLStockDataRepository,
         )
+
+        # 0) 周期归一化：规则层 period_str / LLM 层 period → "daily"/"m30"；
+        #    不带周期缺省 m30（保持既有行为）；非法值回引导文案不执行
+        period_raw = str(
+            ctx.params.get("period") or ctx.params.get("period_str") or ""
+        ).strip().lower()
+        if period_raw and period_raw not in _PERIOD_ALIASES:
+            return ToolResult(summary=(
+                f"暂不支持的周期：「{period_raw}」。目前支持「日线」和「30分钟」（默认），"
+                "例如「缠论 日线」或「缠论 002940」。"
+            ))
+        period = _PERIOD_ALIASES.get(period_raw, "m30")
 
         # 1) 目标股票：参数指定 or 自选股并集。
         # 规则层捕获 codes_str（"全部"/"自选"/"002940,000333"），LLM 层产 codes 数组——统一归一化
@@ -110,27 +143,45 @@ class RunChanlunTool(WeChatTool):
 
         failed_items: list[dict] = []
         sem = asyncio.Semaphore(max(1, settings.chanlun_concurrency))
-        done = 0
+        done_box = [0]  # 闭包内可变计数（nonlocal 只到 pull_m30 一层）
 
-        async def pull(code: str) -> None:
-            nonlocal done
-            async with sem:
-                async with ctx.session_factory() as s:
-                    try:
-                        repo = MySQLStockDataRepository(s)
-                        await sync_stock_30m(code, repo)
-                        await s.commit()
-                    except Exception as e:  # 单股失败不阻断（FR-013 收明细）
-                        await s.rollback()
-                        logger.warning("微信跑缠论：30m 拉取 %s 失败: %s", code, e)
-                        failed_items.append({"code": code, "reason": f"数据拉取失败: {e}"})
-            done += 1
-            await ctx.report_progress(f"{done}/{len(codes)}")
+        async def pull_m30(codes: list[str]) -> None:
+            """30m 逐股补数（对标 scan_m30 内层），逐股报进度。"""
+            async def pull(code: str) -> None:
+                async with sem:
+                    async with ctx.session_factory() as s:
+                        try:
+                            repo = MySQLStockDataRepository(s)
+                            await sync_stock_30m(code, repo)
+                            await s.commit()
+                        except Exception as e:  # 单股失败不阻断（FR-013 收明细）
+                            await s.rollback()
+                            logger.warning("微信跑缠论：30m 拉取 %s 失败: %s", code, e)
+                            failed_items.append({"code": code, "reason": f"数据拉取失败: {e}"})
+                done_box[0] += 1
+                await ctx.report_progress(f"{done_box[0]}/{len(codes)}")
 
-        # 2) 并发补数（对标 scan_m30 内层）
-        await asyncio.gather(*[pull(c) for c in codes])
+            await asyncio.gather(*[pull(c) for c in codes])
 
-        # 3) 缠论计算（trigger_type="manual" 溯源；跳过补数失败的股票）。
+        async def pull_daily(codes: list[str]) -> None:
+            """日线批量补数（对标 scan_daily 数据前置），进度粗粒度。"""
+            from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+
+            await ctx.report_progress("日线补数中…")
+            failed = await _pull_daily_quotes(ctx.session_factory, codes)
+            for code in failed:
+                failed_items.append({"code": code, "reason": "日线数据拉取失败"})
+            await ctx.report_progress(
+                f"日线补数完成 {len(codes) - len(failed)}/{len(codes)}"
+            )
+
+        # 2) 按周期补数（跳过补数失败的股票）
+        if period == "daily":
+            await pull_daily(codes)
+        else:
+            await pull_m30(codes)
+
+        # 3) 缠论计算（trigger_type="manual" 溯源）。
         #    user_id 传 "wechat"：t_strategy_run_log.user_id 为 String(32)（按系统 uuid
         #    设计），微信 openid 37 字符会 1406；对标定时扫描传 "system" 的先例，
         #    完整溯源（msg_id/原文/微信 user_id）已在 t_wechat_command 记录。
@@ -140,18 +191,21 @@ class RunChanlunTool(WeChatTool):
             async with ctx.session_factory() as session:
                 monitor = _build_monitor(session, ctx.session_factory)
                 run_log = await monitor.scan(
-                    "m30", user_id="wechat",
+                    period, user_id="wechat",
                     trigger_type="manual", stock_codes=ok_codes,
                 )
                 await session.commit()
 
         # 4) 摘要（统计 + 失败明细 + 免责尾注）
         if run_log is None:
-            summary = f"缠论计算未执行：{len(codes)} 只股票数据全部拉取失败。"
+            summary = (
+                f"缠论 {_PERIOD_LABELS[period]}计算未执行："
+                f"{len(codes)} 只股票数据全部拉取失败。"
+            )
         else:
             skipped = run_log.total - run_log.success - run_log.failed
             summary = (
-                f"缠论 30m 计算完成：共 {run_log.total} 只，"
+                f"缠论 {_PERIOD_LABELS[period]}计算完成：共 {run_log.total} 只，"
                 f"成功 {run_log.success}、失败 {run_log.failed}、无新数据跳过 {skipped}。\n"
                 "新信号（如有）已单独推送；详情可在网页端信号页查看。"
             )

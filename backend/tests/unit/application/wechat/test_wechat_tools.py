@@ -72,24 +72,33 @@ def chanlun_env(monkeypatch):
     monitor = FakeMonitor()
     pulled: list[str] = []
     fail_codes: set[str] = set()
+    daily_calls: list[list[str]] = []
+    daily_fail_codes: list[str] = []
 
     async def _fake_sync(code, repo):
         if code in fail_codes:
             raise RuntimeError("sina down")
         pulled.append(code)
 
+    async def _fake_pull_daily(session_factory, codes, days=30):
+        daily_calls.append(list(codes))
+        return list(daily_fail_codes)
+
     monkeypatch.setattr("app.application.sync.chanlun_30m_sync.sync_stock_30m", _fake_sync)
+    monkeypatch.setattr(
+        "app.infrastructure.scheduler.chanlun_scheduler._pull_daily_quotes", _fake_pull_daily
+    )
     monkeypatch.setattr(chanlun_tools, "_build_monitor", lambda *a: monitor)
 
     async def _fake_codes(s):
         return ["002940", "000333", "600132"]
 
     monkeypatch.setattr(chanlun_tools, "_all_watchlist_codes", _fake_codes)
-    return monitor, pulled, fail_codes
+    return monitor, pulled, fail_codes, daily_calls, daily_fail_codes
 
 
 async def test_run_chanlun_full_watchlist(monkeypatch, chanlun_env):
-    monitor, pulled, _ = chanlun_env
+    monitor, pulled, _, _, _ = chanlun_env
     tool = registry.get("run_chanlun")
     result = await tool.execute(_ctx({}))
 
@@ -102,7 +111,7 @@ async def test_run_chanlun_full_watchlist(monkeypatch, chanlun_env):
 
 
 async def test_run_chanlun_single_code_via_pattern_params(chanlun_env):
-    monitor, pulled, _ = chanlun_env
+    monitor, pulled, _, _, _ = chanlun_env
     tool = registry.get("run_chanlun")
     result = await tool.execute(_ctx({"codes_str": "002940"}))  # 规则层捕获形态
 
@@ -111,7 +120,7 @@ async def test_run_chanlun_single_code_via_pattern_params(chanlun_env):
 
 
 async def test_run_chanlun_pull_failure_not_blocked(chanlun_env):
-    monitor, pulled, fail_codes = chanlun_env
+    monitor, pulled, fail_codes, _, _ = chanlun_env
     fail_codes.add("600132")  # 单股拉数失败
     tool = registry.get("run_chanlun")
     result = await tool.execute(_ctx({"codes": ["002940", "600132"]}))
@@ -128,6 +137,60 @@ async def test_run_chanlun_empty_watchlist(monkeypatch, chanlun_env):
     tool = registry.get("run_chanlun")
     result = await tool.execute(_ctx({}))
     assert "自选股为空" in result.summary
+
+
+# ---------------------------------------------------------------------------
+# RunChanlunTool 周期参数（日线支持，D7 预留 P2 增强）
+# ---------------------------------------------------------------------------
+
+async def test_run_chanlun_daily_period(chanlun_env):
+    monitor, pulled, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"period_str": "日线"}))  # 规则层捕获形态
+
+    assert monitor.calls[0]["period"] == "daily"
+    assert monitor.calls[0]["stock_codes"] == ["002940", "000333", "600132"]
+    assert daily_calls and sorted(daily_calls[0]) == ["000333", "002940", "600132"]
+    assert not pulled                                    # 30m 补数不应触发
+    assert "日线" in result.summary and DISCLAIMER_SUFFIX in result.summary
+
+
+async def test_run_chanlun_daily_via_llm_period_param(chanlun_env):
+    monitor, _, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    await tool.execute(_ctx({"period": "daily", "codes": ["002940"]}))  # LLM 层产参形态
+
+    assert monitor.calls[0]["period"] == "daily"
+    assert monitor.calls[0]["stock_codes"] == ["002940"]
+    assert daily_calls and daily_calls[0] == ["002940"]
+
+
+async def test_run_chanlun_default_is_m30(chanlun_env):
+    monitor, _, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    await tool.execute(_ctx({}))                          # 不带周期 → 默认 30m
+
+    assert monitor.calls[0]["period"] == "m30"
+    assert not daily_calls                                # 日线补数不应触发
+
+
+async def test_run_chanlun_daily_pull_failure_not_blocked(chanlun_env):
+    monitor, _, _, daily_calls, daily_fail_codes = chanlun_env
+    daily_fail_codes.append("600132")                     # 日线补数单股失败
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"period_str": "日线"}))
+
+    assert monitor.calls[0]["stock_codes"] == ["002940", "000333"]  # 失败股不进计算
+    assert any(f["code"] == "600132" for f in result.failed_items)
+
+
+async def test_run_chanlun_invalid_period_guidance(chanlun_env):
+    monitor, _, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"period": "weekly"}))
+
+    assert "暂不支持的周期" in result.summary
+    assert not monitor.calls and not daily_calls          # 不产生任何计算/补数
 
 
 # ---------------------------------------------------------------------------

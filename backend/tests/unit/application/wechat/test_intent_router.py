@@ -40,6 +40,26 @@ async def test_pattern_with_stock_code():
     assert r.params.get("codes_str") == "002940"
 
 
+async def test_pattern_chanlun_daily():
+    r = await resolve_intent("缠论 日线", [])
+    assert r.tool_name == "run_chanlun"
+    assert r.params.get("period_str") == "日线"
+    assert "codes_str" not in r.params
+
+
+async def test_pattern_chanlun_daily_with_code():
+    r = await resolve_intent("跑缠论 日线 002940", [])
+    assert r.tool_name == "run_chanlun"
+    assert r.params.get("period_str") == "日线"
+    assert r.params.get("codes_str") == "002940"
+
+
+async def test_pattern_chanlun_explicit_m30_alias():
+    r = await resolve_intent("缠论 30分钟", [])
+    assert r.tool_name == "run_chanlun"
+    assert r.params.get("period_str") == "30分钟"
+
+
 async def test_pattern_query_commands():
     for text in ("缠论状态", "执行记录", "指令记录"):
         r = await resolve_intent(text, [])
