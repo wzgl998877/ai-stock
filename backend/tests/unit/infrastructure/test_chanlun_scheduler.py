@@ -55,7 +55,7 @@ def test_m30_trigger_covers_eight_points():
 # ---------------------------------------------------------------------------
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 pytestmark_pull = pytest.mark.asyncio
 
@@ -258,6 +258,94 @@ async def test_pull_daily_quotes_dirty_rows_skipped():
     assert all(not s.committed for s in sessions)  # 无净数据 → 无落库 commit
     # 增量查询会开 session（只读），但 _FakeRepo.upserted 均为空
     assert all(not inst.upserted for inst in _FakeRepo.instances)
+
+
+@pytest.mark.asyncio
+async def test_pull_daily_quotes_deadlock_retry():
+    """死锁 1213 重试：第一次死锁、第二次成功 → 不进 failed、最终 commit。
+
+    2026-08-27 场景：腾讯兜底修好后 36 只并发先删后插首跑，断档股
+    gap lock 交叉死锁成对出现（000858/000865 等相邻 code）。
+    """
+    _FakeRepo.instances = []
+    _FakeRepo.latest_by_code = {}
+    sessions = []
+
+    def factory():
+        s = _FakeSession()
+        sessions.append(s)
+        return s
+
+    raw = [{"code": "000858", "trade_date": "2026-08-27", "close": "71.0"}]
+
+    class _FakeSina:
+        def fetch_daily_quote(self, code, start_date, end_date, period="daily"):
+            return raw
+
+    calls = {"n": 0}
+
+    class _DeadlockOnceRepo(_FakeRepo):
+        async def upsert_daily_batch(self, quotes):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError(
+                    "(pymysql.err.OperationalError) (1213, "
+                    "'Deadlock found when trying to get lock; "
+                    "try restarting transaction')"
+                )
+            return await super().upsert_daily_batch(quotes)
+
+    with patch("app.application.sync.sina_sync_client.SinaSyncClient", _FakeSina), \
+         patch("app.domain.services.data_cleaner.clean_daily_quote", side_effect=lambda r, s: r), \
+         patch(
+             "app.infrastructure.repositories.mysql_stock_data_repo.MySQLStockDataRepository",
+             _DeadlockOnceRepo,
+         ), \
+         patch("app.application.sync.sync_executor._clear_kline_cache"), \
+         patch("asyncio.sleep", new_callable=AsyncMock):
+        from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+        await _pull_daily_quotes(factory, ["000858"])
+
+    assert calls["n"] == 2                      # 死锁后重试了一次
+    # 最终成功：有 session commit
+    assert any(s.committed for s in sessions)
+
+
+@pytest.mark.asyncio
+async def test_pull_daily_quotes_non_deadlock_no_retry():
+    """非死锁异常不重试：一次失败直接进 failed。"""
+    _FakeRepo.instances = []
+    _FakeRepo.latest_by_code = {}
+    sessions = []
+
+    def factory():
+        s = _FakeSession()
+        sessions.append(s)
+        return s
+
+    class _FakeSina:
+        def fetch_daily_quote(self, code, start_date, end_date, period="daily"):
+            return [{"code": code, "trade_date": "2026-08-27"}]
+
+    calls = {"n": 0}
+
+    class _AlwaysFailRepo(_FakeRepo):
+        async def upsert_daily_batch(self, quotes):
+            calls["n"] += 1
+            raise RuntimeError("db error")
+
+    with patch("app.application.sync.sina_sync_client.SinaSyncClient", _FakeSina), \
+         patch("app.domain.services.data_cleaner.clean_daily_quote", side_effect=lambda r, s: r), \
+         patch(
+             "app.infrastructure.repositories.mysql_stock_data_repo.MySQLStockDataRepository",
+             _AlwaysFailRepo,
+         ), \
+         patch("app.application.sync.sync_executor._clear_kline_cache"):
+        from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+        await _pull_daily_quotes(factory, ["600000"])
+
+    assert calls["n"] == 1                      # 不重试
+    assert not any(s.committed for s in sessions)
 
 
 @pytest.mark.asyncio

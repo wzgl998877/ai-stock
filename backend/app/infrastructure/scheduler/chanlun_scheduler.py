@@ -114,6 +114,13 @@ async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) 
 
     failed: list[str] = []
 
+    def _is_deadlock(e: Exception) -> bool:
+        """MySQL 死锁 1213（并发先删后插 gap lock 交叉，2026-08-27 全量兜底首跑爆发）。
+
+        死锁牺牲者事务已被 InnoDB 回滚，重跑安全。
+        """
+        return "1213" in str(e) or "Deadlock" in str(e)
+
     async def pull(code: str) -> None:
         async with sem:
             # 增量窗口：库内最新日K之后 → 今天；无历史则默认窗口。
@@ -131,16 +138,29 @@ async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) 
                     except Exception as e:
                         logger.warning("缠论日线拉取 %s 脏数据跳过: %s", code, e)
                 if quotes:
-                    async with session_factory() as s:
+                    # 死锁重试：并发先删后插在 uk_code_date_period 相邻 code 边界
+                    # 的 gap lock 交叉（封禁断档股索引空洞大、命中不存在行的 DELETE
+                    # 加 gap 锁 + INSERT 插入意向锁互等）。牺牲者已回滚，重跑安全
+                    for attempt in range(3):
                         try:
-                            repo = MySQLStockDataRepository(s)
-                            await repo.upsert_daily_batch(quotes)
-                            await _clear_kline_cache(code, "daily")
-                            await s.commit()
+                            async with session_factory() as s:
+                                repo = MySQLStockDataRepository(s)
+                                await repo.upsert_daily_batch(quotes)
+                                await _clear_kline_cache(code, "daily")
+                                await s.commit()
+                            break
                         except Exception as e:
                             await s.rollback()
-                            logger.warning("缠论日线拉取 %s 失败: %s", code, e)
-                            failed.append(code)
+                            if attempt < 2 and _is_deadlock(e):
+                                logger.warning(
+                                    "缠论日线拉取 %s 死锁重试 %d/3: %s",
+                                    code, attempt + 1, e,
+                                )
+                                await _asyncio.sleep(0.5 * (attempt + 1))
+                            else:
+                                logger.warning("缠论日线拉取 %s 失败: %s", code, e)
+                                failed.append(code)
+                                break
             except Exception as e:
                 logger.warning("缠论日线拉取 %s 失败: %s", code, e)
                 failed.append(code)
