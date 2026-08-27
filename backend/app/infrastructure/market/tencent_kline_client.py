@@ -46,9 +46,13 @@ class TencentKlineClient:
     """腾讯财经K线数据客户端。"""
 
     def __init__(self) -> None:
+        # param 六段格式：code,type,start,end,count,fq（start/end 留空拉最近
+        # count 根）。此前少一段（…,{type},,{count},qfq）被接口判 "param error"，
+        # 且错误响应的 data 是列表 []，曾导致上层对列表调 .get 抛
+        # 'list' object has no attribute 'get'（2026-08-27 日线降级全量失败）
         self._base_url = (
             "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
-            "?_var=kline_{type}qfq&param={code},{type},,{count},qfq"
+            "?_var=kline_{type}qfq&param={code},{type},,,{count},qfq"
         )
 
     async def fetch(self, code: str, period: str = "daily", count: int | None = None) -> List[Dict]:
@@ -96,8 +100,16 @@ class TencentKlineClient:
             logger.warning("腾讯K线JSON解析失败 code=%s", code)
             return []
 
-        # 数据路径: data -> {prefixed_code} -> {data_key}
-        stock_data = payload.get("data", {})
+        # 数据路径: data -> {prefixed_code} -> {data_key}。
+        # 错误响应（如 "param error"）的 data 是列表 []，非字典——防御式取值，
+        # 避免对列表调 .get 抛 'list' object has no attribute 'get'
+        stock_data = payload.get("data")
+        if not isinstance(stock_data, dict):
+            logger.warning(
+                "腾讯K线响应异常（data 非字典，多为 param error）code=%s period=%s msg=%s",
+                code, period, payload.get("msg"),
+            )
+            return []
         code_data = stock_data.get(prefixed, {})
         raw_list = code_data.get(data_key, [])
         if not raw_list:
@@ -155,7 +167,11 @@ class TencentKlineClient:
             logger.warning("腾讯m30 JSON解析失败 code=%s", code)
             return []
 
-        raw_list = payload.get("data", {}).get(prefixed, {}).get("m30", [])
+        stock_data = payload.get("data")
+        if not isinstance(stock_data, dict):
+            logger.warning("腾讯m30响应异常（data 非字典）code=%s", code)
+            return []
+        raw_list = stock_data.get(prefixed, {}).get("m30", [])
         result: List[Dict] = []
         for row in raw_list:
             if not row or len(row) < 6:

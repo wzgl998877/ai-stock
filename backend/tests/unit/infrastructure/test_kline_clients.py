@@ -218,6 +218,68 @@ class TestTencentKlineClient:
         assert result == []
 
     @pytest.mark.anyio
+    async def test_daily_url_param_six_segments(self):
+        """日K URL param 必须是六段（code,type,start,end,count,fq）。
+
+        五段格式（start/end 只留一个空位）被腾讯接口判 "param error"——
+        2026-08-27 日线降级全量失败事故根因。
+        """
+        payload = {
+            "code": 0, "msg": "",
+            "data": {"sz000858": {"qfqday": [
+                ["2026-08-26", "73.00", "74.00", "74.20", "72.80", "12345.00"],
+            ]}},
+        }
+        mock_resp = _mock_response(f"kline_dayqfq={json.dumps(payload)}")
+
+        client = TencentKlineClient()
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await client.fetch("000858", "daily", count=20)
+
+            url = mock_client.get.call_args.args[0]
+            assert "param=sz000858,day,,,20,qfq" in url
+
+    @pytest.mark.anyio
+    async def test_param_error_data_list_returns_empty(self):
+        """腾讯返回 "param error"（data 为列表）时返回空，不抛 'list' has no 'get'。"""
+        mock_resp = _mock_response('kline_dayqfq={"code":0,"msg":"param error","data":[]}')
+
+        client = TencentKlineClient()
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = await client.fetch("000858", "daily", count=20)
+
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_m30_param_error_data_list_returns_empty(self):
+        """m30 错误响应（data 为列表）同样防御，返回空。"""
+        mock_resp = _mock_response('{"code":0,"msg":"param error","data":[]}')
+
+        client = TencentKlineClient()
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_resp
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            result = await client.fetch("000858", "m30", count=20)
+
+        assert result == []
+
+    @pytest.mark.anyio
     async def test_malformed_row_skipped(self):
         """字段不足的行被跳过。"""
         payload = {
