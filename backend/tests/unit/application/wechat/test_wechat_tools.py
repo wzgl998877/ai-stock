@@ -133,6 +133,20 @@ async def test_run_chanlun_single_code_via_pattern_params(chanlun_env):
     assert pulled == ["002940"]
 
 
+async def test_run_chanlun_period_all_runs_both(chanlun_env):
+    """回归（2026-08-31）：LLM 层对「帮我跑缠论」这类不带周期的话会填
+    period="all"（enum 里的合法值，路由层又过滤空参数），但执行层
+    _PERIOD_ALIASES 不含 all → 被当非法值回引导文案，缠论根本没跑。"""
+    monitor, _, _, daily_calls, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"period": "all"}))
+
+    assert [c["period"] for c in monitor.calls] == ["m30", "daily"]  # 双跑
+    assert daily_calls
+    assert "暂不支持" not in result.summary
+    assert "30m" in result.summary and "日线" in result.summary
+
+
 async def test_run_chanlun_pull_failure_not_blocked(chanlun_env):
     monitor, pulled, fail_codes, _, _ = chanlun_env
     fail_codes.add("600132")  # 单股拉数失败

@@ -28,6 +28,8 @@ _PERIOD_ALIASES = {
     "日线": "daily", "日k": "daily", "daily": "daily",
     "30分钟": "m30", "30m": "m30", "m30": "m30",
 }
+# 「全部周期」语义（LLM 层 enum 含 all，见 parameters）：等价于不带周期
+_PERIOD_ALL = "all"
 _PERIOD_LABELS = {"daily": "日线", "m30": "30m"}
 
 
@@ -111,20 +113,23 @@ class RunChanlunTool(WeChatTool):
         )
 
         # 0) 周期归一化：规则层 period_str / LLM 层 period → 周期列表；
-        #    不带周期 = 30m + 日线双跑（用户主诉"怕漏"，默认路径必须覆盖日线，
-        #    2026-08-26 修正：此前默认只跑 30m，日线漏算无手动兜底入口）；
-        #    非法值回引导文案不执行
+        #    不带周期或显式 all = 30m + 日线双跑（用户主诉"怕漏"，默认路径必须
+        #    覆盖日线，2026-08-26 修正：此前默认只跑 30m，日线漏算无手动兜底
+        #    入口）；非法值回引导文案不执行
         period_raw = str(
             ctx.params.get("period") or ctx.params.get("period_str") or ""
         ).strip().lower()
-        if period_raw and period_raw not in _PERIOD_ALIASES:
+        if period_raw == _PERIOD_ALL:
+            periods = ["m30", "daily"]
+        elif period_raw and period_raw not in _PERIOD_ALIASES:
             return ToolResult(summary=(
                 f"暂不支持的周期：「{period_raw}」。目前支持「日线」和「30分钟」，"
                 "不带周期则两个都算，例如「缠论 日线」或「跑缠论」。"
             ))
-        periods = (
-            [_PERIOD_ALIASES[period_raw]] if period_raw else ["m30", "daily"]
-        )
+        else:
+            periods = (
+                [_PERIOD_ALIASES[period_raw]] if period_raw else ["m30", "daily"]
+            )
 
         # 1) 目标股票：参数指定 or 自选股并集。
         # 规则层捕获 codes_str（"全部"/"自选"/"002940,000333"），LLM 层产 codes 数组——统一归一化
