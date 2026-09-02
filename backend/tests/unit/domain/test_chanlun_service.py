@@ -4,12 +4,16 @@
 横切属性上的契约（与 ``chanlun_service.py`` 模块 docstring 声明一致）。
 """
 
+from decimal import Decimal
+
 from app.domain.entities.chanlun import ChanlunSignal
 from app.domain.services.chanlun_service import ChanlunService
 from tests.fixtures.chanlun_golden_samples import (
     DIVERGENCE_DOWN_POINTS,
+    TWO_WAVE_CLOSES,
     bar,
     interpolate_points,
+    raw_bar,
     series,
 )
 
@@ -173,3 +177,23 @@ def test_short_series_returns_empty_without_raising():
         assert snapshot.segments == []
         assert snapshot.zhongshu == []
         assert snapshot.algo_version == "1.0.0"
+
+
+def test_snapshot_watermark_is_last_input_bar_even_if_merged_by_inclusion():
+    """回归（2026-09-02 生产）：快照水位线必须取原始输入末根时间。
+
+    末根 K 线被包含合并吞掉时（合并保留组首 time），若取合并后序列末根
+    time，水位线早于库中最新 K 线 → 监控层 ``_is_stale`` 的相等比较永不
+    命中，该股每次扫描都被判"有新数据"空转重算（生产 17/37 只 m30、
+    13/37 只日线长年空转，且重算后水位仍停在合并组起点）。
+    """
+    # 两波完整结构保证 len(bars) >= MIN_BI_KLINES 进入正式计算；
+    # 末尾追加一根被前根包含的 K 线（前根 high=10.5/low=9.5 完全罩住它）
+    bars = series(TWO_WAVE_CLOSES)
+    assert bars[-1].high == Decimal("10.5") and bars[-1].low == Decimal("9.5")
+    bars.append(raw_bar(len(bars), len(bars) + 1, 10, 10.3, 9.7, 10))
+
+    _, snapshot = ChanlunService.compute_all(bars, "300750", "daily", "1.0.0")
+
+    # 水位线 = 原始输入末根时间（= bars[-1].time），而非合并组首
+    assert snapshot.last_kline_time == bars[-1].time

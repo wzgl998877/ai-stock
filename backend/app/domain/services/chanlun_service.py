@@ -305,7 +305,12 @@ class ChanlunService:
         snapshot.strokes = [b for b in bis if b.confirmed]
         snapshot.segments = segments
         snapshot.zhongshu = zhongshu
-        snapshot.last_kline_time = processed[-1].time if processed else None
+        # 水位线取原始输入末根（而非包含合并后序列末根）：合并保留组首 time，
+        # 末根被吞时 processed[-1].time 早于库中最新 K 线 → 与监控层
+        # _is_stale 的比较口径（库中最新未合并 K 线）永不相等，该股每次
+        # 扫描都被判"有新数据"空转重算（2026-09-02 生产：17/37 只 m30、
+        # 13/37 只日线长年空转，重算后水位仍停在合并组起点）
+        snapshot.last_kline_time = bars[-1].time if bars else None
         snapshot.algo_version = algo_version
 
         signals = ChanlunService._detect_signals(
