@@ -6,6 +6,8 @@
 
 from decimal import Decimal
 
+import pytest
+
 from app.domain.entities.chanlun import ChanlunSignal
 from app.domain.services.chanlun_service import ChanlunService
 from tests.fixtures.chanlun_golden_samples import (
@@ -19,14 +21,21 @@ from tests.fixtures.chanlun_golden_samples import (
 
 
 def test_algo_version_embedded_in_signals_and_snapshot():
-    """传入的 algo_version 必须内嵌到每条信号与结构快照（口径可追溯）。"""
-    bars = interpolate_points(DIVERGENCE_DOWN_POINTS)
-    signals, snapshot = ChanlunService.compute_all(bars, "300750", "daily", algo_version="2.1.3")
+    """传入的 algo_version 必须内嵌到每条信号与结构快照（口径可追溯）。
 
-    assert snapshot.algo_version == "2.1.3"
+    1.1.0 起版本受支持集约束（v1/v2 双口径并存），自定义串不再合法；
+    别名 v1/v2 归一化为规范串后内嵌。
+    """
+    bars = interpolate_points(DIVERGENCE_DOWN_POINTS)
+    signals, snapshot = ChanlunService.compute_all(bars, "300750", "daily", algo_version="v1")
+
+    assert snapshot.algo_version == "1.0.0"
     assert len(signals) >= 1
     for s in signals:
-        assert s.algo_version == "2.1.3"
+        assert s.algo_version == "1.0.0"
+
+    with pytest.raises(ValueError, match="不支持的缠论算法版本"):
+        ChanlunService.compute_all(bars, "300750", "daily", algo_version="2.1.3")
 
 
 def test_compute_all_is_deterministic_and_idempotent():
@@ -78,11 +87,14 @@ def test_no_duplicate_signal_at_same_position():
 
 
 def test_no_duplicate_signal_when_multiple_zhongshu_hit_same_bar():
-    """多中枢在同一根 K 线回踩触发同类买卖点时，不得产出重复信号。
+    """多中枢在同一根 K 线回试触发同类买卖点时，不得产出重复信号。
 
     复现回测 IntegrityError 根因：``_detect_signals`` 三类买卖点外层遍历所有中枢，
-    多个中枢的突破回踩可能落到同一根回调 K 线（同 signal_time），修复前会产出
+    多个中枢的回试可能落到同一根回调 K 线（同 signal_time），修复前会产出
     重复 (signal_type, signal_time)。直接喂数据给 ``_detect_signals`` 隔离验证。
+
+    1.1.0 起三类点只认中枢出口后的紧邻第一笔回试：``exit_time`` 必须对齐
+    ``cb[j].end.time`` 才能反解出口笔下标，两个中枢出口同刻 → 仍同刻触发。
     """
     from datetime import datetime
     from decimal import Decimal
@@ -94,20 +106,23 @@ def test_no_duplicate_signal_when_multiple_zhongshu_hit_same_bar():
             type=ftype, kline_index=idx, price=Decimal(price), time=datetime(2026, 1, day)
         )
 
-    # cb：down(0) → up(2) → down(4) → up(6)，已确认笔（confirmed 默认 True）
+    # cb：down(5) → up(8) → down(10) → up(20)，已确认笔（confirmed 默认 True）
     bis = [
         Bi(Direction.DOWN, _fr(0, 8, 1, FractalType.TOP), _fr(0, 5, 1), kline_count=5),
         Bi(Direction.UP, _fr(0, 5, 3), _fr(2, 8, 3, FractalType.TOP), kline_count=5),
         Bi(Direction.DOWN, _fr(2, 8, 5, FractalType.TOP), _fr(4, 10, 5), kline_count=5),
         Bi(Direction.UP, _fr(4, 10, 7), _fr(6, 20, 7, FractalType.TOP), kline_count=5),
     ]
-    # 两个中枢 enter_index=0（出口 cb[1].end.kline_index=2），ZD=25 均高于回调高点 20
-    # → 两个中枢都会在 cb[3]（UP，end.price=20<25）回踩触发 sell3（同 signal_time）
+    # 两个中枢出口均为 cb[1]（exit_time=cb[1].end.time=1月3日）：
+    # 离开笔 cb[2]（DOWN，end 10 < zd 25）、回试笔 cb[3]（UP，end 20 < 25）
+    # → 两个中枢都在 cb[3] 触发 sell3（同 signal_time）
     zhongshu = [
         Zhongshu(zg=Decimal(30), zd=Decimal(25), gg=Decimal(35), dd=Decimal(20),
-                 enter_time=datetime(2026, 1, 1), enter_index=0),
+                 enter_time=datetime(2026, 1, 1), enter_index=0,
+                 exit_time=datetime(2026, 1, 3)),
         Zhongshu(zg=Decimal(30), zd=Decimal(25), gg=Decimal(35), dd=Decimal(20),
-                 enter_time=datetime(2026, 1, 1), enter_index=0),
+                 enter_time=datetime(2026, 1, 1), enter_index=0,
+                 exit_time=datetime(2026, 1, 3)),
     ]
 
     signals = ChanlunService._detect_signals(
@@ -115,7 +130,7 @@ def test_no_duplicate_signal_when_multiple_zhongshu_hit_same_bar():
     )
 
     sell3 = [s for s in signals if s.signal_type == "sell3"]
-    assert sell3, "前置：多中枢同根 K 线回踩应产出 sell3（否则测试无效）"
+    assert sell3, "前置：多中枢同根 K 线回试应产出 sell3（否则测试无效）"
     positions = [(s.signal_type, s.signal_time) for s in signals]
     assert len(positions) == len(set(positions)), f"存在同位置重复信号: {positions}"
 

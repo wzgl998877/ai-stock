@@ -46,6 +46,7 @@ from app.core.database import async_session, get_db
 from app.core.deps import CurrentUser, get_current_user
 from app.domain.entities.chanlun import Bi, ChanlunSignal, Fractal, Segment, Zhongshu
 from app.domain.entities.strategy import MonitorConfig
+from app.domain.services.chanlun_service import normalize_algo_version
 from app.infrastructure.cache.redis_cache import redis_cache
 from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
 from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
@@ -104,6 +105,17 @@ def _is_fresh(period: str, signal_time: Optional[datetime]) -> bool:
     return (datetime.now() - signal_time).days <= window
 
 
+def _resolve_version(version: Optional[str]) -> str:
+    """version Query/body 参数 → 规范串；None 用服务端默认版（settings）。
+
+    端点 Query pattern 已限定 ^(v1|v2)$，此处 normalize 不会抛错，
+    仅兜底 body 路径（RecalculateRequest 同样有 pattern 校验）。
+    """
+    if not version:
+        return normalize_algo_version(settings.chanlun_algo_version)
+    return normalize_algo_version(version)
+
+
 async def _pull_m30(codes: list[str]) -> None:
     """手动重算 m30 前并发拉取 30m 行情（与调度器 ``scan_m30`` 第一步一致）。
 
@@ -131,9 +143,20 @@ async def _pull_m30(codes: list[str]) -> None:
 
 
 async def _invalidate_strategy_caches(user_id: str) -> None:
-    """重算完成后失效徽标与结构缓存，避免用户等待 TTL 才看到新信号。"""
+    """重算完成后失效徽标与结构缓存，避免用户等待 TTL 才看到新信号。
+
+    双版本并存（2026-09-08）：徽标键含版本段 ``:{ver}``，用前缀 scan 删全部版本。
+    """
     try:
-        await redis_cache.delete(f"strategy:watchlist-signals:{user_id}")
+        cursor = 0
+        while True:
+            cursor, keys = await redis_cache.scan(
+                cursor, match=f"strategy:watchlist-signals:{user_id}*", count=100
+            )
+            for k in keys:
+                await redis_cache.delete(k)
+            if cursor == 0:
+                break
         cursor = 0
         while True:
             cursor, keys = await redis_cache.scan(cursor, match="strategy:structure:*", count=100)
@@ -221,14 +244,17 @@ def _period_status(code, summary, period, cfg_map):
 
 @router.get("/watchlist-signals")
 async def get_watchlist_signals(
+    version: Optional[str] = Query(None, pattern="^(v1|v2)$", description="缠论算法口径；缺省用服务端默认版"),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """自选股双周期最新信号徽标（Redis ``strategy:watchlist-signals:{user_id}`` TTL600）。
+    """自选股双周期最新信号徽标（Redis ``strategy:watchlist-signals:{user_id}:{ver}`` TTL600）。
 
     徽标状态结合逐股监控配置（T055）：周期被关闭→该周期 ``disabled`` 且不返回信号。
+    双版本并存：``version`` 指定口径时徽标取该口径下最新一条信号。
     """
-    cache_key = f"strategy:watchlist-signals:{current_user.user_id}"
+    ver = _resolve_version(version)
+    cache_key = f"strategy:watchlist-signals:{current_user.user_id}:{ver}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
         return cached
@@ -238,8 +264,8 @@ async def get_watchlist_signals(
     codes = sorted({it.stock_code for it in items if it.stock_code})
 
     chanlun_repo = MySQLChanlunRepository(db)
-    daily = await chanlun_repo.get_latest_signals_for_stocks(codes, "daily") if codes else []
-    m30 = await chanlun_repo.get_latest_signals_for_stocks(codes, "m30") if codes else []
+    daily = await chanlun_repo.get_latest_signals_for_stocks(codes, "daily", algo_version=ver) if codes else []
+    m30 = await chanlun_repo.get_latest_signals_for_stocks(codes, "m30", algo_version=ver) if codes else []
     daily_map = {s.stock_code: s for s in daily}
     m30_map = {s.stock_code: s for s in m30}
 
@@ -301,7 +327,16 @@ async def update_stock_config(
     )
     saved = await chanlun_repo.upsert_monitor_config(config)
     await db.commit()
-    await redis_cache.delete(f"strategy:watchlist-signals:{current_user.user_id}")
+    # 徽标键含版本段（双版本并存）：前缀 scan 删全部版本
+    cursor = 0
+    while True:
+        cursor, keys = await redis_cache.scan(
+            cursor, match=f"strategy:watchlist-signals:{current_user.user_id}*", count=100
+        )
+        for k in keys:
+            await redis_cache.delete(k)
+        if cursor == 0:
+            break
     return jsonable(MonitorConfigDTO(
         stock_code=saved.stock_code,
         daily_enabled=saved.daily_enabled,
@@ -327,17 +362,22 @@ def _run_log_to_status(log, period: str) -> RunStatusDTO:
 
 @router.get("/run-status")
 async def get_run_status(
+    version: Optional[str] = Query(None, pattern="^(v1|v2)$", description="缠论算法口径；缺省用服务端默认版"),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """计算任务状态（日线 / 30m 最近一次运行日志，运行状态卡片用）。"""
+    """计算任务状态（日线 / 30m 最近一次运行日志，运行状态卡片用）。
+
+    双版本并存：``version`` 指定口径时展示该口径最近一次运行。
+    """
+    ver = _resolve_version(version)
     chanlun_repo = MySQLChanlunRepository(db)
-    daily_log = await chanlun_repo.get_latest_run_log("daily")
-    m30_log = await chanlun_repo.get_latest_run_log("m30")
+    daily_log = await chanlun_repo.get_latest_run_log("daily", algo_version=ver)
+    m30_log = await chanlun_repo.get_latest_run_log("m30", algo_version=ver)
     response = RunStatusResponse(
         daily=_run_log_to_status(daily_log, "daily"),
         m30=_run_log_to_status(m30_log, "m30"),
-        algo_version=settings.chanlun_algo_version,
+        algo_version=ver,
     )
     return jsonable(response.model_dump())
 
@@ -351,12 +391,14 @@ async def get_stock_signals(
     period: str = Query("daily", pattern="^(daily|m30)$"),
     limit: int = Query(50, ge=1, le=200),
     status: Optional[str] = Query(None, description="confirmed / invalidated"),
+    version: Optional[str] = Query(None, pattern="^(v1|v2)$", description="缠论算法口径；缺省用服务端默认版"),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """单股信号历史（按 signal_time 倒序，含已失效信号）。"""
+    ver = _resolve_version(version)
     chanlun_repo = MySQLChanlunRepository(db)
-    sigs = await chanlun_repo.get_signals(code, period, status=status, limit=limit)
+    sigs = await chanlun_repo.get_signals(code, period, status=status, limit=limit, algo_version=ver)
     items = [signal_to_dto(s) for s in sigs]
     response = SignalListResponse(
         stock_code=code, period=period, items=items,
@@ -422,22 +464,36 @@ def signal_to_mark_dto(s: ChanlunSignal, period: str) -> SignalMarkDTO:
 async def get_stock_structure(
     code: str,
     period: str = Query("daily", pattern="^(daily|m30)$"),
+    version: Optional[str] = Query(None, pattern="^(v1|v2)$", description="缠论算法口径；缺省用服务端默认版"),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """缠论结构快照 + 买卖点标注（Redis ``strategy:structure:{code}:{period}`` TTL600）。"""
-    cache_key = f"strategy:structure:{code}:{period}"
+    """缠论结构快照 + 买卖点标注（Redis ``strategy:structure:{code}:{period}:{ver}`` TTL600）。
+
+    双版本并存：快照按版本分身（唯一键含 algo_version），``version`` 指定口径；
+    该口径无快照时回退最近一行并如实回显其 algo_version（前端可提示先重算）。
+    """
+    ver = _resolve_version(version)
+    cache_key = f"strategy:structure:{code}:{period}:{ver}"
     cached = await redis_cache.get(cache_key)
     if cached is not None:
         return cached
 
     chanlun_repo = MySQLChanlunRepository(db)
-    snapshot = await chanlun_repo.get_structure(code, period)
-    sigs = await chanlun_repo.get_signals(code, period, limit=100) if snapshot else []
+    snapshot = await chanlun_repo.get_structure(code, period, algo_version=ver)
+    if snapshot is None:
+        # 该口径还没算过：回退任意版本快照（标注仍是旧口径画的，如实回显版本）
+        snapshot = await chanlun_repo.get_structure(code, period)
+    # 标注信号与快照同口径（回退时跟随快照真实版本，避免结构/标注口径错配）
+    mark_ver = (snapshot.algo_version or ver) if snapshot else ver
+    sigs = (
+        await chanlun_repo.get_signals(code, period, limit=100, algo_version=mark_ver)
+        if snapshot else []
+    )
     marks = [signal_to_mark_dto(s, period) for s in sigs if s.status == "confirmed"]
 
     if snapshot is None:
-        response = StructureResponse(stock_code=code, period=period, algo_version=settings.chanlun_algo_version)
+        response = StructureResponse(stock_code=code, period=period, algo_version=ver)
     else:
         response = StructureResponse(
             stock_code=code,
@@ -447,7 +503,7 @@ async def get_stock_structure(
             zhongshu=[zhongshu_to_dto(z) for z in snapshot.zhongshu],
             signal_marks=marks,
             last_kline_time=snapshot.last_kline_time,
-            algo_version=snapshot.algo_version or settings.chanlun_algo_version,
+            algo_version=snapshot.algo_version or ver,
         )
     result = jsonable(response.model_dump())
     await redis_cache.set(cache_key, result, ttl=STRUCTURE_TTL)
@@ -461,12 +517,14 @@ async def get_signal_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     status: Optional[str] = Query(None, description="confirmed / invalidated"),
+    version: Optional[str] = Query(None, pattern="^(v1|v2)$", description="缠论算法口径；缺省用服务端默认版"),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     """单股信号历史（分页、含已失效信号，按 signal_time 倒序）。"""
+    ver = _resolve_version(version)
     chanlun_repo = MySQLChanlunRepository(db)
-    sigs = await chanlun_repo.get_signals(code, period, status=status, limit=page_size)
+    sigs = await chanlun_repo.get_signals(code, period, status=status, limit=page_size, algo_version=ver)
     items = [signal_to_dto(s) for s in sigs]
     response = SignalListResponse(
         stock_code=code, period=period, items=items,
@@ -532,6 +590,7 @@ async def recalculate(
                         trigger_type="manual",
                         stock_codes=codes,
                         progress_cb=progress_cb,
+                        algo_version=body.version,
                     )
                     # 新信号已落库：立即失效徽标/结构缓存，不等 TTL
                     await _invalidate_strategy_caches(current_user.user_id)

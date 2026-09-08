@@ -335,6 +335,9 @@ export interface AnalysisRecordListResponse {
 /** 缠论周期：日线 / 30 分钟 */
 export type ChanlunPeriod = "daily" | "m30";
 
+/** 缠论算法口径版本（双版本并存，2026-09-08）：v1=旧口径、v2=当前口径 */
+export type ChanlunVersion = "v1" | "v2";
+
 /** 缠论信号类型：一/二/三类买、一/二/三类卖 */
 export type SignalType = "buy1" | "buy2" | "buy3" | "sell1" | "sell2" | "sell3";
 

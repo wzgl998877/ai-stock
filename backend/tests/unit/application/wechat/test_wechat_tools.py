@@ -29,9 +29,10 @@ class FakeMonitor:
     def __init__(self):
         self.calls: list[dict] = []
 
-    async def scan(self, period, user_id, trigger_type=None, stock_codes=None):
+    async def scan(self, period, user_id, trigger_type=None, stock_codes=None, algo_version=None):
         self.calls.append(dict(period=period, user_id=user_id,
-                               trigger_type=trigger_type, stock_codes=stock_codes))
+                               trigger_type=trigger_type, stock_codes=stock_codes,
+                               algo_version=algo_version))
         return FakeRunLog()
 
 
@@ -155,6 +156,66 @@ async def test_run_chanlun_pull_failure_not_blocked(chanlun_env):
 
     assert monitor.calls[0]["stock_codes"] == ["002940"]    # 失败股不进计算
     assert any(f["code"] == "600132" for f in result.failed_items)  # 明细进 FAIL 文案（dispatcher 拼接）
+
+
+# ---------------------------------------------------------------------------
+# 双版本并存（2026-09-08）：version 参数归一化与透传
+# ---------------------------------------------------------------------------
+
+async def test_run_chanlun_version_v1_normalized_to_1_0_0(chanlun_env):
+    """LLM 层 version="v1" → scan 收到规范串 1.0.0；摘要带 (v1) 标签。"""
+    monitor, _, _, _, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"version": "v1"}))
+    assert all(c["algo_version"] == "1.0.0" for c in monitor.calls)
+    assert "（v1）" in result.summary
+
+
+async def test_run_chanlun_version_from_rule_layer_pattern(chanlun_env):
+    """规则层 version_str（「跑缠论 v1」捕获）→ scan 收到 1.0.0。"""
+    monitor, _, _, _, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"version_str": "v1"}))
+    assert all(c["algo_version"] == "1.0.0" for c in monitor.calls)
+    assert "（v1）" in result.summary
+
+
+async def test_run_chanlun_version_v2_explicit(chanlun_env):
+    """显式 version="v2" → scan 收到 1.1.0；摘要带 (v2) 标签。"""
+    monitor, _, _, _, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"version": "v2"}))
+    assert all(c["algo_version"] == "1.1.0" for c in monitor.calls)
+    assert "（v2）" in result.summary
+
+
+async def test_run_chanlun_version_default_is_v2(monkeypatch, chanlun_env):
+    """不带 version → 用 settings 默认版（当前 1.1.0=v2）。"""
+    monkeypatch.setattr(chanlun_tools.settings, "chanlun_algo_version", "1.1.0")
+    monitor, _, _, _, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    await tool.execute(_ctx({}))
+    assert all(c["algo_version"] == "1.1.0" for c in monitor.calls)
+
+
+async def test_run_chanlun_version_invalid_returns_guidance(chanlun_env):
+    """非法 version（v3）→ 回引导文案、不执行 scan。"""
+    monitor, _, _, _, _ = chanlun_env
+    tool = registry.get("run_chanlun")
+    result = await tool.execute(_ctx({"version": "v3"}))
+    assert monitor.calls == []
+    assert "暂不支持的缠论版本" in result.summary
+
+
+def test_run_chanlun_pattern_captures_version_str():
+    """规则层 pattern 命中「跑缠论 v1」「缠论 v2 日线」「缠论 v1 002940」。"""
+    tool = registry.get("run_chanlun")
+    assert tool.match_pattern("跑缠论 v1") == {"version_str": "v1"}
+    assert tool.match_pattern("缠论 v2 日线") == {"version_str": "v2", "period_str": "日线"}
+    assert tool.match_pattern("缠论 v1 002940") == {"version_str": "v1", "codes_str": "002940"}
+    # 不带版本仍命中（version_str 缺省）
+    assert tool.match_pattern("跑缠论") == {}
+    assert tool.match_pattern("缠论 日线") == {"period_str": "日线"}
 
 
 async def test_run_chanlun_empty_watchlist(monkeypatch, chanlun_env):

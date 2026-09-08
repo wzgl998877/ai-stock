@@ -32,6 +32,17 @@ _PERIOD_ALIASES = {
 _PERIOD_ALL = "all"
 _PERIOD_LABELS = {"daily": "日线", "m30": "30m"}
 
+# 版本别名归一化（双口径并存，2026-09-08）：规则层 version_str / LLM 层
+# version（v1/v2）→ 规范串；缺省用 settings 默认版（当前为 v2）
+from app.domain.services.chanlun_service import (  # noqa: E402
+    ALGO_VERSION_V1,
+    ALGO_VERSION_V2,
+    normalize_algo_version,
+)
+
+_VERSION_ALIASES = {"v1": ALGO_VERSION_V1, "v2": ALGO_VERSION_V2}
+_VERSION_LABELS = {ALGO_VERSION_V1: "v1", ALGO_VERSION_V2: "v2"}
+
 
 async def _all_watchlist_codes(session) -> list[str]:
     """全部用户自选股并集（与 chanlun_scheduler._all_watchlist_codes 一致）。"""
@@ -78,8 +89,10 @@ class RunChanlunTool(WeChatTool):
     domain = "strategy"
     description = (
         "对股票执行缠论计算并产出买卖点信号。不带周期时 30m 和日线都算；"
-        "也可只指定其一。示例：「跑缠论」全部自选股双周期；「缠论 002940」只算该股"
+        "也可只指定其一。可选指定算法版本 v1（旧口径）或 v2（当前口径，默认）。"
+        "示例：「跑缠论」全部自选股双周期；「缠论 002940」只算该股"
         "（双周期）；「缠论 日线」或「缠论 30分钟 002940」只跑指定周期；"
+        "「跑缠论 v1」用旧口径重算；「缠论 v2 日线」指定当前口径跑日线；"
         "「帮我把自选股的缠论都过一遍」。"
     )
     parameters = {
@@ -93,15 +106,21 @@ class RunChanlunTool(WeChatTool):
             "enum": ["daily", "m30", "all"],
             "description": "K线周期；留空/传 all 时 30m+日线都算；只跑单周期传 daily 或 m30",
         },
+        "version": {
+            "type": "string",
+            "enum": ["v1", "v2"],
+            "description": "缠论算法口径：v1=旧口径，v2=当前口径；留空默认 v2",
+        },
     }
     kind = "slow"
     lock_key = "chanlun"
     risk = "read_only"
-    usage = "跑缠论 / 缠论 002940 / 缠论 日线"
-    # 单条合并 pattern：周期与代码均可选、周期在前（「缠论 002940 日线」语序
-    # 不进规则层，交给 LLM 层，FR-005/006 分层设计本意）
+    usage = "跑缠论 / 缠论 002940 / 缠论 日线 / 跑缠论 v1"
+    # 单条合并 pattern：版本、周期与代码均可选、版本在前（「缠论 v1 002940 日线」
+    # 语序不进规则层，交给 LLM 层，FR-005/006 分层设计本意）
     patterns = [
         r"^(?:跑|执行|算)?缠论"
+        r"(?:\s+(?P<version_str>[vV][12]))?"
         r"(?:\s+(?P<period_str>日线|日K|30分钟|30m))?"
         r"(?:\s+(?P<codes_str>全部|自选|\d{6}(?:\s*,\s*\d{6})*))?$"
     ]
@@ -130,6 +149,23 @@ class RunChanlunTool(WeChatTool):
             periods = (
                 [_PERIOD_ALIASES[period_raw]] if period_raw else ["m30", "daily"]
             )
+
+        # 0b) 版本归一化（双口径并存）：规则层 version_str / LLM 层 version →
+        #     规范串；缺省 settings 默认版；非法值回引导文案不执行（严禁静默
+        #     回落——跑错口径比报错更糟）
+        version_raw = str(
+            ctx.params.get("version") or ctx.params.get("version_str") or ""
+        ).strip().lower()
+        if not version_raw:
+            algo_version = normalize_algo_version(settings.chanlun_algo_version)
+        elif version_raw in _VERSION_ALIASES:
+            algo_version = _VERSION_ALIASES[version_raw]
+        else:
+            return ToolResult(summary=(
+                f"暂不支持的缠论版本：「{version_raw}」。目前支持 v1（旧口径）"
+                "与 v2（当前口径），例如「跑缠论 v1」或「缠论 v2 日线」。"
+            ))
+        version_label = _VERSION_LABELS[algo_version]
 
         # 1) 目标股票：参数指定 or 自选股并集。
         # 规则层捕获 codes_str（"全部"/"自选"/"002940,000333"），LLM 层产 codes 数组——统一归一化
@@ -206,16 +242,17 @@ class RunChanlunTool(WeChatTool):
                     log = await monitor.scan(
                         period, user_id="wechat",
                         trigger_type="manual", stock_codes=ok_codes,
+                        algo_version=algo_version,
                     )
                     await session.commit()
                     run_logs.append((_PERIOD_LABELS[period], log))
 
-        # 4) 摘要（逐周期一行统计 + 免责尾注）
+        # 4) 摘要（逐周期一行统计，带版本标签 + 免责尾注）
         lines = []
         for label, log in run_logs:
             skipped = log.total - log.success - log.failed
             lines.append(
-                f"缠论 {label}计算完成：共 {log.total} 只，"
+                f"缠论 {label}计算完成（{version_label}）：共 {log.total} 只，"
                 f"成功 {log.success}、失败 {log.failed}、无新数据跳过 {skipped}。"
             )
         if not lines:

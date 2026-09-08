@@ -30,7 +30,7 @@ from app.domain.entities.backtest import (
 )
 from app.domain.entities.chanlun import ChanlunSignal, KlineBar
 from app.domain.repositories.backtest_repo import BacktestRepository
-from app.domain.services.chanlun_service import ChanlunService
+from app.domain.services.chanlun_service import ChanlunService, normalize_algo_version
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,9 @@ class ChanlunBacktestUseCase:
         self.chanlun_calc = chanlun_calc
         self.backtest_repo = backtest_repo
         self.chanlun_service = chanlun_service or chanlun_calc.chanlun_service
-        self.algo_version = algo_version or chanlun_calc.algo_version
+        # 双版本并存：归一化 v1/v2 别名 → 规范串（报告 algo_version 口径唯一）
+        resolved = algo_version if algo_version is not None else chanlun_calc.algo_version
+        self.algo_version = normalize_algo_version(resolved)
 
     async def run(
         self,

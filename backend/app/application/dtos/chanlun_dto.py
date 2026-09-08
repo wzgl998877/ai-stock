@@ -177,6 +177,11 @@ class RunStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class RecalculateRequest(BaseModel):
-    """重算请求体（POST /recalculate）。"""
+    """重算请求体（POST /recalculate）。
+
+    ``version``：缠论算法口径（v1=旧口径 / v2=当前口径）；None 用服务端默认版
+    （settings.chanlun_algo_version）。双版本并存（2026-09-08）。
+    """
     stock_codes: Optional[list[str]] = None     # None=用户全部自选股
     period: str = Field(default="daily", pattern="^(daily|m30|both)$")
+    version: Optional[str] = Field(default=None, pattern="^(v1|v2)$")

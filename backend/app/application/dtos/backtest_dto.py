@@ -24,10 +24,15 @@ BACKTEST_DISCLAIMER = (
 # ---------------------------------------------------------------------------
 
 class BacktestRunRequest(BaseModel):
-    """发起回测（POST /api/v1/backtest/run）。"""
+    """发起回测（POST /api/v1/backtest/run）。
+
+    ``version``：缠论算法口径（v1=旧口径 / v2=当前口径）；None 用服务端默认版。
+    双版本并存（2026-09-08）：报告按 algo_version 记录口径，可对照回测。
+    """
     range: str = Field(default="3y", pattern="^(1y|3y|5y)$")
     periods: list[str] = Field(default_factory=lambda: ["daily"])
     stock_codes: Optional[list[str]] = None     # None=用户全部启用自选股
+    version: Optional[str] = Field(default=None, pattern="^(v1|v2)$")
 
 
 # ---------------------------------------------------------------------------

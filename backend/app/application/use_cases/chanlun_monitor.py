@@ -28,6 +28,7 @@ from app.domain.entities.strategy import StrategyRunLog
 from app.domain.repositories.chanlun_repo import ChanlunRepository
 from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.domain.repositories.watchlist_repo import WatchlistRepository
+from app.domain.services.chanlun_service import normalize_algo_version
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ class ChanlunMonitorUseCase:
     ):
         self.watchlist_repo = watchlist_repo
         self.chanlun_repo = chanlun_repo
-        self.algo_version = algo_version
+        # 双版本并存：构造器版本归一化（settings 可配 v1/v2/规范串）
+        self.algo_version = normalize_algo_version(algo_version)
         self._session_factory = session_factory
         self._build_calc = build_calc
         self.concurrency = concurrency or settings.chanlun_concurrency
@@ -62,6 +64,7 @@ class ChanlunMonitorUseCase:
         trigger_type: str = "scheduled",
         stock_codes: Optional[list[str]] = None,
         progress_cb: Optional[Callable[[dict], Awaitable[None]]] = None,
+        algo_version: Optional[str] = None,
     ) -> StrategyRunLog:
         """扫描指定用户的自选股并重算 ``period`` 周期。
 
@@ -71,7 +74,14 @@ class ChanlunMonitorUseCase:
             trigger_type: ``scheduled`` / ``manual``
             stock_codes: 显式指定股票列表（manual 重算可传子集）；None 则取用户全部自选股
             progress_cb: 每股完成后的进度回调（manual SSE 用，推送 ``{stock_code, period, status, reason}``）
+            algo_version: 本次扫描生效的算法口径（v1/v2/1.0.0/1.1.0 均可，入口归一化）；
+                None 则用构造器版本（定时扫描=settings 默认版）。双版本并存：
+                run_log 记生效版本、_is_stale 按版本取快照、信号落 v1/v2 各自的
+                dedup_key 分身。
         """
+        if algo_version is not None:
+            algo_version = normalize_algo_version(algo_version)
+        effective_version = algo_version or self.algo_version
         self._progress_cb = progress_cb
         started_at = datetime.now()
         if stock_codes is None:
@@ -87,14 +97,14 @@ class ChanlunMonitorUseCase:
             status="running",
             total=len(codes),
             started_at=started_at,
-            algo_version=self.algo_version,
+            algo_version=effective_version,
             user_id=user_id,
         )
         log = await self.chanlun_repo.create_run_log(log)
 
         sem = asyncio.Semaphore(max(1, self.concurrency))
         results = await asyncio.gather(
-            *[self._scan_one(c, period, sem) for c in codes]
+            *[self._scan_one(c, period, sem, effective_version) for c in codes]
         )
 
         success = sum(1 for r in results if r[0] == "success")
@@ -142,12 +152,13 @@ class ChanlunMonitorUseCase:
             started_at=started_at,
             finished_at=finished_at,
             duration_ms=duration_ms,
-            algo_version=self.algo_version,
+            algo_version=effective_version,
             user_id=user_id,
         )
 
     async def _scan_one(
-        self, code: str, period: str, sem: asyncio.Semaphore
+        self, code: str, period: str, sem: asyncio.Semaphore,
+        algo_version: Optional[str] = None,
     ) -> tuple[str, str, Optional[str], list[ChanlunSignal]]:
         async with sem:
             # 每股独立 session：AsyncSession 非并发安全，gather 并发下不可共享。
@@ -156,12 +167,15 @@ class ChanlunMonitorUseCase:
                 calc = self._build_calc(session)
                 try:
                     if await self._is_stale(
-                        calc.chanlun_repo, calc.stock_data_repo, code, period
+                        calc.chanlun_repo, calc.stock_data_repo, code, period,
+                        algo_version,
                     ):
                         logger.info("chanlun_monitor: %s @ %s 无新数据，跳过", code, period)
                         kind, reason = "skipped", "no_new_data"
                     else:
-                        _, _, new_signals = await calc.compute_and_persist(code, period)
+                        _, _, new_signals = await calc.compute_and_persist(
+                            code, period, algo_version=algo_version
+                        )
                         await session.commit()
                         kind, reason = "success", None
                 except NoKlineDataError:
@@ -220,12 +234,15 @@ class ChanlunMonitorUseCase:
         stock_data_repo: StockDataRepository,
         code: str,
         period: str,
+        algo_version: Optional[str] = None,
     ) -> bool:
         """结构快照的 ``last_kline_time`` 与当前最新 K 线时间相同 → 无新数据。
 
-        首次计算（无快照）返回 ``False``。repo 由调用方传入（每股独立 session）。
+        首次计算（无快照）返回 ``False``。``algo_version`` 传入时按该口径取快照
+        （双版本并存：v1/v2 快照各自独立一行，水位线互不干扰）；None=不限版本
+        （取该股该周期最近一行，兼容旧调用方）。
         """
-        snapshot = await chanlun_repo.get_structure(code, period)
+        snapshot = await chanlun_repo.get_structure(code, period, algo_version)
         if snapshot is None or snapshot.last_kline_time is None:
             return False
 

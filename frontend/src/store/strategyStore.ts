@@ -14,6 +14,7 @@ import {
   type RecalculateParams,
 } from "../services/strategyService";
 import type {
+  ChanlunVersion,
   MonitorConfig,
   RunStatus,
   StrategySSEEvent,
@@ -21,6 +22,9 @@ import type {
 } from "../domain/types";
 
 interface StrategyState {
+  // 缠论算法口径（双版本并存，2026-09-08）：全局切换，徽标/状态/重算均跟随
+  version: ChanlunVersion;
+
   // 徽标
   watchlistSignals: WatchlistSignalItem[];
   signalsLoading: boolean;
@@ -40,6 +44,7 @@ interface StrategyState {
   runStatus: RunStatus | null;
   runStatusLoading: boolean;
 
+  setVersion: (version: ChanlunVersion) => void;
   fetchWatchlistSignals: () => Promise<void>;
   recalculate: (params?: RecalculateParams) => Promise<void>;
   stopRecalc: () => void;
@@ -55,6 +60,8 @@ interface StrategyState {
 let _abortCtrl: AbortController | null = null;
 
 export const useStrategyStore = create<StrategyState>((set, get) => ({
+  version: "v2",
+
   watchlistSignals: [],
   signalsLoading: false,
   signalsError: null,
@@ -71,10 +78,18 @@ export const useStrategyStore = create<StrategyState>((set, get) => ({
   runStatus: null,
   runStatusLoading: false,
 
+  setVersion: (version) => {
+    if (get().version === version) return;
+    set({ version });
+    // 口径切换：徽标与计算状态立即按新版本重拉
+    get().fetchWatchlistSignals();
+    get().fetchRunStatus();
+  },
+
   fetchWatchlistSignals: async () => {
     set({ signalsLoading: true, signalsError: null });
     try {
-      const { items, disclaimer } = await getWatchlistSignals();
+      const { items, disclaimer } = await getWatchlistSignals(get().version);
       set({ watchlistSignals: items, disclaimer, signalsLoading: false });
     } catch (e: any) {
       set({ signalsError: e?.message || "加载信号失败", signalsLoading: false });
@@ -119,7 +134,12 @@ export const useStrategyStore = create<StrategyState>((set, get) => ({
     };
 
     try {
-      await recalculate(params || {}, onEvent, _abortCtrl.signal);
+      // 版本跟随全局切换（调用方未显式指定时）
+      await recalculate(
+        { version: get().version, ...(params || {}) },
+        onEvent,
+        _abortCtrl.signal,
+      );
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         set({ recalcError: e?.message || "重算失败" });
@@ -156,7 +176,7 @@ export const useStrategyStore = create<StrategyState>((set, get) => ({
   fetchRunStatus: async () => {
     set({ runStatusLoading: true });
     try {
-      const status = await getRunStatus();
+      const status = await getRunStatus(get().version);
       set({ runStatus: status, runStatusLoading: false });
     } catch {
       set({ runStatusLoading: false });

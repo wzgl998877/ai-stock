@@ -16,7 +16,7 @@ import {
   SIGNAL_TYPE_LABELS,
   STRATEGY_DISCLAIMER,
 } from "../../domain/constants";
-import type { ChanlunPeriod, SignalHistoryItem, SignalType } from "../../domain/types";
+import type { ChanlunPeriod, ChanlunVersion, SignalHistoryItem, SignalType } from "../../domain/types";
 
 const { Text } = Typography;
 
@@ -27,6 +27,12 @@ interface SignalHistoryListProps {
 const PERIOD_OPTIONS = [
   { label: "日 K", value: "daily" as ChanlunPeriod },
   { label: "30 分钟", value: "m30" as ChanlunPeriod },
+];
+
+// 缠论算法口径（双版本并存，2026-09-08）
+const VERSION_OPTIONS = [
+  { label: "v2", value: "v2" as ChanlunVersion },
+  { label: "v1", value: "v1" as ChanlunVersion },
 ];
 
 const ALL_TYPES: SignalType[] = ["buy1", "buy2", "buy3", "sell1", "sell2", "sell3"];
@@ -43,6 +49,7 @@ function fmtTime(t: string | null): string {
 export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({ stockCode }) => {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<ChanlunPeriod>("daily");
+  const [version, setVersion] = useState<ChanlunVersion>("v2");
   const [typeFilter, setTypeFilter] = useState<SignalType | "all">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +59,7 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({ stockCode 
     setLoading(true);
     setError(null);
     try {
-      const res = await getSignals(stockCode, { period, limit: 100 });
+      const res = await getSignals(stockCode, { period, limit: 100, version });
       setItems(res.items || []);
     } catch (e: any) {
       setItems([]);
@@ -60,7 +67,7 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({ stockCode 
     } finally {
       setLoading(false);
     }
-  }, [stockCode, period]);
+  }, [stockCode, period, version]);
 
   useEffect(() => {
     fetchData();
@@ -171,6 +178,11 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({ stockCode 
           options={PERIOD_OPTIONS}
           value={period}
           onChange={(v) => setPeriod(v as ChanlunPeriod)}
+        />
+        <Segmented
+          options={VERSION_OPTIONS}
+          value={version}
+          onChange={(v) => setVersion(v as ChanlunVersion)}
         />
         <Select
           style={{ width: 150 }}

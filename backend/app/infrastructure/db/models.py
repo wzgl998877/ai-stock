@@ -787,7 +787,11 @@ class StrategySignalModel(Base):
 
 
 class StrategyStructureModel(Base):
-    """缠论结构快照（覆盖式更新，对标 ``t_strategy_structure``）。"""
+    """缠论结构快照（覆盖式更新，对标 ``t_strategy_structure``）。
+
+    v1/v2 双版本并存（o9p0q1r2s3t4）：唯一键含 ``algo_version``，两版本
+    各自维护独立快照行与水位线，交替计算不互相覆盖。
+    """
 
     __tablename__ = "t_strategy_structure"
 
@@ -804,7 +808,10 @@ class StrategyStructureModel(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("stock_code", "period", name="uq_strategy_structure_code_period"),
+        UniqueConstraint(
+            "stock_code", "period", "algo_version",
+            name="uq_strategy_structure_code_period_version",
+        ),
     )
 
 

@@ -73,7 +73,8 @@ class Settings(BaseSettings):
     chanlun_scan_daily_cron: str = "15:40"   # 日线收盘扫描触发时刻（HH:MM，工作日）
     chanlun_backtest_timeout: int = 300      # 回测任务整体超时（秒）
     chanlun_concurrency: int = 10            # 监控扫描并发上限
-    chanlun_algo_version: str = "1.0.0"      # 缠论算法版本号（写入信号/结构/回测，保证可回放与一致性）
+    chanlun_algo_version: str = "1.1.0"      # 缠论算法版本号（写入信号/结构/回测，保证可回放与一致性）
+    chanlun_push_max_signal_age_days: int = 7  # 推送信号年龄上限（天）：bump 版本后全量重算重插时拦截陈年信号轰炸
 
     # === 微信 iLink Bot 推送（缠论信号） ===
     wechat_push_enabled: bool = False                   # 推送总开关（token 未配置时强制视为关闭）

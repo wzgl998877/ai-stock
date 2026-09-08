@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 
 _scheduler = None
 
+# 定时扫描双版本（v2 主、v1 副）：数据只拉一次，两口径各自计算/落库/推送。
+# 信号表靠 dedup_key 中的版本段分身、快照表靠唯一键 (code, period, algo_version)
+# 分身（o9p0q1r2s3t4），互不干扰；手动/微信/网页场景由调用方显式指定版本。
+_SCAN_VERSIONS = ("1.1.0", "1.0.0")
+
 
 def _parse_cron(hhmm: str) -> tuple[int, int]:
     """``"15:40"`` → ``(15, 40)``。"""
@@ -202,13 +207,17 @@ def setup_scheduler(session_factory):
                 #    导致定时扫描长期 stale 跳过、信号出不来——对标 scan_m30 修正）
                 await _pull_daily_quotes(session_factory, codes)
 
-                # 2) 扫描计算
-                monitor = _build_monitor(session, session_factory)
-                await monitor.scan(
-                    "daily", user_id="system",
-                    trigger_type="scheduled", stock_codes=codes,
-                )
-                await session.commit()
+                # 2) 双版本扫描（v2 主、v1 副）：数据只拉一次，两口径各自
+                #    计算/落库/推送（信号表与快照表按版本分身，互不干扰）
+                for ver in _SCAN_VERSIONS:
+                    async with session_factory() as session:
+                        monitor = _build_monitor(session, session_factory)
+                        await monitor.scan(
+                            "daily", user_id="system",
+                            trigger_type="scheduled", stock_codes=codes,
+                            algo_version=ver,
+                        )
+                        await session.commit()
         except Exception as e:
             logger.error("缠论日线扫描任务失败: %s", e, exc_info=True)
 
@@ -242,13 +251,16 @@ def setup_scheduler(session_factory):
 
                 await asyncio.gather(*[pull(c) for c in codes])
 
-                # 2) 扫描计算
-                monitor = _build_monitor(session, session_factory)
-                await monitor.scan(
-                    "m30", user_id="system",
-                    trigger_type="scheduled", stock_codes=codes,
-                )
-                await session.commit()
+            # 2) 双版本扫描（v2 主、v1 副）：行情只拉一次，两口径各自计算
+            for ver in _SCAN_VERSIONS:
+                async with session_factory() as session:
+                    monitor = _build_monitor(session, session_factory)
+                    await monitor.scan(
+                        "m30", user_id="system",
+                        trigger_type="scheduled", stock_codes=codes,
+                        algo_version=ver,
+                    )
+                    await session.commit()
         except Exception as e:
             logger.error("缠论 30m 扫描任务失败: %s", e, exc_info=True)
 

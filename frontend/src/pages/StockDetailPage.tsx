@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Tabs, Skeleton, Alert, Card } from 'antd';
+import { Tabs, Skeleton, Alert, Card, Segmented } from 'antd';
 import { useStockDetailStore, isMarketOpen } from '../store/stockDetailStore';
 import PriceCard from '../components/stock/PriceCard';
 import KLineChart from '../components/stock/KLineChart';
@@ -12,9 +12,16 @@ import IndustryComparison from '../components/stock/IndustryComparison';
 import AddToWatchlistButton from '../components/stock/AddToWatchlistButton';
 import SyncKlineButton from '../components/stock/SyncKlineButton';
 import SignalHistoryList from '../components/strategy/SignalHistoryList';
+import type { ChanlunVersion } from '../domain/types';
 
 /** 分时轮询间隔（毫秒） */
 const MINUTE_POLL_INTERVAL = 30_000;
+
+/** 缠论结构图层口径切换（双版本并存，2026-09-08） */
+const STRUCTURE_VERSION_OPTS = [
+  { label: 'v2', value: 'v2' as ChanlunVersion },
+  { label: 'v1', value: 'v1' as ChanlunVersion },
+];
 
 const StockDetailPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
@@ -24,6 +31,7 @@ const StockDetailPage: React.FC = () => {
     basic, quote, financial, klineData, minuteData, indicators,
     relatedArticles, loading, klineLoading, error,
     activePeriod, showMACD, showKDJ, showChanlun, signalMarks, structureData, highlightDate,
+    structureVersion, setStructureVersion,
     fetchStockDetail, setActivePeriod, toggleMACD, toggleKDJ, toggleChanlun, setHighlightDate, clear,
     fetchKlineData, refreshMinuteData,
   } = useStockDetailStore();
@@ -189,6 +197,14 @@ const StockDetailPage: React.FC = () => {
               onToggleKDJ={toggleKDJ}
               onToggleChanlun={toggleChanlun}
             />
+            {showChanlun && activePeriod === 'daily' && code && (
+              <Segmented
+                size="small"
+                options={STRUCTURE_VERSION_OPTS}
+                value={structureVersion}
+                onChange={(v) => setStructureVersion(v as ChanlunVersion, code)}
+              />
+            )}
             {activePeriod !== 'minute' && code && (
               <SyncKlineButton
                 code={code}

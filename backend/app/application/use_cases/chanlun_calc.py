@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.domain.entities.chanlun import ChanlunSignal, KlineBar, StructureSnapshot
 from app.domain.repositories.chanlun_repo import ChanlunRepository
 from app.domain.repositories.stock_data_repo import StockDataRepository
-from app.domain.services.chanlun_service import ChanlunService
+from app.domain.services.chanlun_service import ChanlunService, normalize_algo_version
 from app.domain.services.indicator_service import IndicatorService
 
 logger = logging.getLogger(__name__)
@@ -54,12 +54,19 @@ class ChanlunCalcUseCase:
         self.chanlun_repo = chanlun_repo
         self.indicator_service = indicator_service or IndicatorService()
         self.chanlun_service = chanlun_service or ChanlunService()
-        self.algo_version = algo_version or settings.chanlun_algo_version
+        # 双版本并存：v1/v2 别名归一化为规范串（落库标签口径唯一）
+        resolved = algo_version if algo_version is not None else settings.chanlun_algo_version
+        self.algo_version = normalize_algo_version(resolved)
 
     async def compute_and_persist(
-        self, stock_code: str, period: str
+        self, stock_code: str, period: str, algo_version: Optional[str] = None,
     ) -> tuple[list[ChanlunSignal], StructureSnapshot, list[ChanlunSignal]]:
         """计算单股单周期并落库。
+
+        Args:
+            algo_version: 本次计算生效的算法口径（v1/v2/规范串均可）；None 则用
+                构造器版本。双版本并存：v1/v2 信号靠 dedup_key 中的版本段天然
+                分身共存，结构快照各自独立一行（o9p0q1r2s3t4 唯一键含版本）。
 
         Returns:
             ``(signals, snapshot, new_signals)`` —— 信号列表、结构快照、
@@ -69,13 +76,16 @@ class ChanlunCalcUseCase:
         Raises:
             NoKlineDataError: 该股票在该周期无 K 线数据（监控层据此记 skipped）。
         """
+        if algo_version is not None:
+            algo_version = normalize_algo_version(algo_version)
+        effective_version = algo_version or self.algo_version
         bars = await self._load_bars(stock_code, period)
         if not bars:
             logger.info("chanlun_calc: 无 K 线数据 %s @ %s", stock_code, period)
             raise NoKlineDataError(f"{stock_code} @ {period} 无 K 线数据")
 
         signals, snapshot = self.chanlun_service.compute_all(
-            bars, stock_code=stock_code, period=period, algo_version=self.algo_version
+            bars, stock_code=stock_code, period=period, algo_version=effective_version
         )
 
         # 监控产出的信号为全局信号（基于行情，所有用户共享），user_id 置空

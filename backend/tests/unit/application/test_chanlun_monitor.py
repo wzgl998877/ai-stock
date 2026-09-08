@@ -79,7 +79,13 @@ class FakeChanlunRepo:
             "failed_detail": failed_detail, "duration_ms": duration_ms,
         })
 
-    async def get_structure(self, code, period):
+    async def get_structure(self, code, period, algo_version=None):
+        # 双版本并存后签名加 algo_version：优先按 (code, period, version) 取，
+        # 回落 (code, period)——兼容既有 fixture 的无版本键
+        if algo_version is not None:
+            snap = self.structures.get((code, period, algo_version))
+            if snap is not None:
+                return snap
         return self.structures.get((code, period))
 
     async def get_monitor_configs(self, user_id):
@@ -116,7 +122,7 @@ class FakeCalc:
         self._no_data_codes = set(no_data_codes or [])
         self._calls = calls if calls is not None else []
 
-    async def compute_and_persist(self, code, period):
+    async def compute_and_persist(self, code, period, algo_version=None):
         self._calls.append((code, period))
         if code in self._fail_codes:
             raise RuntimeError(f"boom {code}")
@@ -364,7 +370,7 @@ async def test_pusher_called_with_all_new_signals():
     """本批有新增信号 → pusher 被调一次且收到全部新增信号。"""
 
     class SigCalc(FakeCalc):
-        async def compute_and_persist(self, code, period):
+        async def compute_and_persist(self, code, period, algo_version=None):
             self._calls.append((code, period))
             return [], StructureSnapshot(stock_code=code, period=period), [_sig(code)]
 
@@ -435,3 +441,61 @@ async def test_pusher_none_backward_compatible():
 
     assert mon.signal_pusher is None
     assert log.success == 2 and len(calc_calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# 双版本并存（2026-09-08）：scan 版本参数 + 版本化水位线
+# ---------------------------------------------------------------------------
+
+async def test_scan_algo_version_overrides_constructor():
+    """scan(algo_version="v1") → run_log 记规范串 1.0.0（别名归一化）。"""
+    wl = FakeWatchlistRepo([_item("600000")])
+    cr = FakeChanlunRepo()
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+    mon, _sessions, _calls = _make_monitor(wl, cr, sd)  # 构造器版本 1.0.0
+
+    log = await mon.scan("daily", user_id="u1", algo_version="v1")
+    assert log.algo_version == "1.0.0"
+    assert cr.created[0].algo_version == "1.0.0"
+
+
+async def test_scan_version_mismatch_forces_recompute():
+    """快照是 v1 写的且 K 线未更新 → v1 scan skipped；v2 scan 照常计算。
+
+    双版本并存的核心不变量：各版本水位线独立——v1 快照不得挡住 v2 重算。
+    """
+    snapshot_v1 = StructureSnapshot(
+        stock_code="600000", period="daily",
+        last_kline_time=datetime(2026, 1, 10),  # 与库中最新相同
+        algo_version="1.0.0",
+    )
+    cr = FakeChanlunRepo(structures={("600000", "daily", "1.0.0"): snapshot_v1})
+    wl = FakeWatchlistRepo([_item("600000")])
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+
+    # v1：命中水位线 → skipped，calc 不调
+    mon1, _s1, calls1 = _make_monitor(wl, cr, sd)
+    log1 = await mon1.scan("daily", user_id="u1", algo_version="v1")
+    assert calls1 == [] and log1.success == 0 and log1.total == 1
+
+    # v2：该版本无快照 → 强制重算
+    mon2, _s2, calls2 = _make_monitor(wl, cr, sd)
+    log2 = await mon2.scan("daily", user_id="u1", algo_version="v2")
+    assert len(calls2) == 1 and log2.success == 1
+    assert log2.algo_version == "1.1.0"
+
+
+async def test_scan_version_match_still_skips():
+    """快照版本与请求版本一致且 K 线未更新 → 依旧 skipped（水位线优化不回退）。"""
+    snapshot_v2 = StructureSnapshot(
+        stock_code="600000", period="daily",
+        last_kline_time=datetime(2026, 1, 10),
+        algo_version="1.1.0",
+    )
+    cr = FakeChanlunRepo(structures={("600000", "daily", "1.1.0"): snapshot_v2})
+    wl = FakeWatchlistRepo([_item("600000")])
+    sd = FakeStockDataRepo(latest_daily=date(2026, 1, 10))
+    mon, _s, calls = _make_monitor(wl, cr, sd)
+
+    log = await mon.scan("daily", user_id="u1", algo_version="v2")
+    assert calls == [] and log.success == 0

@@ -15,6 +15,7 @@ import type {
   BacktestReportListItem,
   BacktestSignalDetailItem,
   ChanlunPeriod,
+  ChanlunVersion,
   MonitorConfig,
   RunStatus,
   SignalHistoryItem,
@@ -45,11 +46,13 @@ function inferStatus(summary: SignalSummary | null): SignalStatus {
 }
 
 /** 自选股双周期信号徽标（GET /watchlist-signals） */
-export async function getWatchlistSignals(): Promise<{
+export async function getWatchlistSignals(version?: ChanlunVersion): Promise<{
   items: WatchlistSignalItem[];
   disclaimer: string;
 }> {
-  const res = await api.get(`${BASE}/watchlist-signals`);
+  const res = await api.get(`${BASE}/watchlist-signals`, {
+    params: version ? { version } : undefined,
+  });
   const raw = res.data as { items: RawWatchlistSignalItem[]; disclaimer?: string };
   return {
     items: (raw.items || []).map((it) => ({
@@ -67,7 +70,7 @@ export async function getWatchlistSignals(): Promise<{
 /** 单股信号历史（GET /stocks/{code}/signals） */
 export async function getSignals(
   code: string,
-  params?: { period?: ChanlunPeriod; status?: "confirmed" | "invalidated"; limit?: number },
+  params?: { period?: ChanlunPeriod; status?: "confirmed" | "invalidated"; limit?: number; version?: ChanlunVersion },
 ): Promise<{
   items: SignalHistoryItem[];
   total: number;
@@ -78,6 +81,7 @@ export async function getSignals(
       period: params?.period || "daily",
       status: params?.status,
       limit: params?.limit || 50,
+      version: params?.version,
     },
   });
   return {
@@ -90,15 +94,18 @@ export async function getSignals(
 export interface RecalculateParams {
   stock_codes?: string[] | null;   // null/undefined = 用户全部自选股
   period?: ChanlunPeriod | "both";
+  version?: ChanlunVersion;        // 缠论算法口径；缺省用服务端默认版
 }
 
 /** 单股缠论结构快照（GET /stocks/{code}/structure） */
-export async function getStructure(code: string, period: ChanlunPeriod): Promise<{
+export async function getStructure(code: string, period: ChanlunPeriod, version?: ChanlunVersion): Promise<{
   structure: StructureData;
   signalMarks: SignalMark[];
   disclaimer: string;
 }> {
-  const res = await api.get(`${BASE}/stocks/${code}/structure`, { params: { period } });
+  const res = await api.get(`${BASE}/stocks/${code}/structure`, {
+    params: version ? { period, version } : { period },
+  });
   const d = res.data || {};
   const toPoint = (f: any) => ({ time: String(f.time), price: Number(f.price) });
   return {
@@ -146,6 +153,7 @@ export async function recalculate(
     body: {
       stock_codes: params.stock_codes ?? null,
       period: params.period || "daily",
+      version: params.version ?? null,
     },
     signal,
     onEvent: (msg) => {
@@ -164,6 +172,7 @@ export interface BacktestParams {
   range: BacktestRange;
   periods?: ChanlunPeriod[];
   stock_codes?: string[] | null;   // null/undefined = 用户全部自选股
+  version?: ChanlunVersion;        // 缠论算法口径；缺省用服务端默认版
 }
 
 /** 发起回测并订阅 SSE 进度（POST /backtest/run）；完成后 ``backtest_completed`` 带 report_id */
@@ -179,6 +188,7 @@ export async function runBacktest(
       range: params.range,
       periods: params.periods || ["daily"],
       stock_codes: params.stock_codes ?? null,
+      version: params.version ?? null,
     },
     signal,
     onEvent: (msg) => {
@@ -242,7 +252,9 @@ export async function updateConfig(
 }
 
 /** 计算任务状态（GET /run-status）—— 日线 / 30m 最近一次运行 */
-export async function getRunStatus(): Promise<RunStatus> {
-  const res = await api.get(`${BASE}/run-status`);
+export async function getRunStatus(version?: ChanlunVersion): Promise<RunStatus> {
+  const res = await api.get(`${BASE}/run-status`, {
+    params: version ? { version } : undefined,
+  });
   return res.data as RunStatus;
 }

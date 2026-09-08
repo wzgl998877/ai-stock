@@ -26,9 +26,11 @@ import type {
   BacktestReportDetail,
   BacktestReportListItem,
   ChanlunPeriod,
+  ChanlunVersion,
   StrategySSEEvent,
 } from "../domain/types";
 import BacktestSummaryTable from "../components/strategy/BacktestSummaryTable";
+import { useStrategyStore } from "../store/strategyStore";
 
 const { Text, Title } = Typography;
 
@@ -37,10 +39,19 @@ const PERIOD_OPTS = [
   { label: "30 分钟", value: "m30" as ChanlunPeriod },
 ];
 
+// 缠论算法口径（双版本并存，2026-09-08）：与监控页全局 version 联动
+const VERSION_OPTS = [
+  { label: "v2 当前口径", value: "v2" as ChanlunVersion },
+  { label: "v1 旧口径", value: "v1" as ChanlunVersion },
+];
+
 const BacktestPage: React.FC = () => {
   const navigate = useNavigate();
   const [range, setRange] = useState<BacktestRange>("3y");
   const [periods, setPeriods] = useState<ChanlunPeriod[]>(["daily", "m30"]);
+  // 回测口径：默认跟随监控页全局版本，可独立选择（双版本并存，2026-09-08）
+  const globalVersion = useStrategyStore((s) => s.version);
+  const [version, setVersion] = useState<ChanlunVersion>(globalVersion);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
   const [total, setTotal] = useState(0);
@@ -70,6 +81,11 @@ const BacktestPage: React.FC = () => {
     // loadReport 由 useCallback 稳定引用，仅首屏自动加载一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchReports]);
+
+  useEffect(() => {
+    // 监控页切换口径 → 回测跟随（本页仍可独立改回）
+    setVersion(globalVersion);
+  }, [globalVersion]);
 
   const loadReport = useCallback(async (id: number) => {
     setReportLoading(true);
@@ -117,7 +133,7 @@ const BacktestPage: React.FC = () => {
       }
     };
 
-    const params: BacktestParams = { range, periods };
+    const params: BacktestParams = { range, periods, version };
     try {
       await runBacktest(params, onEvent, abortRef.current.signal);
     } catch (e: any) {
@@ -159,6 +175,21 @@ const BacktestPage: React.FC = () => {
           <div>
             <Text type="secondary" style={{ marginRight: 8 }}>周期</Text>
             <Checkbox.Group options={PERIOD_OPTS} value={periods} onChange={(v) => setPeriods(v as ChanlunPeriod[])} />
+          </div>
+          <div>
+            <Text type="secondary" style={{ marginRight: 8 }}>算法口径</Text>
+            <Radio.Group
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              optionType="button"
+              buttonStyle="solid"
+              size="small"
+              disabled={running}
+            >
+              {VERSION_OPTS.map((o) => (
+                <Radio.Button key={o.value} value={o.value}>{o.label}</Radio.Button>
+              ))}
+            </Radio.Group>
           </div>
           <div>
             {running ? (

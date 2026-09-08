@@ -233,6 +233,7 @@ class MySQLChanlunRepository(ChanlunRepository):
         period: str,
         status: Optional[str] = None,
         limit: int = 100,
+        algo_version: Optional[str] = None,
     ) -> list[ChanlunSignal]:
         conditions = [
             StrategySignalModel.stock_code == stock_code,
@@ -240,6 +241,8 @@ class MySQLChanlunRepository(ChanlunRepository):
         ]
         if status:
             conditions.append(StrategySignalModel.status == status)
+        if algo_version:
+            conditions.append(StrategySignalModel.algo_version == algo_version)
         stmt = (
             select(StrategySignalModel)
             .where(*conditions)
@@ -250,18 +253,22 @@ class MySQLChanlunRepository(ChanlunRepository):
         return [_signal_to_entity(m) for m in result.scalars().all()]
 
     async def get_latest_signals_for_stocks(
-        self, stock_codes: list[str], period: str
+        self, stock_codes: list[str], period: str,
+        algo_version: Optional[str] = None,
     ) -> list[ChanlunSignal]:
         """每只股票取最新一条 confirmed 信号（按 signal_time 倒序后去重）。"""
         if not stock_codes:
             return []
+        conditions = [
+            StrategySignalModel.stock_code.in_(stock_codes),
+            StrategySignalModel.period == period,
+            StrategySignalModel.status == "confirmed",
+        ]
+        if algo_version:
+            conditions.append(StrategySignalModel.algo_version == algo_version)
         stmt = (
             select(StrategySignalModel)
-            .where(
-                StrategySignalModel.stock_code.in_(stock_codes),
-                StrategySignalModel.period == period,
-                StrategySignalModel.status == "confirmed",
-            )
+            .where(*conditions)
             .order_by(StrategySignalModel.signal_time.desc())
         )
         result = await self.session.execute(stmt)
@@ -320,6 +327,7 @@ class MySQLChanlunRepository(ChanlunRepository):
         stmt = select(StrategyStructureModel).where(
             StrategyStructureModel.stock_code == snapshot.stock_code,
             StrategyStructureModel.period == snapshot.period,
+            StrategyStructureModel.algo_version == snapshot.algo_version,
         )
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
@@ -345,11 +353,19 @@ class MySQLChanlunRepository(ChanlunRepository):
         await self.session.flush()
 
     async def get_structure(
-        self, stock_code: str, period: str
+        self, stock_code: str, period: str, algo_version: Optional[str] = None
     ) -> Optional[StructureSnapshot]:
-        stmt = select(StrategyStructureModel).where(
+        conditions = [
             StrategyStructureModel.stock_code == stock_code,
             StrategyStructureModel.period == period,
+        ]
+        if algo_version:
+            conditions.append(StrategyStructureModel.algo_version == algo_version)
+        stmt = (
+            select(StrategyStructureModel)
+            .where(*conditions)
+            .order_by(StrategyStructureModel.update_time.desc())
+            .limit(1)
         )
         result = await self.session.execute(stmt)
         m = result.scalar_one_or_none()
@@ -409,10 +425,15 @@ class MySQLChanlunRepository(ChanlunRepository):
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def get_latest_run_log(self, period: str) -> Optional[StrategyRunLog]:
+    async def get_latest_run_log(
+        self, period: str, algo_version: Optional[str] = None
+    ) -> Optional[StrategyRunLog]:
+        conditions = [StrategyRunLogModel.period == period]
+        if algo_version:
+            conditions.append(StrategyRunLogModel.algo_version == algo_version)
         stmt = (
             select(StrategyRunLogModel)
-            .where(StrategyRunLogModel.period == period)
+            .where(*conditions)
             .order_by(StrategyRunLogModel.started_at.desc())
             .limit(1)
         )

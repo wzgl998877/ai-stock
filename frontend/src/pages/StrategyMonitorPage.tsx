@@ -26,6 +26,12 @@ const PERIOD_OPTS = [
   { label: "双周期", value: "both" as const },
 ];
 
+// 缠论算法口径（双版本并存，2026-09-08）：v1=旧口径、v2=当前口径
+const VERSION_OPTS = [
+  { label: "v2 当前口径", value: "v2" as const },
+  { label: "v1 旧口径", value: "v1" as const },
+];
+
 const PERIOD_LABEL: Record<string, string> = { daily: "日 K", m30: "30 分钟" };
 
 function fmtTime(t: string | null): string {
@@ -89,6 +95,7 @@ const StatusCard: React.FC<{ title: string; item: RunStatusItem | null; loading:
 const StrategyMonitorPage: React.FC = () => {
   const navigate = useNavigate();
   const {
+    version, setVersion,
     runStatus, runStatusLoading, fetchRunStatus,
     watchlistSignals, signalsLoading, fetchWatchlistSignals,
     recalcRunning, recalcPeriod, recalcTotal, recalcDone, recalcFailed, recalcSkipped, recalcError,
@@ -116,6 +123,21 @@ const StrategyMonitorPage: React.FC = () => {
 
       <Card size="small" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <Text type="secondary" style={{ marginRight: 8 }}>算法口径</Text>
+            <Radio.Group
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              optionType="button"
+              buttonStyle="solid"
+              size="small"
+              disabled={recalcRunning}
+            >
+              {VERSION_OPTS.map((o) => (
+                <Radio.Button key={o.value} value={o.value}>{o.label}</Radio.Button>
+              ))}
+            </Radio.Group>
+          </div>
           <div>
             <Text type="secondary" style={{ marginRight: 8 }}>重算周期</Text>
             <Radio.Group

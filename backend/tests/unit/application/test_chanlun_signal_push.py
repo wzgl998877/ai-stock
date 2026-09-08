@@ -243,3 +243,79 @@ async def test_push_result_writer_failure_swallowed():
     )
     await uc.push([_sig(id=41)])  # 回写失败不影响发送结果，也不向上抛
     assert len(client.sent) == 1
+
+
+# ---------------------------------------------------------------------------
+# 推送年龄过滤（bump algo_version 后防历史信号轰炸，1.1.0）
+# ---------------------------------------------------------------------------
+
+async def test_push_filters_signals_older_than_max_age():
+    """陈旧信号被拦截、新信号照常推送；拦截者不进回写（push_status 留 NULL）。"""
+    from datetime import timedelta
+
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(
+        client, FakeStore(), "u@im.wechat",
+        result_writer=writer, max_signal_age_days=7,
+    )
+    now = datetime.now()
+    fresh = _sig(id=51, signal_time=now)
+    stale = _sig(stock_code="000858", id=52, signal_time=now - timedelta(days=30))
+    await uc.push([fresh, stale])
+
+    assert len(client.sent) == 1
+    assert "新增1" in client.sent[0][1]
+    assert "000858" not in client.sent[0][1]
+    # 只有新信号的 id 进回写（拦截者保持未尝试状态）
+    assert writer.calls == [([51], "success", "MSG-001")]
+
+
+async def test_push_all_filtered_no_send():
+    """全部信号陈旧 → 不发送、不回写、不抛异常。"""
+    from datetime import timedelta
+
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(
+        client, FakeStore(), "u@im.wechat",
+        result_writer=writer, max_signal_age_days=7,
+    )
+    stale = _sig(id=53, signal_time=datetime.now() - timedelta(days=30))
+    await uc.push([stale])
+
+    assert client.sent == []
+    assert writer.calls == []
+
+
+async def test_push_without_age_filter_sends_all():
+    """未配置 max_signal_age_days → 过滤关闭，历史信号照常推送（默认行为不变）。"""
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(
+        client, FakeStore(), "u@im.wechat", result_writer=writer,
+    )
+    from datetime import timedelta
+
+    stale = _sig(id=54, signal_time=datetime.now() - timedelta(days=365))
+    await uc.push([stale])
+    assert len(client.sent) == 1
+
+
+# ---------------------------------------------------------------------------
+# 双版本并存（2026-09-08）：标题口径标签
+# ---------------------------------------------------------------------------
+
+def test_format_title_carries_version_label():
+    """标题带版本短标签：1.1.0 → ·v2、1.0.0 → ·v1；未知/空版本不显示标签。"""
+    s_v2 = _sig(algo_version="1.1.0")
+    assert format_signals_message([s_v2]).splitlines()[0] == "【缠论信号·v2】30分钟周期 · 新增1"
+
+    s_v1 = _sig(algo_version="1.0.0")
+    assert format_signals_message([s_v1]).splitlines()[0] == "【缠论信号·v1】30分钟周期 · 新增1"
+
+    s_unknown = _sig(algo_version="9.9.9")
+    assert format_signals_message([s_unknown]).splitlines()[0] == "【缠论信号·9.9.9】30分钟周期 · 新增1"
+
+    s_empty = _sig()  # algo_version 默认 "" → 无标签（兼容旧调用）
+    assert format_signals_message([s_empty]).splitlines()[0] == "【缠论信号】30分钟周期 · 新增1"

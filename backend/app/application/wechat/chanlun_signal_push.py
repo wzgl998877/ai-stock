@@ -16,7 +16,7 @@ warning。
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Optional
 
 from app.domain.entities.chanlun import ChanlunSignal
@@ -38,6 +38,8 @@ SIGNAL_LABELS = {
 }
 LEVEL_LABELS = {"stroke": "笔", "segment": "线段"}
 PERIOD_LABELS = {"daily": "日线", "m30": "30分钟"}
+# 双版本并存（2026-09-08）：标题带口径短标签，区分 v1/v2 推送；未知版本原样回显
+VERSION_SHORT_LABELS = {"1.0.0": "v1", "1.1.0": "v2"}
 
 
 def format_signals_message(
@@ -50,9 +52,13 @@ def format_signals_message(
     names = names or {}
     period = new_signals[0].period if new_signals else ""
     period_label = PERIOD_LABELS.get(period, period)
+    # 单次 scan 只产单一版本信号，取首条的 algo_version 作口径标签
+    version = new_signals[0].algo_version if new_signals else ""
+    version_label = VERSION_SHORT_LABELS.get(version, version)
+    version_seg = f"·{version_label}" if version_label else ""
 
     ordered = sorted(new_signals, key=lambda s: s.signal_time or datetime.min, reverse=True)
-    lines = [f"【缠论信号】{period_label}周期 · 新增{len(ordered)}"]
+    lines = [f"【缠论信号{version_seg}】{period_label}周期 · 新增{len(ordered)}"]
     for i, s in enumerate(ordered, 1):
         name = names.get(s.stock_code, "")
         head = f"{s.stock_code} {name}" if name else s.stock_code
@@ -93,12 +99,14 @@ class ChanlunSignalPushUseCase:
         to_user_id: str,
         name_lookup: Optional[NameLookup] = None,
         result_writer: Optional[PushResultWriter] = None,
+        max_signal_age_days: Optional[int] = None,
     ):
         self.client = client
         self.store = store
         self.to_user_id = to_user_id
         self.name_lookup = name_lookup
         self.result_writer = result_writer
+        self.max_signal_age_days = max_signal_age_days
 
     async def _record(self, ids: list[int], status: str, message_id: Optional[str]) -> None:
         """回写推送结果；失败只记 warning（不影响任何主流程）。"""
@@ -110,11 +118,32 @@ class ChanlunSignalPushUseCase:
             logger.warning("推送结果回写失败（status=%s）", status, exc_info=True)
 
     async def push(self, new_signals: list[ChanlunSignal]) -> None:
-        """聚合推送本批新增信号。任何失败只记日志，不向上抛。"""
-        ids = [s.id for s in new_signals if s.id is not None]
+        """聚合推送本批新增信号。任何失败只记日志，不向上抛。
+
+        ``max_signal_age_days`` 生效时先过滤陈旧信号（signal_time 早于
+        now - N 天）：bump algo_version 后首轮全量重算重插会把全部历史信号
+        当"新增"送来，年龄过滤把它们拦在推送侧（被剔除者不回写 push_status，
+        仍为 NULL=未尝试），避免一次性轰炸接收人。
+        """
         try:
             if not new_signals:
                 return
+
+            if self.max_signal_age_days is not None:
+                cutoff = datetime.now() - timedelta(days=self.max_signal_age_days)
+                fresh = [s for s in new_signals if s.signal_time and s.signal_time >= cutoff]
+                stale = len(new_signals) - len(fresh)
+                if stale:
+                    logger.info(
+                        "推送年龄过滤：%d 条信号超过 %d 天被拦截（不推送、不回写状态）",
+                        stale, self.max_signal_age_days,
+                    )
+                if not fresh:
+                    return
+                new_signals = fresh
+
+            # ids 在过滤之后取：被拦截信号不进回写（push_status 保持 NULL）
+            ids = [s.id for s in new_signals if s.id is not None]
 
             names: dict[str, str] = {}
             if self.name_lookup is not None:
@@ -171,6 +200,7 @@ def build_signal_pusher(session_factory) -> Optional[SignalPusher]:
         client=client,
         store=ILinkTokenStore(),
         to_user_id=settings.wechat_ilink_user_id,
+        max_signal_age_days=settings.chanlun_push_max_signal_age_days,
     )
 
     async def _write_push_result(

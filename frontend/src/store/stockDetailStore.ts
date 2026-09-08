@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { stockDataService } from '../services/stockDataService';
 import { getStructure } from '../services/strategyService';
-import type { SignalMark, StructureData } from '../domain/types';
+import type { ChanlunVersion, SignalMark, StructureData } from '../domain/types';
 
 // --- 类型定义 ---
 
@@ -88,6 +88,8 @@ interface StockDetailState {
   signalMarks: SignalMark[];
   structureData: StructureData | null;
   highlightDate: string | null;
+  /** 缠论结构图层口径（双版本并存，2026-09-08）；默认 v2 */
+  structureVersion: ChanlunVersion;
 
   fetchStockDetail: (code: string) => Promise<void>;
   fetchKlineData: (code: string, period: KlinePeriod) => Promise<void>;
@@ -99,6 +101,7 @@ interface StockDetailState {
   toggleKDJ: () => void;
   toggleChanlun: () => void;
   fetchChanlunLayer: (code: string, period: KlinePeriod) => Promise<void>;
+  setStructureVersion: (version: ChanlunVersion, code: string) => void;
   setHighlightDate: (date: string | null) => void;
   clear: () => void;
 }
@@ -122,6 +125,7 @@ const initialState = {
   signalMarks: [],
   structureData: null,
   highlightDate: null,
+  structureVersion: 'v2' as ChanlunVersion,
 };
 
 export const useStockDetailStore = create<StockDetailState>((set, get) => ({
@@ -241,12 +245,18 @@ export const useStockDetailStore = create<StockDetailState>((set, get) => ({
       return;
     }
     try {
-      const { structure, signalMarks } = await getStructure(code, 'daily');
+      const { structure, signalMarks } = await getStructure(code, 'daily', get().structureVersion);
       set({ structureData: structure, signalMarks });
     } catch {
       // 结构加载失败不影响 K 线显示
       set({ signalMarks: [], structureData: null });
     }
+  },
+  setStructureVersion: (version: ChanlunVersion, code: string) => {
+    if (get().structureVersion === version) return;
+    set({ structureVersion: version });
+    // 口径切换：按新版本重拉结构图层
+    get().fetchChanlunLayer(code, get().activePeriod);
   },
   setHighlightDate: (date: string | null) => set({ highlightDate: date }),
   clear: () => set(initialState),

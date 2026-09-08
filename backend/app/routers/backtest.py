@@ -36,6 +36,7 @@ from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase
 from app.core.database import async_session, get_db
 from app.core.deps import CurrentUser, get_current_user
 from app.domain.entities.backtest import BacktestSignalDetail, BacktestSummary
+from app.domain.services.chanlun_service import normalize_algo_version
 from app.infrastructure.repositories.mysql_backtest_repo import MySQLBacktestRepository
 from app.infrastructure.repositories.mysql_chanlun_repo import MySQLChanlunRepository
 from app.infrastructure.repositories.mysql_stock_data_repo import MySQLStockDataRepository
@@ -69,14 +70,23 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(_jsonable(data), ensure_ascii=False)}\n\n"
 
 
-def _build_backtest(session: AsyncSession) -> ChanlunBacktestUseCase:
-    """从单个 DB session 装配回测 UseCase（复用监控的 calc 依赖）。"""
+def _build_backtest(
+    session: AsyncSession, algo_version: Optional[str] = None
+) -> ChanlunBacktestUseCase:
+    """从单个 DB session 装配回测 UseCase（复用监控的 calc 依赖）。
+
+    ``algo_version``：双版本并存（2026-09-08），v1/v2 口径回测对照；None 用
+    settings 默认版。
+    """
     backtest_repo = MySQLBacktestRepository(session)
     calc = ChanlunCalcUseCase(
         stock_data_repo=MySQLStockDataRepository(session),
         chanlun_repo=MySQLChanlunRepository(session),
+        algo_version=algo_version,
     )
-    return ChanlunBacktestUseCase(chanlun_calc=calc, backtest_repo=backtest_repo)
+    return ChanlunBacktestUseCase(
+        chanlun_calc=calc, backtest_repo=backtest_repo, algo_version=algo_version
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +122,8 @@ async def run_backtest(
                     await queue.put({"event": "backtest_error", "data": {"message": "未找到自选股，无法回测"}})
                     return
                 await queue.put({"event": "backtest_started", "data": {"range": body.range, "stock_count": len(codes)}})
-                bt = _build_backtest(session)
+                algo_version = normalize_algo_version(body.version) if body.version else None
+                bt = _build_backtest(session, algo_version=algo_version)
                 report = await bt.run(
                     user_id=current_user.user_id,
                     range_label=body.range,
