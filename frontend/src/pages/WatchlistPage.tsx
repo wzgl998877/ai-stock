@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button, Modal, Input, Popconfirm, Empty, Spin, Tag, Alert,
-  Table, Pagination, message, Select, Tooltip,
+  Table, Pagination, message, Select, Tooltip, Segmented,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
@@ -66,7 +66,7 @@ const WatchlistPage: React.FC = () => {
   } = useWatchlistStore();
 
   const { stockImpacts, setStockImpacts } = useEventRadarStore();
-  const { watchlistSignals, fetchWatchlistSignals } = useStrategyStore();
+  const { watchlistSignals, fetchWatchlistSignals, version, setVersion } = useStrategyStore();
   const [signalFilter, setSignalFilter] = useState<'all' | 'has_buy' | 'has_sell' | 'none'>('all');
 
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
@@ -670,6 +670,17 @@ const WatchlistPage: React.FC = () => {
               allowClear
               size="small"
             />
+            <Tooltip title="缠论算法口径：v2=当前口径（更严，一类点须破中枢、三类点只认首次回试）；v1=旧口径。切换后徽标按该口径重新加载">
+              <Segmented
+                size="small"
+                value={version}
+                onChange={(v) => setVersion(v as 'v1' | 'v2')}
+                options={[
+                  { label: 'v2', value: 'v2' },
+                  { label: 'v1', value: 'v1' },
+                ]}
+              />
+            </Tooltip>
             <Select
               size="small"
               style={{ width: 120 }}
