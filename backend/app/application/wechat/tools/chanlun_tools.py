@@ -37,11 +37,13 @@ _PERIOD_LABELS = {"daily": "日线", "m30": "30m"}
 from app.domain.services.chanlun_service import (  # noqa: E402
     ALGO_VERSION_V1,
     ALGO_VERSION_V2,
-    normalize_algo_version,
 )
 
 _VERSION_ALIASES = {"v1": ALGO_VERSION_V1, "v2": ALGO_VERSION_V2}
 _VERSION_LABELS = {ALGO_VERSION_V1: "v1", ALGO_VERSION_V2: "v2"}
+# 未指定版本时的双跑序列（对标 chanlun_scheduler._SCAN_VERSIONS：v2 主、v1 副；
+# 行情每周期只拉一次，两口径各自 scan）
+_DEFAULT_VERSIONS = (ALGO_VERSION_V2, ALGO_VERSION_V1)
 
 
 async def _all_watchlist_codes(session) -> list[str]:
@@ -89,10 +91,11 @@ class RunChanlunTool(WeChatTool):
     domain = "strategy"
     description = (
         "对股票执行缠论计算并产出买卖点信号。不带周期时 30m 和日线都算；"
-        "也可只指定其一。可选指定算法版本 v1（旧口径）或 v2（当前口径，默认）。"
-        "示例：「跑缠论」全部自选股双周期；「缠论 002940」只算该股"
-        "（双周期）；「缠论 日线」或「缠论 30分钟 002940」只跑指定周期；"
-        "「跑缠论 v1」用旧口径重算；「缠论 v2 日线」指定当前口径跑日线；"
+        "也可只指定其一。可选指定算法版本 v1（旧口径）或 v2（当前口径），"
+        "不指定版本则 v1、v2 两版都算。"
+        "示例：「跑缠论」全部自选股双周期双口径；「缠论 002940」只算该股"
+        "（双周期双口径）；「缠论 日线」或「缠论 30分钟 002940」只跑指定周期；"
+        "「跑缠论 v1」只用旧口径重算；「缠论 v2 日线」指定当前口径跑日线；"
         "「帮我把自选股的缠论都过一遍」。"
     )
     parameters = {
@@ -109,7 +112,7 @@ class RunChanlunTool(WeChatTool):
         "version": {
             "type": "string",
             "enum": ["v1", "v2"],
-            "description": "缠论算法口径：v1=旧口径，v2=当前口径；留空默认 v2",
+            "description": "缠论算法口径：v1=旧口径，v2=当前口径；留空则 v1、v2 两版都算",
         },
     }
     kind = "slow"
@@ -151,21 +154,21 @@ class RunChanlunTool(WeChatTool):
             )
 
         # 0b) 版本归一化（双口径并存）：规则层 version_str / LLM 层 version →
-        #     规范串；缺省 settings 默认版；非法值回引导文案不执行（严禁静默
-        #     回落——跑错口径比报错更糟）
+        #     规范串列表；缺省 v2+v1 双跑（不读 settings 默认——微信入口固定
+        #     双口径，与 settings.chanlun_algo_version 解耦）；非法值回引导
+        #     文案不执行（严禁静默回落——跑错口径比报错更糟）
         version_raw = str(
             ctx.params.get("version") or ctx.params.get("version_str") or ""
         ).strip().lower()
         if not version_raw:
-            algo_version = normalize_algo_version(settings.chanlun_algo_version)
+            algo_versions = list(_DEFAULT_VERSIONS)
         elif version_raw in _VERSION_ALIASES:
-            algo_version = _VERSION_ALIASES[version_raw]
+            algo_versions = [_VERSION_ALIASES[version_raw]]
         else:
             return ToolResult(summary=(
                 f"暂不支持的缠论版本：「{version_raw}」。目前支持 v1（旧口径）"
                 "与 v2（当前口径），例如「跑缠论 v1」或「缠论 v2 日线」。"
             ))
-        version_label = _VERSION_LABELS[algo_version]
 
         # 1) 目标股票：参数指定 or 自选股并集。
         # 规则层捕获 codes_str（"全部"/"自选"/"002940,000333"），LLM 层产 codes 数组——统一归一化
@@ -220,11 +223,13 @@ class RunChanlunTool(WeChatTool):
                 f"日线补数完成 {len(codes) - len(failed)}/{len(codes)}"
             )
 
-        # 2) + 3) 逐周期：补数 → scan（每轮一条 run_log，摘要逐周期一行）
+        # 2) + 3) 逐周期：补数 → 按版本循环 scan（每轮一条 run_log，摘要逐周期
+        #    逐版本一行）；行情按周期只拉一次，两口径共用同一批 ok_codes。
         #    user_id 传 "wechat"：t_strategy_run_log.user_id 为 String(32)（按系统 uuid
         #    设计），微信 openid 37 字符会 1406；对标定时扫描传 "system" 的先例，
         #    完整溯源（msg_id/原文/微信 user_id）已在 t_wechat_command 记录。
-        run_logs: list[tuple[str, object]] = []  # (period_label, run_log)
+        run_logs: list[tuple[str, str, object]] = []  # (period_label, version_label, run_log)
+        scan_errors: list[str] = []  # 版本粒度 scan 异常（股票粒度走 failed_items）
         failed_before = 0  # 本轮周期开始时 failed_items 已有长度
         for period in periods:
             if period == "daily":
@@ -232,29 +237,46 @@ class RunChanlunTool(WeChatTool):
             else:
                 await pull_m30(codes)
             # 各周期独立失败集合：30m 拉数失败的股只跳过 30m 轮，日线轮照常算，
-            # 反之亦然——只看本轮新增的失败，不累计上一轮的
+            # 反之亦然——只看本轮新增的失败，不累计上一轮的；同周期两版本共享
             failed_now = {f["code"] for f in failed_items[failed_before:]}
             failed_before = len(failed_items)
             ok_codes = [c for c in codes if c not in failed_now]
-            if ok_codes:
-                async with ctx.session_factory() as session:
-                    monitor = _build_monitor(session, ctx.session_factory)
-                    log = await monitor.scan(
-                        period, user_id="wechat",
-                        trigger_type="manual", stock_codes=ok_codes,
-                        algo_version=algo_version,
+            if not ok_codes:
+                continue
+            for algo_version in algo_versions:
+                version_label = _VERSION_LABELS[algo_version]
+                await ctx.report_progress(
+                    f"{_PERIOD_LABELS[period]}（{version_label}）计算中…"
+                )
+                try:
+                    async with ctx.session_factory() as session:
+                        monitor = _build_monitor(session, ctx.session_factory)
+                        log = await monitor.scan(
+                            period, user_id="wechat",
+                            trigger_type="manual", stock_codes=ok_codes,
+                            algo_version=algo_version,
+                        )
+                        await session.commit()
+                    run_logs.append((_PERIOD_LABELS[period], version_label, log))
+                except Exception as e:  # 单版本失败不阻断另一版本/其他周期
+                    logger.error(
+                        "微信跑缠论：%s %s scan 失败: %s", period, version_label, e,
+                        exc_info=True,
                     )
-                    await session.commit()
-                    run_logs.append((_PERIOD_LABELS[period], log))
+                    scan_errors.append(
+                        f"{_PERIOD_LABELS[period]}（{version_label}）：{str(e)[:80]}"
+                    )
 
-        # 4) 摘要（逐周期一行统计，带版本标签 + 免责尾注）
+        # 4) 摘要（逐周期逐版本一行统计 + 免责尾注）
         lines = []
-        for label, log in run_logs:
+        for label, version_label, log in run_logs:
             skipped = log.total - log.success - log.failed
             lines.append(
                 f"缠论 {label}计算完成（{version_label}）：共 {log.total} 只，"
                 f"成功 {log.success}、失败 {log.failed}、无新数据跳过 {skipped}。"
             )
+        if scan_errors:
+            lines.append("部分口径计算失败：" + "；".join(scan_errors))
         if not lines:
             summary = f"缠论计算未执行：{len(codes)} 只股票数据全部拉取失败。"
         else:
@@ -263,10 +285,11 @@ class RunChanlunTool(WeChatTool):
             )
         return ToolResult(
             summary=summary + DISCLAIMER_SUFFIX,
-            succeeded=sum(log.success for _, log in run_logs),
+            succeeded=sum(log.success for *_, log in run_logs),
             failed_items=failed_items,
             meta={
-                "run_log_ids": [log.id for _, log in run_logs],
+                "versions": [_VERSION_LABELS[v] for v in algo_versions],
+                "run_log_ids": [log.id for *_, log in run_logs],
             },
         )
 
