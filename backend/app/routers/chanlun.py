@@ -61,6 +61,10 @@ WATCHLIST_SIGNALS_TTL = 600
 FRESH_WINDOW_DAYS = {"daily": 7, "m30": 2}
 # 后台 SSE 任务引用集合，避免被 GC 回收
 _bg_tasks: set = set()
+# 单轮 scan 看门狗超时（秒）：39 股 × 并发 10 常态 30-45s；留 10 倍余量覆盖
+# 与定时任务叠跑的池竞争 + 新浪降级腾讯的行情拉取。到点取消，避免半开连接
+# 上的僵尸 await 把整轮重算拖死（见 recalculate docstring）
+SCAN_TIMEOUT_SECONDS = 300
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +550,13 @@ async def recalculate(
 
     客户端断开后后台任务继续跑完（信号落库不丢）；进度事件 ``progress``、完成 ``done``、
     异常 ``error``、``heartbeat``（30s 无消息时）。
+
+    scan 超时护栏（2026-09-10 生产事故）：手动重算与定时扫描叠跑时，aiomysql 半开
+    连接上的 await 无 read timeout，曾致 gather 内 2 只股票协程永久悬死 → run_log
+    事务持锁不提交 → 前端永远转圈。这里对 scan 整体加 ``SCAN_TIMEOUT`` 看门狗：
+    到点取消（可取消 await 点会向子协程传播），发 ``calc_error``，事务由 session
+    上下文管理器回滚。已算完并逐股提交的信号不受影响，未完成股票由下一轮
+    定时扫描（≤30 分钟后）自动补算。
     """
     periods = ["daily", "m30"] if body.period == "both" else [body.period]
     queue: asyncio.Queue = asyncio.Queue()
@@ -584,14 +595,36 @@ async def recalculate(
                         await queue.put({"event": "calc_syncing", "data": {"period": p, "total": len(codes)}})
                         await _pull_m30(codes)
                     await queue.put({"event": "calc_started", "data": {"period": p, "total": len(codes)}})
-                    log = await monitor.scan(
-                        period=p,
-                        user_id=current_user.user_id,
-                        trigger_type="manual",
-                        stock_codes=codes,
-                        progress_cb=progress_cb,
-                        algo_version=body.version,
-                    )
+                    try:
+                        log = await asyncio.wait_for(
+                            monitor.scan(
+                                period=p,
+                                user_id=current_user.user_id,
+                                trigger_type="manual",
+                                stock_codes=codes,
+                                progress_cb=progress_cb,
+                                algo_version=body.version,
+                            ),
+                            timeout=SCAN_TIMEOUT_SECONDS,
+                        )
+                    except asyncio.TimeoutError:
+                        # 看门狗兜底：scan 内部有 await 永久悬死（如半开 DB 连接）。
+                        # 取消已传播到子协程；主 session 由外层 async with 回滚，
+                        # run_log 停在 running 由下一轮正常扫描自然覆盖，不算丢数据。
+                        logger.exception(
+                            "recalculate: %s 周期扫描超过 %ds 被取消（并发叠跑或连接异常）",
+                            p, SCAN_TIMEOUT_SECONDS,
+                        )
+                        await queue.put({
+                            "event": "calc_error",
+                            "data": {
+                                "message": (
+                                    f"{p} 周期扫描超时（{SCAN_TIMEOUT_SECONDS}s）已强制结束，"
+                                    "未完成的股票将在下一轮定时扫描自动补算"
+                                ),
+                            },
+                        })
+                        continue
                     # 新信号已落库：立即失效徽标/结构缓存，不等 TTL
                     await _invalidate_strategy_caches(current_user.user_id)
                     await queue.put({

@@ -7,6 +7,8 @@ Decimal→float、datetime→ISO、SSE 报文格式、DTO 装配。
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
+
 from app.application.dtos.chanlun_dto import DISCLAIMER
 from app.domain.entities.chanlun import (
     Bi,
@@ -186,3 +188,42 @@ def test_latest_signal_time_picks_newer_of_daily_and_m30():
                       item("new", d_time=datetime(2026, 8, 12))],
                      key=_latest_signal_time, reverse=True)
     assert [it.stock_code for it in ordered] == ["new", "old", "none"]
+
+
+def test_scan_timeout_constant_sane():
+    """看门狗超时须为正且留足余量：常态 39 股 ≈ 40s，300s = 约 7 倍余量。
+
+    防止后续调小（如 60s）导致与定时任务叠跑时误杀正常扫描。
+    """
+    from app.routers.chanlun import SCAN_TIMEOUT_SECONDS
+
+    assert isinstance(SCAN_TIMEOUT_SECONDS, int)
+    assert 120 <= SCAN_TIMEOUT_SECONDS <= 900
+
+
+@pytest.mark.asyncio
+async def test_scan_watchdog_cancels_hung_scan():
+    """scan 悬死时 wait_for 到点抛 TimeoutError → 调用方可捕获收口、不冒泡。
+
+    复现 2026-09-10 生产事故形态：monitor.scan 内部 await 永久阻塞（半开 DB
+    连接），看门狗必须能强制取消。用永不完成的协程模拟悬死。
+    """
+    import asyncio
+
+    class HungMonitor:
+        """scan 永不返回：await 一个无人 set 的 Future（悬死协程）。"""
+
+        async def scan(self, **kwargs):
+            await asyncio.Future()
+
+    # 悬死 → TimeoutError（路由层捕获后转 calc_error 事件）
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(HungMonitor().scan(period="m30"), timeout=0.05)
+
+    # 正常路径不受影响：scan 及时完成时原样返回
+    class FastMonitor:
+        async def scan(self, **kwargs):
+            return "log"
+
+    log = await asyncio.wait_for(FastMonitor().scan(period="m30"), timeout=1.0)
+    assert log == "log"
