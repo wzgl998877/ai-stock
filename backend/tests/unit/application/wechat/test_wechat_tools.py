@@ -1,14 +1,17 @@
 """微信指令工具测试（specs/010 T015/T018）：缠论三件套的成功/失败/查询三路。
 
 patch 源模块函数（工具内函数内 import，patch 源模块属性即生效）：
-``sync_stock_30m``、``chanlun_tools._build_monitor``、``_all_watchlist_codes``、
-``MySQLWeChatCommandRepository``（status/history 工具用）。
+``sync_stock_30m``、``daily_sync.pull_daily_quotes``、``chanlun_tools._build_monitor``、
+``_all_watchlist_codes``、``MySQLWeChatCommandRepository``（status/history 工具用）。
 """
+
+from datetime import date
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.infrastructure.repositories.mysql_wechat_command_repo as repo_module
+from app.application.sync.daily_sync import DailyPullOutcome, DailyPullResult
 from app.application.wechat.tools import chanlun_tools, registry
 from app.application.wechat.tools.base import DISCLAIMER_SUFFIX, ToolContext
 from app.application.wechat.tools.chanlun_tools import ChanlunStatusTool, RunChanlunTool
@@ -84,13 +87,24 @@ def chanlun_env(monkeypatch):
             raise RuntimeError("sina down")
         pulled.append(code)
 
-    async def _fake_pull_daily(session_factory, codes, days=30):
+    async def _fake_pull_daily(session_factory, codes, days=30, **kwargs):
         daily_calls.append(list(codes))
-        return list(daily_fail_codes)
+        return DailyPullResult(
+            expected_date=date(2026, 9, 15),
+            total=len(codes),
+            outcomes={
+                code: DailyPullOutcome(
+                    code,
+                    "failed" if code in daily_fail_codes else "in_place",
+                    source="sina",
+                )
+                for code in codes
+            },
+        )
 
     monkeypatch.setattr("app.application.sync.chanlun_30m_sync.sync_stock_30m", _fake_sync)
     monkeypatch.setattr(
-        "app.infrastructure.scheduler.chanlun_scheduler._pull_daily_quotes", _fake_pull_daily
+        "app.application.sync.daily_sync.pull_daily_quotes", _fake_pull_daily
     )
     monkeypatch.setattr(chanlun_tools, "_build_monitor", lambda *a: monitor)
 

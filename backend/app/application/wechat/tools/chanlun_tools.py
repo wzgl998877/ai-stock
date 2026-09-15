@@ -212,15 +212,19 @@ class RunChanlunTool(WeChatTool):
             await asyncio.gather(*[pull(c) for c in codes])
 
         async def pull_daily(codes: list[str]) -> None:
-            """日线批量补数（对标 scan_daily 数据前置），进度粗粒度。"""
-            from app.infrastructure.scheduler.chanlun_scheduler import _pull_daily_quotes
+            """日线批量补数（对标定时扫描的数据前置），进度粗粒度。
+
+            单轮拉取、不做到位重试——微信场景是用户手动触发并等待，不能让它挂
+            在每轮 20 分钟的重试里；数据源故障的判定与重试交给定时扫描。
+            """
+            from app.application.sync.daily_sync import pull_daily_quotes
 
             await ctx.report_progress("日线补数中…")
-            failed = await _pull_daily_quotes(ctx.session_factory, codes)
-            for code in failed:
+            result = await pull_daily_quotes(ctx.session_factory, codes)
+            for code in result.failed_codes:
                 failed_items.append({"code": code, "reason": "日线数据拉取失败"})
             await ctx.report_progress(
-                f"日线补数完成 {len(codes) - len(failed)}/{len(codes)}"
+                f"日线补数完成 {len(codes) - len(result.failed_codes)}/{len(codes)}"
             )
 
         # 2) + 3) 逐周期：补数 → 按版本循环 scan（每轮一条 run_log，摘要逐周期

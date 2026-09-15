@@ -281,6 +281,34 @@ class MySQLChanlunRepository(ChanlunRepository):
             out.append(_signal_to_entity(m))
         return out
 
+    async def get_signals_by_push_status(
+        self,
+        push_statuses: list[str],
+        signal_time_from: datetime,
+        period: Optional[str] = None,
+        algo_version: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[ChanlunSignal]:
+        """按推送状态读取信号（补推候选），按 signal_time 倒序取前 limit 条。"""
+        if not push_statuses:
+            return []
+        conditions = [
+            StrategySignalModel.push_status.in_(push_statuses),
+            StrategySignalModel.signal_time >= signal_time_from,
+        ]
+        if period:
+            conditions.append(StrategySignalModel.period == period)
+        if algo_version:
+            conditions.append(StrategySignalModel.algo_version == algo_version)
+        stmt = (
+            select(StrategySignalModel)
+            .where(*conditions)
+            .order_by(StrategySignalModel.signal_time.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return [_signal_to_entity(m) for m in result.scalars().all()]
+
     async def invalidate_signals(
         self, stock_code: str, period: str, reason: str
     ) -> int:

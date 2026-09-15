@@ -180,10 +180,16 @@ async def lifespan(app: FastAPI):
                 client_version=settings.wechat_ilink_client_version,
                 poll_timeout=settings.wechat_ilink_poll_timeout + 5,
             )
+            from app.application.wechat.chanlun_signal_push import make_token_refresh_hook
+            from app.core.database import async_session
+
             start_polling(ILinkPollingService(
                 _ilink_client,
                 ILinkTokenStore(),
                 backoff_max=settings.wechat_ilink_backoff_max,
+                # token 刚刷新即补推漏推信号：用户给 bot 发消息激活 token 的
+                # 那一刻成功率最高（2026-09-15 漏推事故的直接解药）
+                on_token_refreshed=make_token_refresh_hook(async_session),
             ))
             logger.info("微信 iLink 长轮询已启动")
 

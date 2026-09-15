@@ -29,6 +29,24 @@ class StrategyRunLog:
 
 
 @dataclass
+class ScanPreflight:
+    """扫描数据前置诊断（调用方在 ``scan`` 前组装，写入 run_log 供卡片/日志可见）。
+
+    2026-09-14 事故：数据没到位时扫描全量 ``no_new_data`` 跳过，run_log 却是
+    ``status='done', success=0, failed=0, failed_detail=NULL``——从监控看完全
+    正常，实际数据源全挂。本对象让「数据前置」的结果落到 run_log 上。
+
+    放 Domain 而非 Application：它是 ``daily_sync``（Application）与
+    ``chanlun_monitor``（Application use case）之间的契约，放 Domain 避免两个
+    Application 模块互相 import。
+    """
+
+    ok: bool = True
+    status: Optional[str] = None                      # 覆盖 run_log.status（如 "data_stale"）
+    notes: list[dict] = field(default_factory=list)   # 追加进 failed_detail
+
+
+@dataclass
 class MonitorConfig:
     """逐股监控配置（对标 ``t_strategy_monitor_config``）。"""
 

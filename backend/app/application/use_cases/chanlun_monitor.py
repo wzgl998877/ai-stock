@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.use_cases.chanlun_calc import ChanlunCalcUseCase, NoKlineDataError
 from app.core.config import settings
 from app.domain.entities.chanlun import ChanlunSignal
-from app.domain.entities.strategy import StrategyRunLog
+from app.domain.entities.strategy import ScanPreflight, StrategyRunLog
 from app.domain.repositories.chanlun_repo import ChanlunRepository
 from app.domain.repositories.stock_data_repo import StockDataRepository
 from app.domain.repositories.watchlist_repo import WatchlistRepository
@@ -65,6 +65,7 @@ class ChanlunMonitorUseCase:
         stock_codes: Optional[list[str]] = None,
         progress_cb: Optional[Callable[[dict], Awaitable[None]]] = None,
         algo_version: Optional[str] = None,
+        preflight: Optional[ScanPreflight] = None,
     ) -> StrategyRunLog:
         """扫描指定用户的自选股并重算 ``period`` 周期。
 
@@ -78,6 +79,10 @@ class ChanlunMonitorUseCase:
                 None 则用构造器版本（定时扫描=settings 默认版）。双版本并存：
                 run_log 记生效版本、_is_stale 按版本取快照、信号落 v1/v2 各自的
                 dedup_key 分身。
+            preflight: 数据前置诊断（调用方在扫描前组装）。None=无诊断，行为与
+                不传时逐字一致；``ok=False`` 时把 ``notes`` 前置合并进
+                ``failed_detail``、并用 ``preflight.status`` 覆盖 run_log.status
+                （如 ``"data_stale"``），使「数据没拉到」不再呈现为一次正常扫描。
         """
         if algo_version is not None:
             algo_version = normalize_algo_version(algo_version)
@@ -115,12 +120,19 @@ class ChanlunMonitorUseCase:
             for kind, c, reason, *_ in results
             if kind == "failed"
         ]
+        # 数据前置诊断排在最前：数据没到位时逐股明细全是 no_new_data（按设计不
+        # 计入 failed），只有这条能把「整批数据没拉到」与「确实没有新信号」区分开
+        if preflight is not None and preflight.notes:
+            failed_detail = [*preflight.notes, *failed_detail]
+        run_status = (
+            preflight.status if preflight is not None and preflight.status else "done"
+        )
 
         finished_at = datetime.now()
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
         await self.chanlun_repo.finish_run_log(
             log_id=log.id,
-            status="done",
+            status=run_status,
             success=success,
             failed=failed,
             failed_detail=failed_detail or None,
@@ -145,10 +157,11 @@ class ChanlunMonitorUseCase:
             id=log.id,
             period=period,
             trigger_type=trigger_type,
-            status="done",
+            status=run_status,
             total=len(codes),
             success=success,
             failed=failed,
+            failed_detail=failed_detail or None,
             started_at=started_at,
             finished_at=finished_at,
             duration_ms=duration_ms,

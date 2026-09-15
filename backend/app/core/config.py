@@ -76,6 +76,23 @@ class Settings(BaseSettings):
     chanlun_algo_version: str = "1.1.0"      # 缠论算法版本号（写入信号/结构/回测，保证可回放与一致性）
     chanlun_push_max_signal_age_days: int = 7  # 推送信号年龄上限（天）：bump 版本后全量重算重插时拦截陈年信号轰炸
 
+    # === 缠论日线数据到位校验与扫描内重试 ===
+    # 2026-09-14 事故：15:40 新浪 456 + 腾讯降级数据未更新 → 当日零新行入库 →
+    # 扫描层把「数据没拉到」判成「无新数据」全量跳过，信号晚一个交易日才出。
+    chanlun_daily_ready_after: str = "15:05"             # 当日日K就绪时刻（HH:MM）；早于此运行期望日回退上一交易日
+    chanlun_daily_pull_retry_max: int = 3                # 拉取轮数（含首轮）；3 轮 ≈ 40 分钟，覆盖新浪 456 的 5-60 分钟自解窗口
+    chanlun_daily_pull_retry_interval_sec: int = 1200    # 轮间等待秒数
+    chanlun_daily_pull_stale_ratio: float = 0.3          # 未到位占比达此值 → 判数据源故障并重试
+    chanlun_daily_pull_stale_min: int = 2                # 未到位最少只数（小自选股列表防误报）
+    chanlun_daily_rescan_cron: str = "18:10"             # 日线兜底补扫时刻（HH:MM）；空串=关闭
+
+    # === 缠论信号自动补推 ===
+    # 2026-09-15 事故：iLink context_token 约 24h 过期，且 tokenless 降级通道
+    # 亦被网关拒绝 → 推送失败只标 push_status='failed'，漏推信号永久丢失。
+    chanlun_push_retry_enabled: bool = True              # 扫描收尾自动补推未送达信号
+    chanlun_push_retry_window_days: int = 2              # 补推回看窗口（天）；应 ≤ chanlun_push_max_signal_age_days
+    chanlun_push_retry_max_signals: int = 20             # 单轮补推条数上限（防轰炸）
+
     # === 微信 iLink Bot 推送（缠论信号） ===
     wechat_push_enabled: bool = False                   # 推送总开关（token 未配置时强制视为关闭）
     wechat_ilink_bot_token: str = ""                    # iLink Bot Token（Bearer）

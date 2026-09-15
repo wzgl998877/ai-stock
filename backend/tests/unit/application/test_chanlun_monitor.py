@@ -13,7 +13,7 @@ import pytest
 from app.application.use_cases.chanlun_calc import NoKlineDataError
 from app.application.use_cases.chanlun_monitor import ChanlunMonitorUseCase
 from app.domain.entities.chanlun import ChanlunSignal, StructureSnapshot
-from app.domain.entities.strategy import StrategyRunLog
+from app.domain.entities.strategy import ScanPreflight, StrategyRunLog
 from app.domain.entities.watchlist import WatchlistItem
 from app.domain.models.stock_data import StockDailyQuote
 
@@ -499,3 +499,75 @@ async def test_scan_version_match_still_skips():
 
     log = await mon.scan("daily", user_id="u1", algo_version="v2")
     assert calls == [] and log.success == 0
+
+
+# ---------------------------------------------------------------------------
+# ScanPreflight：数据前置诊断贯通 run_log（2026-09-14 事故回归）
+# ---------------------------------------------------------------------------
+
+
+def _stale_setup(latest=date(2026, 9, 11)):
+    """构造「快照水位线 == 库内最新」的 stale 场景（数据没到位时的真实形态）。"""
+    snapshot = StructureSnapshot(
+        stock_code="600000", period="daily",
+        last_kline_time=datetime(2026, 9, 11),
+    )
+    cr = FakeChanlunRepo(structures={("600000", "daily"): snapshot})
+    sd = FakeStockDataRepo(latest_daily=latest)
+    return cr, sd
+
+
+async def test_scan_preflight_overrides_status_and_prepends_notes():
+    """数据未到位时 run_log 不能再呈现为一次正常扫描（success=0/failed=0/done）。"""
+    cr, sd = _stale_setup()
+    wl = FakeWatchlistRepo([_item("600000")])
+    mon, _sessions, calls = _make_monitor(wl, cr, sd)
+
+    preflight = ScanPreflight(
+        ok=False,
+        status="data_stale",
+        notes=[{
+            "stock_code": "数据前置",
+            "reason": "日线数据未到位 1/1（期望 2026-09-14，重试 3 轮）",
+            "kind": "preflight",
+        }],
+    )
+    log = await mon.scan("daily", user_id="system", preflight=preflight)
+
+    assert calls == []                              # 数据没到位 → 全跳过
+    assert log.status == "data_stale"
+    assert cr.finished[0]["status"] == "data_stale"
+    assert cr.finished[0]["failed_detail"][0]["stock_code"] == "数据前置"
+    # 计数语义不变：no_new_data 仍走 skipped，不进 failed
+    assert log.success == 0 and log.failed == 0
+
+
+async def test_scan_preflight_notes_come_before_per_stock_failures():
+    """前置诊断排最前，逐股失败明细紧随其后（两者语义不同，不能混）。"""
+    cr, sd = _stale_setup()
+    wl = FakeWatchlistRepo([_item("600000"), _item("000001")])
+    mon, _sessions, _ = _make_monitor(wl, cr, sd, fail_codes=["000001"])
+
+    preflight = ScanPreflight(
+        ok=False, status="data_stale",
+        notes=[{"stock_code": "数据前置", "reason": "汇总", "kind": "preflight"}],
+    )
+    log = await mon.scan("daily", user_id="system", preflight=preflight)
+
+    detail = cr.finished[0]["failed_detail"]
+    assert detail[0]["stock_code"] == "数据前置"
+    assert detail[-1]["stock_code"] == "000001"
+    assert log.failed == 1
+
+
+async def test_scan_without_preflight_keeps_legacy_behaviour():
+    """不传 preflight（手动重算 / 微信「跑缠论」）时行为与改动前逐字一致。"""
+    cr, sd = _stale_setup()
+    wl = FakeWatchlistRepo([_item("600000")])
+    mon, _sessions, _ = _make_monitor(wl, cr, sd)
+
+    log = await mon.scan("daily", user_id="u1")
+
+    assert log.status == "done"
+    assert cr.finished[0]["status"] == "done"
+    assert cr.finished[0]["failed_detail"] is None

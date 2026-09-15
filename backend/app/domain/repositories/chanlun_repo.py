@@ -8,6 +8,7 @@
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Optional
 
 from app.domain.entities.chanlun import ChanlunSignal, StructureSnapshot
@@ -51,6 +52,27 @@ class ChanlunRepository(ABC):
         """批量获取多只股票的最新确认信号（自选股徽标用）。
 
         ``algo_version`` 传入时徽标取该口径下最新一条；该口径无信号则无徽标。
+        """
+        ...
+
+    @abstractmethod
+    async def get_signals_by_push_status(
+        self,
+        push_statuses: list[str],
+        signal_time_from: datetime,
+        period: Optional[str] = None,
+        algo_version: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[ChanlunSignal]:
+        """按推送状态读取信号（补推用），按 ``signal_time`` 倒序取前 ``limit`` 条。
+
+        只返回 ``push_status IN push_statuses`` 且 ``signal_time >= signal_time_from``
+        的行（``NULL``=未尝试，天然被排除）。
+
+        ``failed``（推送尝试失败）与 ``skipped``（推送时无 context_token）都是
+        「未送达、可重试」，补推时一并作为候选。
+
+        ``period`` / ``algo_version`` 为 None 时不限——扫描收尾的补推跨周期跨版本。
         """
         ...
 

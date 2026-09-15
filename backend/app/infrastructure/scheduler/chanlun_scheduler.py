@@ -2,7 +2,9 @@
 
 对标 ``event_crawler_scheduler.py``：
 
-- 日线：工作日 ``settings.chanlun_scan_daily_cron``（默认 15:40）收盘后扫描；
+- 日线：工作日 ``settings.chanlun_scan_daily_cron``（默认 15:40）收盘后扫描，
+  另有 ``chanlun_daily_rescan_cron``（默认 18:10）兜底补扫；数据前置（拉取 +
+  逐轮到位置校验）见 ``app.application.sync.daily_sync``；
 - 30 分钟：八时点（10:05/10:35/11:05/11:35/13:35/14:05/14:35/15:05），每根 30m K 线
   收盘后 5 分钟——先并发拉取最新行情（``sync_stock_30m``），再扫描计算。
 
@@ -23,6 +25,14 @@ _scheduler = None
 # 信号表靠 dedup_key 中的版本段分身、快照表靠唯一键 (code, period, algo_version)
 # 分身（o9p0q1r2s3t4），互不干扰；手动/微信/网页场景由调用方显式指定版本。
 _SCAN_VERSIONS = ("1.1.0", "1.0.0")
+
+# job 参数：默认 misfire_grace_time 仅 1 秒——进程若在触发时刻前后重启，当次
+# 任务会被静默丢弃（2026-09-14 事故同类的单点）。统一放宽到 1 小时并允许补齐。
+_JOB_KWARGS = {
+    "max_instances": 1,
+    "coalesce": True,
+    "misfire_grace_time": 3600,
+}
 
 
 def _parse_cron(hhmm: str) -> tuple[int, int]:
@@ -69,117 +79,6 @@ def _build_monitor(session, session_factory):
     )
 
 
-async def _pull_daily_quotes(session_factory, codes: list[str], days: int = 30) -> list[str]:
-    """并发拉取日K并落库（单股失败不阻断；每股独立 session），返回失败 code 列表。
-
-    日线定时扫描的数据前置：拉取 → 清洗 → ``upsert_daily_batch`` → 清
-    ``stock:daily:{code}:*`` 缓存。
-
-    增量策略（2026-08-25 新浪 456 封禁后改造）：库中已有该股日K时，
-    拉取窗口从「最近 30 自然日」缩为「库内最新日期 → 今天」，把新浪
-    ``datalen`` 从 ~300 根降到个位数~几十根，大幅缩小请求体积。
-    无数据时维持 30 自然日窗口（≈20 个交易日）做回补；更长缺口由手动
-    「自选股批量同步」（365 天）兜底。
-
-    降级链：新浪拉不到（空返回，含被限流）→ 腾讯日K兜底（2026-08-25）。
-
-    返回值：拉取失败的股票代码列表（微信「缠论 日线」指令复用本函数时
-    用来产出失败明细；定时扫描调用点忽略返回值）。
-    """
-    import asyncio as _asyncio
-    from datetime import datetime as _dt, timedelta as _td
-
-    from app.application.sync.sina_sync_client import SinaSyncClient
-    from app.application.sync.sync_executor import _clear_kline_cache
-    from app.domain.services.data_cleaner import clean_daily_quote
-    from app.infrastructure.market.tencent_kline_client import TencentKlineClient
-    from app.infrastructure.repositories.mysql_stock_data_repo import (
-        MySQLStockDataRepository,
-    )
-
-    today = _dt.now().date()
-    end_date = today.strftime("%Y-%m-%d")
-    default_start = (today - _td(days=days)).strftime("%Y-%m-%d")
-    sem = _asyncio.Semaphore(max(1, settings.chanlun_concurrency))
-
-    async def _fetch_daily_raw(code: str, start: str, end: str) -> list[dict]:
-        """新浪 → 腾讯降级。腾讯无 start/end 参数，返回后按日期窗口过滤。"""
-        raw = await _asyncio.to_thread(
-            SinaSyncClient().fetch_daily_quote,
-            code=code, start_date=start, end_date=end, period="daily",
-        )
-        if raw:
-            return raw
-        logger.info("缠论日线拉取：新浪无数据/被限流，降级腾讯 code=%s", code)
-        # 增量缺口换算条数：自然日 → 交易日近似（×5/7）+ 余量；至少 10
-        gap_days = (_dt.strptime(end, "%Y-%m-%d") - _dt.strptime(start, "%Y-%m-%d")).days
-        count = max(10, int(gap_days * 5 / 7) + 5)
-        rows = await TencentKlineClient().fetch(code, period="daily", count=count)
-        return [r for r in rows if start <= r.get("trade_date", "") <= end]
-
-    failed: list[str] = []
-
-    def _is_deadlock(e: Exception) -> bool:
-        """MySQL 死锁 1213（并发先删后插 gap lock 交叉，2026-08-27 全量兜底首跑爆发）。
-
-        死锁牺牲者事务已被 InnoDB 回滚，重跑安全。
-        """
-        return "1213" in str(e) or "Deadlock" in str(e)
-
-    async def pull(code: str) -> None:
-        async with sem:
-            # 增量窗口：库内最新日K之后 → 今天；无历史则默认窗口。
-            # 不按 source 过滤：n8o9p0q1r2s3 起一天一条，任何源的数据都算数
-            try:
-                async with session_factory() as s:
-                    repo = MySQLStockDataRepository(s)
-                    latest = await repo.get_latest_daily_date(code, period="daily")
-                start = latest.strftime("%Y-%m-%d") if latest else default_start
-                raw = await _fetch_daily_raw(code, start, end_date)
-                quotes = []
-                for r in raw:
-                    try:
-                        quotes.append(clean_daily_quote(r, "sina"))
-                    except Exception as e:
-                        logger.warning("缠论日线拉取 %s 脏数据跳过: %s", code, e)
-                if quotes:
-                    # 死锁重试：并发先删后插在 uk_code_date_period 相邻 code 边界
-                    # 的 gap lock 交叉（封禁断档股索引空洞大、命中不存在行的 DELETE
-                    # 加 gap 锁 + INSERT 插入意向锁互等）。牺牲者已回滚，重跑安全
-                    for attempt in range(3):
-                        try:
-                            async with session_factory() as s:
-                                repo = MySQLStockDataRepository(s)
-                                await repo.upsert_daily_batch(quotes)
-                                await _clear_kline_cache(code, "daily")
-                                await s.commit()
-                            break
-                        except Exception as e:
-                            await s.rollback()
-                            if attempt < 2 and _is_deadlock(e):
-                                logger.warning(
-                                    "缠论日线拉取 %s 死锁重试 %d/3: %s",
-                                    code, attempt + 1, e,
-                                )
-                                await _asyncio.sleep(0.5 * (attempt + 1))
-                            else:
-                                logger.warning("缠论日线拉取 %s 失败: %s", code, e)
-                                failed.append(code)
-                                break
-            except Exception as e:
-                logger.warning("缠论日线拉取 %s 失败: %s", code, e)
-                failed.append(code)
-
-    results = await _asyncio.gather(
-        *[pull(c) for c in codes], return_exceptions=True
-    )
-    for code, r in zip(codes, results):
-        if isinstance(r, Exception):
-            logger.warning("缠论日线拉取 %s 失败: %s", code, r)
-            failed.append(code)
-    return failed
-
-
 def setup_scheduler(session_factory):
     """初始化并返回 APScheduler 实例（不自动启动）。"""
     global _scheduler
@@ -194,30 +93,66 @@ def setup_scheduler(session_factory):
 
     scheduler = AsyncIOScheduler()
 
-    async def scan_daily():
+    async def run_daily_scan() -> None:
+        """日线扫描全流程：数据前置（含到位重试）→ 双版本扫描 → 补推收尾。
+
+        15:40 主跑与 18:10 兜底补扫共用本函数。幂等：数据已到位时 ``_is_stale``
+        会逐股跳过、``dedup_key`` 保证信号不重复落库，故补扫无副作用。
+        """
         logger.info("缠论日线扫描任务开始")
         try:
+            # 只读自选股：session 不得跨拉取/重试存活——重试最坏 40 分钟，
+            # 包住整段会变成持有 MySQL 连接的 idle-in-transaction 长事务
             async with session_factory() as session:
                 codes = await _all_watchlist_codes(session)
-                if not codes:
-                    logger.info("缠论日线扫描：无自选股，跳过")
-                    return
+            if not codes:
+                logger.info("缠论日线扫描：无自选股，跳过")
+                return
 
-                # 1) 并发拉取最近 N 天日K（此前只扫不拉，数据靠手动同步，
-                #    导致定时扫描长期 stale 跳过、信号出不来——对标 scan_m30 修正）
-                await _pull_daily_quotes(session_factory, codes)
+            # 1) 数据前置：拉取 + 逐轮到位校验（未到位 → 等待重试）
+            from app.application.sync.daily_sync import sync_daily_quotes
 
-                # 2) 双版本扫描（v2 主、v1 副）：数据只拉一次，两口径各自
-                #    计算/落库/推送（信号表与快照表按版本分身，互不干扰）
-                for ver in _SCAN_VERSIONS:
-                    async with session_factory() as session:
-                        monitor = _build_monitor(session, session_factory)
-                        await monitor.scan(
-                            "daily", user_id="system",
-                            trigger_type="scheduled", stock_codes=codes,
-                            algo_version=ver,
-                        )
-                        await session.commit()
+            result = await sync_daily_quotes(session_factory, codes)
+            preflight = result.to_preflight()
+            if preflight.ok:
+                logger.info(
+                    "缠论日线数据到位 %d/%d（期望 %s，%d 轮）",
+                    len(result.in_place_codes), result.total,
+                    result.expected_date, result.attempts,
+                )
+            else:
+                # 2026-09-14 事故的教训：数据源全挂时全链路无任何告警。这里必须
+                # 留下 ERROR 级痕迹，并把诊断写进 run_log（见 preflight 贯通）
+                logger.error(
+                    "缠论日线数据未到位 %d/%d（期望 %s），仍继续扫描（本日可能无新信号）：%s",
+                    result.total - len(result.in_place_codes), result.total,
+                    result.expected_date, preflight.notes[:1],
+                )
+
+            # 2) 双版本扫描（v2 主、v1 副）：数据只拉一次、判定只做一次，
+            #    重试轮次不重复扫描
+            for ver in _SCAN_VERSIONS:
+                async with session_factory() as session:
+                    monitor = _build_monitor(session, session_factory)
+                    await monitor.scan(
+                        "daily", user_id="system",
+                        trigger_type="scheduled", stock_codes=codes,
+                        algo_version=ver, preflight=preflight,
+                    )
+                    await session.commit()
+
+            # 3) 收尾：补推此前未送达的信号（token 恢复后自动补上，避免漏推
+            #    信号永久丢失）；失败只记 warning，不影响扫描结果
+            from app.application.wechat.chanlun_signal_push import build_signal_retrier
+
+            retrier = build_signal_retrier(session_factory)
+            if retrier is not None:
+                try:
+                    retried = await retrier()
+                    if retried:
+                        logger.info("缠论信号补推：本轮尝试 %d 条未送达信号", retried)
+                except Exception:
+                    logger.warning("缠论信号补推失败（不影响扫描结果）", exc_info=True)
         except Exception as e:
             logger.error("缠论日线扫描任务失败: %s", e, exc_info=True)
 
@@ -267,11 +202,24 @@ def setup_scheduler(session_factory):
     # 日线：工作日 chanlun_scan_daily_cron
     dh, dm = _parse_cron(settings.chanlun_scan_daily_cron)
     scheduler.add_job(
-        scan_daily,
+        run_daily_scan,
         CronTrigger(day_of_week="mon-fri", hour=dh, minute=dm),
         id="chanlun_daily_scan",
         replace_existing=True,
+        **_JOB_KWARGS,
     )
+
+    # 日线兜底补扫：15:40 主跑 + 3 轮重试仍未到位（数据源长时间故障）时，
+    # 收盘后晚些再跑一遍补齐当天信号。空串 = 关闭
+    if settings.chanlun_daily_rescan_cron:
+        rh, rm = _parse_cron(settings.chanlun_daily_rescan_cron)
+        scheduler.add_job(
+            run_daily_scan,
+            CronTrigger(day_of_week="mon-fri", hour=rh, minute=rm),
+            id="chanlun_daily_rescan",
+            replace_existing=True,
+            **_JOB_KWARGS,
+        )
 
     # 30m：八时点（每根收盘后 5 分钟），用 OrTrigger 组合
     m30_trigger = OrTrigger([
@@ -285,6 +233,7 @@ def setup_scheduler(session_factory):
         m30_trigger,
         id="chanlun_m30_scan",
         replace_existing=True,
+        **_JOB_KWARGS,
     )
 
     # 微信 iLink 心跳保活：每天 08:30 / 20:30 发一条消息「使用」context_token，
@@ -302,6 +251,7 @@ def setup_scheduler(session_factory):
         CronTrigger(hour="8,20", minute="30"),
         id="wechat_ilink_keepalive",
         replace_existing=True,
+        **_JOB_KWARGS,
     )
 
     _scheduler = scheduler

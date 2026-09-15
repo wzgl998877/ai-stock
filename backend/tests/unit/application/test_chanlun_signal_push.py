@@ -319,3 +319,128 @@ def test_format_title_carries_version_label():
 
     s_empty = _sig()  # algo_version 默认 "" → 无标签（兼容旧调用）
     assert format_signals_message([s_empty]).splitlines()[0] == "【缠论信号】30分钟周期 · 新增1"
+
+
+# ---------------------------------------------------------------------------
+# push_retry：未送达信号补推（2026-09-15 漏推事故）
+# ---------------------------------------------------------------------------
+
+async def test_push_retry_success_records_and_labels_message():
+    """补推成功回写 success；标题标「补推」以区别于实时新增。"""
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(client, FakeStore(), "u@im.wechat", result_writer=writer)
+
+    sent = await uc.push_retry([_sig(id=31), _sig(stock_code="000858", id=41)])
+
+    assert sent == 2
+    assert writer.calls == [([31, 41], "success", "MSG-001")]
+    assert client.sent[0][1].startswith("【缠论信号·补推】")
+
+
+async def test_push_retry_without_token_keeps_status_unchanged():
+    """无 token 时不回写：状态语义保持（failed 不被洗成 skipped）、不刷新 push_time。
+
+    装配层的 ``build_signal_retrier`` 已在无 token 时短路，此处是兜底路径
+    （token 在查询后、发送前失效）。
+    """
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(
+        client, FakeStore(token=None), "u@im.wechat", result_writer=writer
+    )
+
+    sent = await uc.push_retry([_sig(id=31)])
+
+    assert sent == 0
+    assert writer.calls == []       # 候选状态原样保留
+    assert client.sent == []
+
+
+async def test_push_retry_failure_stays_failed():
+    """补推仍失败 → 标 failed（留在候选集，token 恢复后继续试）。"""
+    writer = FakeResultWriter()
+    uc = ChanlunSignalPushUseCase(
+        FakeClient(fail=ILinkContextError("prepare failed", code=-2)),
+        FakeStore(), "u@im.wechat", result_writer=writer,
+    )
+
+    await uc.push_retry([_sig(id=31)])
+
+    assert writer.calls == [([31], "failed", None)]
+
+
+async def test_push_retry_groups_by_period_and_version():
+    """分组发送：标题取自首条信号的周期/口径，混批会渲染出错误标签。"""
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(client, FakeStore(), "u@im.wechat", result_writer=writer)
+
+    await uc.push_retry([
+        _sig(id=1, period="daily", algo_version="1.1.0"),
+        _sig(id=2, period="daily", algo_version="1.0.0"),
+        _sig(id=3, period="m30", algo_version="1.1.0"),
+    ])
+
+    assert len(client.sent) == 3
+    titles = {text.splitlines()[0] for _, text, _ in client.sent}
+    assert titles == {
+        "【缠论信号·v1·补推】日线周期 · 补推1",
+        "【缠论信号·v2·补推】日线周期 · 补推1",
+        "【缠论信号·v2·补推】30分钟周期 · 补推1",
+    }
+
+
+async def test_push_retry_one_group_failure_does_not_block_others():
+    """单组失败不阻断其他组（``_attempt`` 内部全捕获）。"""
+    writer = FakeResultWriter()
+
+    class _FailSecondCall(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.n = 0
+
+        async def send_message(self, to_user_id, text, context_token):
+            self.n += 1
+            if self.n == 2:
+                raise ILinkContextError("prepare failed", code=-2)
+            return await super().send_message(to_user_id, text, context_token)
+
+    client = _FailSecondCall()
+    uc = ChanlunSignalPushUseCase(client, FakeStore(), "u@im.wechat", result_writer=writer)
+
+    await uc.push_retry([_sig(id=1, period="daily"), _sig(id=2, period="m30")])
+
+    assert len(client.sent) == 1                                    # 一组成功送达
+    assert sorted(c[1] for c in writer.calls) == ["failed", "success"]
+
+
+async def test_push_retry_respects_max_signal_age():
+    """年龄过滤对补推同样生效（与查询窗口叠加为双重保护）。"""
+    writer = FakeResultWriter()
+    client = FakeClient()
+    uc = ChanlunSignalPushUseCase(
+        client, FakeStore(), "u@im.wechat", result_writer=writer, max_signal_age_days=7
+    )
+
+    sent = await uc.push_retry([_sig(id=1, signal_time=datetime(2026, 1, 1, 10, 0))])
+
+    assert sent == 0
+    assert client.sent == [] and writer.calls == []
+
+
+async def test_push_retry_empty_returns_zero():
+    uc = ChanlunSignalPushUseCase(FakeClient(), FakeStore(), "u@im.wechat")
+    assert await uc.push_retry([]) == 0
+
+
+async def test_format_retry_title_labels_kind():
+    """kind="retry" 的标题（纯函数）。"""
+    msg = format_signals_message(
+        [_sig(algo_version="1.1.0", period="daily")], kind="retry"
+    )
+    assert msg.splitlines()[0] == "【缠论信号·v2·补推】日线周期 · 补推1"
+    # kind 默认 "new"：既有调用方行为不变
+    assert format_signals_message(
+        [_sig(algo_version="1.1.0", period="daily")]
+    ).splitlines()[0] == "【缠论信号·v2】日线周期 · 新增1"

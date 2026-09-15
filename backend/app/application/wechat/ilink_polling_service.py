@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Awaitable, Callable, Optional
 
 from app.infrastructure.wechat.ilink_client import (
     ILinkBotClient,
@@ -43,10 +44,14 @@ class ILinkPollingService:
         client: ILinkBotClient,
         store: ILinkTokenStore,
         backoff_max: float = 60.0,
+        on_token_refreshed: Optional[Callable[[], Awaitable[None]]] = None,
     ):
         self.client = client
         self.store = store
         self.backoff_max = backoff_max
+        # token 刷新回调（补推因 token 失效而漏推的信号）。契约：内部全捕获、
+        # 不向上抛；调用点仍包一层 try 防御注入的其它实现拖垮轮询循环
+        self.on_token_refreshed = on_token_refreshed
 
     async def run(self) -> None:
         """无限轮询循环；只能通过 task.cancel() 停止。"""
@@ -112,6 +117,15 @@ class ILinkPollingService:
                     await self.client.send_message(user_id, ACK_TEXT, context_token)
                 except Exception:
                     logger.warning("iLink 回执发送失败（忽略）", exc_info=True)
+            # token 刚刷新 → 补推此前因 token 失效漏推的信号（去抖在回调内）。
+            # 放在指令处理之后：不让补推的网络耗时拖慢用户指令的响应
+            if self.on_token_refreshed is not None:
+                try:
+                    await self.on_token_refreshed()
+                except Exception:
+                    logger.warning(
+                        "token 刷新后补推失败（忽略，不影响轮询）", exc_info=True
+                    )
         logger.debug("iLink 入站消息: %s", msg)
 
 
