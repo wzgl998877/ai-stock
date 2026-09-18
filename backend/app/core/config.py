@@ -90,7 +90,10 @@ class Settings(BaseSettings):
     # 2026-09-15 事故：iLink context_token 约 24h 过期，且 tokenless 降级通道
     # 亦被网关拒绝 → 推送失败只标 push_status='failed'，漏推信号永久丢失。
     chanlun_push_retry_enabled: bool = True              # 扫描收尾自动补推未送达信号
-    chanlun_push_retry_window_days: int = 2              # 补推回看窗口（天）；应 ≤ chanlun_push_max_signal_age_days
+    # 补推回看窗口（天）；应 ≤ chanlun_push_max_signal_age_days。2026-09-18 从 2 放宽到 5：
+    # 推送门禁是「用户最后发消息 +24h」窗口（见 wechat_keepalive_enabled 注释），窗口
+    # 关闭期间信号全部 failed；5 天窗口让用户隔几天发一次消息也能一次补齐全部漏推。
+    chanlun_push_retry_window_days: int = 5
     chanlun_push_retry_max_signals: int = 20             # 单轮补推条数上限（防轰炸）
 
     # === 微信 iLink Bot 推送（缠论信号） ===
@@ -101,7 +104,10 @@ class Settings(BaseSettings):
     wechat_ilink_client_version: int = 196608           # iLink-App-ClientVersion 头（0x30000）
     wechat_ilink_poll_timeout: int = 35                 # 长轮询挂起秒数（客户端超时 = 此值 + 5）
     wechat_ilink_backoff_max: int = 60                  # 长轮询异常退避封顶（秒）
-    wechat_keepalive_enabled: bool = True               # 心跳保活（定时发消息维持 context_token，防 24h 过期）
+    # 心跳保活：2026-09-18 证伪——窗口锚定用户发消息时刻固定 24h，bot 发消息
+    # 不能续期（9/16 08:30 心跳成功但 token 当天 14:18 照死），反而每天白耗
+    # 窗口内 10 条主动消息配额中的 2 条。默认关闭；置 True 可作链路探测留痕。
+    wechat_keepalive_enabled: bool = False              # 心跳保活（已证伪无效，见上；仅作发送链路探测用）
 
     # === 微信指令助手（iLink 消息驱动系统功能，specs/010） ===
     wechat_cmd_enabled: bool = False                    # 指令功能总开关（与推送开关独立）

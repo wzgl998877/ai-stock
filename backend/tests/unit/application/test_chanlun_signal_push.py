@@ -444,3 +444,26 @@ async def test_format_retry_title_labels_kind():
     assert format_signals_message(
         [_sig(algo_version="1.1.0", period="daily")]
     ).splitlines()[0] == "【缠论信号·v2】日线周期 · 新增1"
+
+
+# ---------------------------------------------------------------------------
+# 推送相关配置默认值守护（2026-09-16~09-18 漏推事故复盘产物）
+# ---------------------------------------------------------------------------
+
+
+def test_config_defaults_guard():
+    """锁住两个事故修复默认值，防止无意改回：
+
+    - 心跳保活默认关闭：bot 发消息不能续期 24h 窗口（窗口锚定用户发消息
+      时刻），只会每天白耗窗口内 10 条主动消息配额中的 2 条；
+    - 补推窗口 5 天：用户隔几天给 bot 发一次消息，期间漏推也能一次补齐。
+    """
+    from app.core.config import settings
+
+    assert settings.wechat_keepalive_enabled is False
+    assert settings.chanlun_push_retry_window_days == 5
+    # 补推窗口必须 ≤ 推送年龄上限，否则超出部分永远查不进候选
+    assert (
+        settings.chanlun_push_retry_window_days
+        <= settings.chanlun_push_max_signal_age_days
+    )
